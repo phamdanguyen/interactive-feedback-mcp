@@ -1,0 +1,176 @@
+# Todolist: interactive-feedback-mcp 二次开发
+
+## 阶段一：UI 现代化与核心体验优化
+
+### 任务 1: UI 布局现代化 (PRD 2.1.1)
+*   **描述:** 使用 Qt 布局管理器 (如 `QHBoxLayout`, `QVBoxLayout`) 重新组织 `feedback_ui.py` 中的界面元素，确保窗口缩放时自适应。
+*   **具体步骤:**
+    *   [ ] 分析 `feedback_ui.py` 中 `_create_ui` 方法的当前布局方式。
+    *   [ ] 将 `description_label`, `options_frame` (如果存在), `feedback_text` (自定义的 `FeedbackTextEdit`), 和 `submit_button` 使用 `QVBoxLayout` 和 `QHBoxLayout` 进行合理嵌套布局。
+    *   [ ] 移除所有手动设置控件位置和大小的代码 (如 `setGeometry`, `move` 等，除非是顶层窗口的初始设置)。
+    *   [ ] 测试窗口缩放，确保所有元素按预期显示和调整。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   UI 元素使用 Qt 布局管理器排列。
+    *   窗口缩放时，内部元素自适应。
+    *   代码结构清晰，避免手动定位。
+
+### 任务 2: 视觉样式美化 - 基础 (PRD 2.1.2)
+*   **描述:** 为应用设定一套基础的 Qt StyleSheets (QSS)，改善整体视觉效果。
+*   **具体步骤:**
+    *   [ ] 在 `feedback_ui.py` 的 `feedback_ui` 函数或 `FeedbackUI` 初始化中，应用一个简单的全局 QSS。
+    *   [ ] 针对 `QPushButton`, `QTextEdit`, `QCheckBox`, `QLabel` 设置基础样式 (如边距、边框、背景色、字体颜色)，以匹配当前已有的暗黑模式 `get_dark_mode_palette` 或提供更统一的外观。
+    *   [ ] 确保 `FeedbackTextEdit` 的 `placeholderText` 样式清晰。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   应用统一的视觉风格。
+    *   控件具有现代化的基础外观。
+
+### 任务 3: 移除窗口"总在最前"行为 (PRD 2.2.1)
+*   **描述:** 修改窗口标志，移除 `Qt.WindowStaysOnTopHint`，使窗口不再强制置顶。
+*   **具体步骤:**
+    *   [ ] 在 `feedback_ui.py` 的 `FeedbackUI.__init__` 方法中，定位设置 `self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)` 的代码。
+    *   [ ] 将其修改为 `self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)` 或确保此标志不被添加。
+    *   [ ] 测试窗口行为，确认其不再置顶。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   反馈窗口不再强制置顶。
+    *   表现同普通应用窗口。
+
+### 任务 4: 实现点击外部自动最小化 (PRD 2.2.2)
+*   **描述:** 当用户点击 UI 页面外部时，反馈窗口自动最小化。
+*   **具体步骤:**
+    *   [ ] 在 `feedback_ui.py` 的 `FeedbackUI` 类中，重写 `event(self, event)` 方法。
+    *   [ ] 在 `event` 方法中，检测 `event.type() == QEvent.WindowDeactivate`。
+    *   [ ] 当窗口失活时，如果窗口当前可见且未最小化 (`self.isVisible() and not self.isMinimized()`), 则调用 `self.showMinimized()`。
+    *   [ ] 测试在不同应用间切换时，反馈窗口是否按预期自动最小化。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   窗口失活时自动最小化。
+    *   避免子对话框激活时错误最小化。
+
+## 阶段二：对话框核心功能增强
+
+### 任务 5: 确保输入后只展示纯文本信息 (PRD 2.3.1)
+*   **描述:** 确保从 `FeedbackTextEdit` 获取的是纯文本。
+*   **具体步骤:**
+    *   [ ] 检查 `feedback_ui.py` 中 `_submit_feedback` 方法。
+    *   [ ] 确认 `self.feedback_text.toPlainText().strip()` 已被正确使用来获取反馈文本。
+    *   [ ] (如果之前未严格执行) 确保任何从 `predefined_options` 合并的文本也是纯文本。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   使用 `toPlainText()` 获取 `QTextEdit` 内容。
+    *   最终反馈信息不含富文本格式。
+
+### 任务 6: 新增回车发送消息功能 (PRD 2.3.3)
+*   **描述:** 在 `FeedbackTextEdit` 中，按 Ctrl+Enter (当前已有) 或单独按 Enter 发送消息，Shift+Enter 换行。PRD 要求 Enter 发送，当前是 Ctrl+Enter。需要确认最终行为。**暂定目标：Ctrl+Enter 发送，Enter 换行（保持现有行为，或按需调整为 Enter 发送）。** 此处遵循 `FeedbackTextEdit` 中已有的 `keyPressEvent` 逻辑。如需更改为 Enter 发送，则需修改。
+*   **具体步骤 (若维持 Ctrl+Enter):**
+    *   [ ] 审阅 `FeedbackTextEdit.keyPressEvent` 方法，确认 Ctrl+Return (即 Ctrl+Enter) 调用 `_submit_feedback`。
+    *   [ ] 确认普通 Enter 键行为是换行。
+*   **具体步骤 (若改为 Enter 发送, Shift+Enter 换行):**
+    *   [ ] 修改 `FeedbackTextEdit.keyPressEvent` 方法。
+    *   [ ] 当 `event.key() == Qt.Key_Return` 且 `event.modifiers() == Qt.NoModifier` (或 `not (event.modifiers() & Qt.ShiftModifier)`) 时，调用 `_submit_feedback` 并阻止默认事件。
+    *   [ ] 当 `event.key() == Qt.Key_Return` 且 `event.modifiers() == Qt.ShiftModifier` 时，执行默认的换行行为。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准 (根据最终决定调整):**
+    *   (Ctrl+Enter): Ctrl+Enter 发送，Enter 换行。
+    *   (Enter 发送): Enter 发送，Shift+Enter 换行。
+
+## 阶段三：高级功能实现
+
+### 任务 7: 实现"常用语"功能 - 存储和管理 (PRD 2.4.1)
+*   **描述:** 允许用户预设和管理常用的反馈短语，使用 `QSettings` 存储。
+*   **具体步骤:**
+    *   [x] 创建一个新的 `QDialog` 子类 (例如 `ManageCannedResponsesDialog`) 用于管理常用语。
+        *   [x] UI 包含: `QListWidget` 显示常用语, `QLineEdit` 输入/编辑, `QPushButton` (添加, 编辑, 删除, 关闭)。
+    *   [x] 实现加载逻辑: 对话框启动时从 `QSettings` (例如组名 `"InteractiveFeedbackMCP/CannedResponses"`, 键名 `"phrases"`) 加载常用语到 `QListWidget`。
+    *   [x] 实现添加逻辑: QLineEdit 内容添加到列表和 `QSettings`。
+    *   [x] 实现编辑逻辑: 选中列表项内容到 QLineEdit，修改后更新列表和 `QSettings`。
+    *   [x] 实现删除逻辑: 从列表和 `QSettings` 中删除选中项。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   提供管理界面支持 CRUD。
+    *   `QListWidget` 显示，`QSettings` 存储。
+
+### 任务 8: 实现"常用语"功能 - 访问和使用 (PRD 2.4.2)
+*   **描述:** 在主反馈界面提供入口，快速选择并填充常用语。
+*   **具体步骤:**
+    *   [x] 在 `FeedbackUI._create_ui` 中添加一个 "常用语" `QPushButton`。
+    *   [x] 该按钮的 `clicked` 信号连接到一个槽函数，该函数创建并显示 `ManageCannedResponsesDialog` (或一个简化的选择对话框)。
+    *   [x] `ManageCannedResponsesDialog` (或选择对话框) 需要一种方式将选中的常用语传递回 `FeedbackUI` (例如通过自定义信号，或在接受对话框后读取选定值)。
+    *   [x] `FeedbackUI` 接收到选中的常用语后，将其文本插入到 `self.feedback_text` (例如使用 `insertPlainText()` 或 `setText()`)。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   主界面有"常用语"入口。
+    *   点击后显示列表供选择。
+    *   选择后自动填充输入框。
+
+## 阶段四：可选高级功能 (根据优先级和时间安排)
+
+### 任务 9: 新增粘贴图片功能 (PRD 2.3.2)
+*   **描述:** 允许用户粘贴剪贴板中的图片到反馈对话框并预览。
+*   **具体步骤:**
+    *   [ ] 在 `FeedbackUI._create_ui` 中添加一个"粘贴图片" `QPushButton` 和一个 `QLabel` 用于图片预览。
+    *   [ ] 实现槽函数 `handle_paste_image`:
+        *   [ ] 获取 `QApplication.clipboard()`。
+        *   [ ] 检查 `mimeData().hasImage()`。
+        *   [ ] 若有图片，获取 `clipboard.image()` 并转换为 `QPixmap`。
+        *   [ ] 将 `QPixmap` (可缩放以适应 QLabel) 设置到预览 `QLabel`。
+    *   [ ] (可选) 考虑通过 `FeedbackTextEdit.keyPressEvent` 或事件过滤器处理 Ctrl+V 快捷键粘贴图片。
+    *   **注意:** 此任务仅包含 UI 预览。图片数据如何随反馈发送需进一步设计（PRD 未来考量 6）。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   提供粘贴图片途径。
+    *   能检测剪贴板图片。
+    *   成功粘贴后 UI 显示预览。
+
+## 阶段五：核心功能 - 实现图片随反馈发送
+
+### 任务 10: 实现图片数据处理与封装 (PRD 2.3.2 扩展)
+*   **描述:** 实现将用户粘贴并预览的图片数据进行 Base64 编码，并按照 MCP 服务要求的 JSON 结构进行封装。
+*   **具体步骤:**
+    *   [ ] 在 `FeedbackUI` 中实现 `get_image_content_data` 方法：
+        *   [ ] 从预览 `QLabel` 获取 `QPixmap`。
+        *   [ ] 将 `QPixmap` 保存为 PNG 或 JPEG 格式的字节数据。
+        *   [ ] 对图片字节数据进行 Base64 编码。
+        *   [ ] 返回包含 `type: "image"`, `data: <base64_string>`, `mimeType: "image/png"` (或 "image/jpeg") 的字典。
+        *   [ ] 处理图片保存或编码失败的错误情况。
+    *   [ ] (可选) 实现客户端图片大小和格式初步校验，超出限制时提示用户。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   能够正确将预览图片转换为 Base64 编码的字符串及对应的 MIME 类型。
+    *   输出符合 MCP 服务预期的图片数据结构。
+    *   有适当的错误处理。
+
+### 任务 11: 修改反馈提交流程以包含图片 (PRD 2.3.2 扩展)
+*   **描述:** 更新 `_submit_feedback` 方法，使其能够同时处理文本反馈和编码后的图片数据，并将它们组合成 MCP 服务要求的最终 JSON 结构。
+*   **具体步骤:**
+    *   [ ] 修改 `_submit_feedback` 方法：
+        *   [ ] 获取纯文本反馈。
+        *   [ ] 调用 `get_image_content_data` 获取图片数据字典。
+        *   [ ] 构建 `{"content": [...]}` 列表，其中元素可以是文本对象 (如 `{"type": "text", "text": "..."}`) 和图片对象。
+        *   [ ] 确保即使没有图片，纯文本反馈也能正常提交。
+        *   [ ] 确保即使没有文本，纯图片反馈也能正常提交（如果业务允许）。
+    *   [ ] 调整 `FeedbackUI` 的返回值或信号机制，以便调用方能获取到包含图片和文本的完整待提交数据。
+    *   [ ] 在提交过程中添加用户反馈（如"正在提交…"）。
+    *   [ ] 实现提交失败时的错误提示 (使用 `QMessageBox`)。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   `_submit_feedback` 能正确组装包含文本和/或图片数据的 JSON 结构。
+    *   能够将此结构传递给调用 `FeedbackUI` 的代码。
+    *   有清晰的提交状态和错误反馈。
+
+### 任务 12: 完善图片粘贴相关的用户体验 (PRD 2.3.2 扩展)
+*   **描述:** 增加与图片粘贴和提交流程相关的用户体验优化功能。
+*   **具体步骤:**
+    *   [ ] 在 `FeedbackUI._create_ui` 中添加一个"清除预览图片" `QPushButton`。
+        *   [ ] 该按钮的 `clicked` 信号连接到一个槽函数，用于清除 `QLabel` 中的预览图和已缓存的图片数据。
+    *   [ ] (可选) 当预览区域有图片时，提交按钮的文本可以动态更新 (例如，从"提交"变为"提交反馈和图片")。
+    *   [ ] (可选) 考虑在 `FeedbackTextEdit` 的 `placeholderText` 中提示可以粘贴图片。
+*   **涉及文件:** `feedback_ui.py`
+*   **PRD 验收标准:**
+    *   用户可以清除已粘贴的图片。
+    *   UI 交互清晰，符合用户预期。
+
+---
+**最后更新日期:** $(date +%Y-%m-%d) 

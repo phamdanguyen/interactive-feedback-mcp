@@ -8,6 +8,11 @@ import json
 import tempfile
 import subprocess
 
+# 添加调试信息
+print(f"Server.py 启动 - Python解释器路径: {sys.executable}")
+print(f"Server.py 当前工作目录: {os.getcwd()}")
+print(f"Server.py Python路径: {sys.path}")
+
 from typing import Annotated, Dict
 
 from fastmcp import FastMCP
@@ -41,13 +46,18 @@ def launch_feedback_ui(summary: str, predefinedOptions: list[str] | None = None)
             args,
             check=False,
             shell=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
             close_fds=True
         )
         if result.returncode != 0:
-            raise Exception(f"Failed to launch feedback UI: {result.returncode}")
+            raise Exception(f"Failed to launch feedback UI: {result.returncode}, stderr: {result.stderr.decode('utf-8', errors='ignore')}")
+        else:
+            # 打印stderr中的调试信息
+            stderr_output = result.stderr.decode('utf-8', errors='ignore')
+            if stderr_output:
+                print(f"Debug output: {stderr_output}", file=sys.stderr)
 
         # Read the result from the temporary file
         with open(output_file, 'r') as f:
