@@ -13,10 +13,12 @@ from typing import Optional, TypedDict
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox
+    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox, QComboBox
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings
 from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QFont, QFontDatabase, QPalette, QColor
+
+from language_manager import get_language_manager, get_text
 
 class FeedbackResult(TypedDict):
     command_logs: str
@@ -221,14 +223,18 @@ class FeedbackUI(QMainWindow):
         self.log_signals = LogSignals()
         self.log_signals.append_log.connect(self._append_log)
 
-        self.setWindowTitle("Interactive Feedback MCP")
+        self.language_manager = get_language_manager()
+
+        self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
+        saved_language = self.settings.value("language", "en", type=str)
+        self.language_manager.set_language(saved_language)
+
+        self.setWindowTitle(get_text("window_title"))
         script_dir = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(script_dir, "images", "feedback.png")
         self.setWindowIcon(QIcon(icon_path))
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        
-        self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
-        
+
         # Load general UI settings for the main window (geometry, state)
         self.settings.beginGroup("MainWindow_General")
         geometry = self.settings.value("geometry")
@@ -244,7 +250,7 @@ class FeedbackUI(QMainWindow):
         if state:
             self.restoreState(state)
         self.settings.endGroup() # End "MainWindow_General" group
-        
+
         # Load project-specific settings (command, auto-execute, command section visibility)
         self.project_group_name = get_project_settings_group(self.project_directory)
         self.settings.beginGroup(self.project_group_name)
@@ -252,7 +258,7 @@ class FeedbackUI(QMainWindow):
         loaded_execute_auto = self.settings.value("execute_automatically", False, type=bool)
         command_section_visible = self.settings.value("commandSectionVisible", False, type=bool)
         self.settings.endGroup() # End project-specific group
-        
+
         self.config: FeedbackConfig = {
             "run_command": loaded_run_command,
             "execute_automatically": loaded_execute_auto
@@ -263,9 +269,9 @@ class FeedbackUI(QMainWindow):
         # Set command section visibility AFTER _create_ui has created relevant widgets
         self.command_group.setVisible(command_section_visible)
         if command_section_visible:
-            self.toggle_command_button.setText("Hide Command Section")
+            self.toggle_command_button.setText(get_text("hide_command_section"))
         else:
-            self.toggle_command_button.setText("Show Command Section")
+            self.toggle_command_button.setText(get_text("show_command_section"))
 
         set_dark_title_bar(self, True)
 
@@ -286,19 +292,45 @@ class FeedbackUI(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
+        # Language selection
+        language_layout = QHBoxLayout()
+        self.language_label = QLabel(get_text("language") + ":")
+        self.language_label.setObjectName("language_label")
+        self.language_combo = QComboBox()
+        self.language_combo.setObjectName("language_combo")
+        available_languages = self.language_manager.get_available_languages()
+        for code, name in available_languages.items():
+            self.language_combo.addItem(name, code)
+
+        # Set current language in combo box
+        current_lang = self.language_manager.get_current_language()
+        for i in range(self.language_combo.count()):
+            if self.language_combo.itemData(i) == current_lang:
+                self.language_combo.setCurrentIndex(i)
+                break
+
+        self.language_combo.currentTextChanged.connect(self._on_language_changed)
+        language_layout.addWidget(self.language_label)
+        language_layout.addWidget(self.language_combo)
+        language_layout.addStretch()
+        layout.addLayout(language_layout)
+
         # Toggle Command Section Button
-        self.toggle_command_button = QPushButton("Show Command Section")
+        self.toggle_command_button = QPushButton(get_text("show_command_section"))
+        self.toggle_command_button.setObjectName("toggle_command_button")
         self.toggle_command_button.clicked.connect(self._toggle_command_section)
         layout.addWidget(self.toggle_command_button)
 
         # Command section
-        self.command_group = QGroupBox("Command")
+        self.command_group = QGroupBox(get_text("command"))
+        self.command_group.setObjectName("command_group")
         command_layout = QVBoxLayout(self.command_group)
 
         # Working directory label
         formatted_path = self._format_windows_path(self.project_directory)
-        working_dir_label = QLabel(f"Working directory: {formatted_path}")
-        command_layout.addWidget(working_dir_label)
+        self.working_dir_label = QLabel(f"{get_text('working_directory')}: {formatted_path}")
+        self.working_dir_label.setObjectName("working_dir_label")
+        command_layout.addWidget(self.working_dir_label)
 
         # Command input row
         command_input_layout = QHBoxLayout()
@@ -306,7 +338,8 @@ class FeedbackUI(QMainWindow):
         self.command_entry.setText(self.config["run_command"])
         self.command_entry.returnPressed.connect(self._run_command)
         self.command_entry.textChanged.connect(self._update_config)
-        self.run_button = QPushButton("&Run")
+        self.run_button = QPushButton(get_text("run"))
+        self.run_button.setObjectName("run_button")
         self.run_button.clicked.connect(self._run_command)
 
         command_input_layout.addWidget(self.command_entry)
@@ -315,22 +348,25 @@ class FeedbackUI(QMainWindow):
 
         # Auto-execute and save config row
         auto_layout = QHBoxLayout()
-        self.auto_check = QCheckBox("Execute automatically on next run")
+        self.auto_check = QCheckBox(get_text("execute_automatically"))
+        self.auto_check.setObjectName("auto_check")
         self.auto_check.setChecked(self.config.get("execute_automatically", False))
         self.auto_check.stateChanged.connect(self._update_config)
 
-        save_button = QPushButton("&Save Configuration")
-        save_button.clicked.connect(self._save_config)
+        self.save_button = QPushButton(get_text("save_configuration"))
+        self.save_button.setObjectName("save_button")
+        self.save_button.clicked.connect(self._save_config)
 
         auto_layout.addWidget(self.auto_check)
         auto_layout.addStretch()
-        auto_layout.addWidget(save_button)
+        auto_layout.addWidget(self.save_button)
         command_layout.addLayout(auto_layout)
 
         # Console section (now part of command_group)
-        console_group = QGroupBox("Console")
-        console_layout_internal = QVBoxLayout(console_group)
-        console_group.setMinimumHeight(200)
+        self.console_group = QGroupBox(get_text("console"))
+        self.console_group.setObjectName("console_group")
+        console_layout_internal = QVBoxLayout(self.console_group)
+        self.console_group.setMinimumHeight(200)
 
         # Log text area
         self.log_text = QTextEdit()
@@ -342,66 +378,77 @@ class FeedbackUI(QMainWindow):
 
         # Clear button
         button_layout = QHBoxLayout()
-        self.clear_button = QPushButton("&Clear")
+        self.clear_button = QPushButton(get_text("clear"))
+        self.clear_button.setObjectName("clear_button")
         self.clear_button.clicked.connect(self.clear_logs)
         button_layout.addStretch()
         button_layout.addWidget(self.clear_button)
         console_layout_internal.addLayout(button_layout)
-        
-        command_layout.addWidget(console_group)
 
-        self.command_group.setVisible(False) 
+        command_layout.addWidget(self.console_group)
+
+        self.command_group.setVisible(False)
         layout.addWidget(self.command_group)
 
         # Feedback section with adjusted height
-        self.feedback_group = QGroupBox("Feedback")
+        self.feedback_group = QGroupBox(get_text("feedback"))
+        self.feedback_group.setObjectName("feedback_group")
         feedback_layout = QVBoxLayout(self.feedback_group)
 
         # Short description label (from self.prompt)
-        self.description_label = QLabel(self.prompt)
+        display_prompt = self.prompt
+        all_default_prompts = self.language_manager.get_all_default_prompts()
+        if self.prompt in all_default_prompts:
+            display_prompt = get_text("default_prompt")
+
+        self.description_label = QLabel(display_prompt)
+        self.description_label.setObjectName("description_label")
         self.description_label.setWordWrap(True)
         feedback_layout.addWidget(self.description_label)
 
         self.feedback_text = FeedbackTextEdit()
+        self.feedback_text.setObjectName("feedback_text")
         font_metrics = self.feedback_text.fontMetrics()
         row_height = font_metrics.height()
         # Calculate height for 5 lines + some padding for margins
         padding = self.feedback_text.contentsMargins().top() + self.feedback_text.contentsMargins().bottom() + 5 # 5 is extra vertical padding
         self.feedback_text.setMinimumHeight(5 * row_height + padding)
 
-        self.feedback_text.setPlaceholderText("Enter your feedback here (Ctrl+Enter to submit)")
-        submit_button = QPushButton("&Send Feedback (Ctrl+Enter)")
-        submit_button.clicked.connect(self._submit_feedback)
+        self.feedback_text.setPlaceholderText(get_text("feedback_placeholder"))
+        self.submit_button = QPushButton(get_text("send_feedback"))
+        self.submit_button.setObjectName("submit_button")
+        self.submit_button.clicked.connect(self._submit_feedback)
 
         feedback_layout.addWidget(self.feedback_text)
-        feedback_layout.addWidget(submit_button)
+        feedback_layout.addWidget(self.submit_button)
 
         # Set minimum height for feedback_group to accommodate its contents
         # This will be based on the description label and the 5-line feedback_text
-        self.feedback_group.setMinimumHeight(self.description_label.sizeHint().height() + self.feedback_text.minimumHeight() + submit_button.sizeHint().height() + feedback_layout.spacing() * 2 + feedback_layout.contentsMargins().top() + feedback_layout.contentsMargins().bottom() + 10) # 10 for extra padding
+        self.feedback_group.setMinimumHeight(self.description_label.sizeHint().height() + self.feedback_text.minimumHeight() + self.submit_button.sizeHint().height() + feedback_layout.spacing() * 2 + feedback_layout.contentsMargins().top() + feedback_layout.contentsMargins().bottom() + 10) # 10 for extra padding
 
         # Add widgets in a specific order
         layout.addWidget(self.feedback_group)
 
         # Credits/Contact Label
-        contact_label = QLabel('Need to improve? Contact Fábio Ferreira on <a href="https://x.com/fabiomlferreira">X.com</a> or visit <a href="https://dotcursorrules.com/">dotcursorrules.com</a>')
-        contact_label.setOpenExternalLinks(True)
-        contact_label.setAlignment(Qt.AlignCenter)
+        self.contact_label = QLabel(get_text("contact_info"))
+        self.contact_label.setObjectName("contact_label")
+        self.contact_label.setOpenExternalLinks(True)
+        self.contact_label.setAlignment(Qt.AlignCenter)
         # Optionally, make font a bit smaller and less prominent
         # contact_label_font = contact_label.font()
         # contact_label_font.setPointSize(contact_label_font.pointSize() - 1)
         # contact_label.setFont(contact_label_font)
-        contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
-        layout.addWidget(contact_label)
+        self.contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
+        layout.addWidget(self.contact_label)
 
     def _toggle_command_section(self):
         is_visible = self.command_group.isVisible()
         self.command_group.setVisible(not is_visible)
         if not is_visible:
-            self.toggle_command_button.setText("Hide Command Section")
+            self.toggle_command_button.setText(get_text("hide_command_section"))
         else:
-            self.toggle_command_button.setText("Show Command Section")
-        
+            self.toggle_command_button.setText(get_text("show_command_section"))
+
         # Immediately save the visibility state for this project
         self.settings.beginGroup(self.project_group_name)
         self.settings.setValue("commandSectionVisible", self.command_group.isVisible())
@@ -411,7 +458,7 @@ class FeedbackUI(QMainWindow):
         new_height = self.centralWidget().sizeHint().height()
         if self.command_group.isVisible() and self.command_group.layout().sizeHint().height() > 0 :
              # if command group became visible and has content, ensure enough height
-             min_content_height = self.command_group.layout().sizeHint().height() + self.feedback_group.minimumHeight() + self.toggle_command_button.height() + layout().spacing() * 2
+             min_content_height = self.command_group.layout().sizeHint().height() + self.feedback_group.minimumHeight() + self.toggle_command_button.height() + self.centralWidget().layout().spacing() * 2
              new_height = max(new_height, min_content_height)
 
         current_width = self.width()
@@ -432,8 +479,8 @@ class FeedbackUI(QMainWindow):
         if self.process and self.process.poll() is not None:
             # Process has terminated
             exit_code = self.process.poll()
-            self._append_log(f"\nProcess exited with code {exit_code}\n")
-            self.run_button.setText("&Run")
+            self._append_log(f"\n{get_text('process_exited', exit_code=exit_code)}\n")
+            self.run_button.setText(get_text("run"))
             self.process = None
             self.activateWindow()
             self.feedback_text.setFocus()
@@ -442,7 +489,7 @@ class FeedbackUI(QMainWindow):
         if self.process:
             kill_tree(self.process)
             self.process = None
-            self.run_button.setText("&Run")
+            self.run_button.setText(get_text("run"))
             return
 
         # Clear the log buffer but keep UI logs visible
@@ -450,11 +497,11 @@ class FeedbackUI(QMainWindow):
 
         command = self.command_entry.text()
         if not command:
-            self._append_log("Please enter a command to run\n")
+            self._append_log(get_text("please_enter_command"))
             return
 
-        self._append_log(f"$ {command}\n")
-        self.run_button.setText("Sto&p")
+        self._append_log(get_text("command_prompt", command=command))
+        self.run_button.setText(get_text("stop"))
 
         try:
             self.process = subprocess.Popen(
@@ -493,8 +540,8 @@ class FeedbackUI(QMainWindow):
             self.status_timer.start(100)  # Check every 100ms
 
         except Exception as e:
-            self._append_log(f"Error running command: {str(e)}\n")
-            self.run_button.setText("&Run")
+            self._append_log(get_text("error_running_command", error=str(e)))
+            self.run_button.setText(get_text("run"))
 
     def _submit_feedback(self):
         self.feedback_result = FeedbackResult(
@@ -513,7 +560,89 @@ class FeedbackUI(QMainWindow):
         self.settings.setValue("run_command", self.config["run_command"])
         self.settings.setValue("execute_automatically", self.config["execute_automatically"])
         self.settings.endGroup()
-        self._append_log("Configuration saved for this project.\n")
+        self._append_log(get_text("configuration_saved"))
+
+    def _on_language_changed(self):
+        """Change language and update UI texts"""
+        selected_index = self.language_combo.currentIndex()
+        if selected_index >= 0:
+            language_code = self.language_combo.itemData(selected_index)
+            if language_code and self.language_manager.set_language(language_code):
+                # Save language preference to settings
+                self.settings.setValue("language", language_code)
+
+                # Update UI texts
+                self._update_ui_texts()
+
+                # Record language change
+                self._append_log(get_text("language_changed"))
+
+    def _update_ui_texts(self):
+        """Update UI texts to the current language"""
+        # Update window title
+        self.setWindowTitle(get_text("window_title"))
+
+        # Initialize language manager
+        widget_text_mapping = {
+            'language_label': ('setText', lambda: get_text("language") + ":"),
+            'command_group': ('setTitle', 'command'),
+            'feedback_group': ('setTitle', 'feedback'),
+            'console_group': ('setTitle', 'console'),
+            'auto_check': ('setText', 'execute_automatically'),
+            'clear_button': ('setText', 'clear'),
+            'save_button': ('setText', 'save_configuration'),
+            'submit_button': ('setText', 'send_feedback'),
+            'contact_label': ('setText', 'contact_info'),
+            'working_dir_label': ('setText', lambda: f"{get_text('working_directory')}: {self._format_windows_path(self.project_directory)}"),
+            'feedback_text': ('setPlaceholderText', 'feedback_placeholder'),
+        }
+
+        # Update UI texts based on the mapping
+        for widget_name, (method_name, text_key) in widget_text_mapping.items():
+            if hasattr(self, widget_name):
+                widget = getattr(self, widget_name)
+                if widget and hasattr(widget, method_name):
+                    if callable(text_key):
+                        text = text_key()
+                    else:
+                        text = get_text(text_key)
+
+                    getattr(widget, method_name)(text)
+
+        if hasattr(self, 'toggle_command_button'):
+            if self.command_group.isVisible():
+                self.toggle_command_button.setText(get_text("hide_command_section"))
+            else:
+                self.toggle_command_button.setText(get_text("show_command_section"))
+
+        if hasattr(self, 'run_button'):
+            if self.process:
+                self.run_button.setText(get_text("stop"))
+            else:
+                self.run_button.setText(get_text("run"))
+
+        if hasattr(self, 'language_combo'):
+            current_lang = self.language_manager.get_current_language()
+            available_languages = self.language_manager.get_available_languages()
+
+            self.language_combo.currentTextChanged.disconnect()
+            self.language_combo.clear()
+            for code, name in available_languages.items():
+                self.language_combo.addItem(name, code)
+
+            for i in range(self.language_combo.count()):
+                if self.language_combo.itemData(i) == current_lang:
+                    self.language_combo.setCurrentIndex(i)
+                    break
+
+            self.language_combo.currentTextChanged.connect(self._on_language_changed)
+
+        if hasattr(self, 'description_label') and self.description_label:
+            current_text = self.description_label.text()
+            all_default_prompts = self.language_manager.get_all_default_prompts()
+
+            if (self.prompt in all_default_prompts or current_text in all_default_prompts):
+                self.description_label.setText(get_text("default_prompt"))
 
     def closeEvent(self, event):
         # Save general UI settings for the main window (geometry, state)
@@ -568,14 +697,30 @@ def feedback_ui(project_directory: str, prompt: str, output_file: Optional[str] 
     return result
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the feedback UI")
-    parser.add_argument("--project-directory", default=os.getcwd(), help="The project directory to run the command in")
-    parser.add_argument("--prompt", default="I implemented the changes you requested.", help="The prompt to show to the user")
-    parser.add_argument("--output-file", help="Path to save the feedback result as JSON")
+    lang_manager = get_language_manager() # This is necessary to initialize the language manager
+
+    available_languages = list(lang_manager.get_available_languages().keys())
+    default_language = available_languages[0] if available_languages else "en"
+
+    # First check for --language argument
+    import sys
+    if "--language" in sys.argv:
+        lang_index = sys.argv.index("--language")
+        if lang_index + 1 < len(sys.argv):
+            requested_lang = sys.argv[lang_index + 1]
+            if requested_lang in available_languages:
+                lang_manager.set_language(requested_lang)
+
+    parser = argparse.ArgumentParser(description=get_text("argparse_description"))
+    parser.add_argument("--project-directory", default=os.getcwd(), help=get_text("argparse_project_directory_help"))
+    parser.add_argument("--prompt", default=get_text("default_prompt"), help=get_text("argparse_prompt_help"))
+    parser.add_argument("--output-file", help=get_text("argparse_output_file_help"))
+    parser.add_argument("--language", choices=available_languages, default=default_language, help=get_text("argparse_language_help"))
     args = parser.parse_args()
 
+    lang_manager.set_language(args.language)
     result = feedback_ui(args.project_directory, args.prompt, args.output_file)
     if result:
-        print(f"\nLogs collected: \n{result['logs']}")
-        print(f"\nFeedback received:\n{result['interactive_feedback']}")
+        print(f"\n{get_text('logs_collected')}: \n{result['logs']}")
+        print(f"\n{get_text('feedback_received')}:\n{result['interactive_feedback']}")
     sys.exit(0)
