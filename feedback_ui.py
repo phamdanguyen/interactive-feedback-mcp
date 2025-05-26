@@ -854,14 +854,8 @@ class FeedbackUI(QMainWindow):
             QMessageBox.critical(self, "提交失败", "反馈内容格式无效，请重试。")
             return
         
-        # 显示提交中对话框
-        submit_dialog = QMessageBox(self)
-        submit_dialog.setWindowTitle("提交中")
-        submit_dialog.setText("正在处理反馈内容...")
-        submit_dialog.setStandardButtons(QMessageBox.NoButton)
-        submit_dialog.setIcon(QMessageBox.Information)
-        submit_dialog.show()
-        QApplication.processEvents()  # 立即更新 UI
+        # 删除"提交中"对话框，直接处理提交
+        print("开始处理反馈提交...", file=sys.stderr)
         
         try:
             # 对于旧版本兼容，构建纯文本版本的反馈
@@ -911,19 +905,13 @@ class FeedbackUI(QMainWindow):
                         # 只打印Base64数据的前30个字符
                         print(f"DEBUG: Base64数据开头: {data[:30]}...", file=sys.stderr)
             
-            # 直接返回正确格式的数据，而不是将其序列化为字符串
-            # 关键修改：返回 MCP 格式的数据结构
+            # 直接返回正确格式的数据
             self.feedback_result = mcp_data
             
             print("DEBUG: 反馈结果设置完成", file=sys.stderr)
             
-            # 关闭提交对话框并显示成功信息
-            submit_dialog.close()
-            QMessageBox.information(self, "提交成功", "反馈已成功提交！")
-            
         except Exception as e:
-            # 关闭提交对话框并显示错误信息
-            submit_dialog.close()
+            # 显示错误信息
             error_message = f"提交反馈时发生错误: {str(e)}"
             print(f"ERROR: {error_message}", file=sys.stderr)
             QMessageBox.critical(self, "提交失败", error_message)
