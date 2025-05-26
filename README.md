@@ -109,6 +109,83 @@ Here's an example of how the AI assistant would call the `interactive_feedback` 
 </use_mcp_tool>
 ```
 
+## Language Support
+
+The Interactive Feedback MCP supports multiple languages through a flexible JSON-based configuration system. Languages are automatically detected from the `languages/` directory.
+
+### Available Languages
+
+| Language Code | Language Name | File |
+|---------------|---------------|------|
+| `en` | English | `languages/en.json` |
+| `zh` | 中文 (Chinese) | `languages/zh.json` |
+| `fr` | Français (French) | `languages/fr.json` |
+
+### Language Configuration Structure
+
+Each language file follows this JSON structure:
+
+```json
+{
+  "name": "Language Display Name",
+  "window_title": "Window title text",
+  "show_command_section": "Show Command Section",
+  "hide_command_section": "Hide Command Section",
+  "command": "Command",
+  "working_directory": "Working directory",
+  "run": "&Run",
+  "stop": "Sto&p",
+  "execute_automatically": "Execute automatically on next run",
+  "save_configuration": "&Save Configuration",
+  "console": "Console",
+  "clear": "&Clear",
+  "feedback": "Feedback",
+  "feedback_placeholder": "Enter your feedback here (Ctrl+Enter to submit)",
+  "send_feedback": "&Send Feedback (Ctrl+Enter)",
+  "contact_info": "Contact information HTML",
+  "configuration_saved": "Configuration saved for this project.\n",
+  "error_running_command": "Error running command: {error}\n",
+  "command_prompt": "$ {command}\n",
+  "language": "Language",
+  "language_changed": "Language changed message.\n",
+  "please_enter_command": "Please enter a command to run\n",
+  "argparse_description": "Run the feedback UI",
+  "argparse_project_directory_help": "The project directory to run the command in",
+  "argparse_prompt_help": "The prompt to show to the user",
+  "argparse_output_file_help": "Path to save the feedback result as JSON",
+  "default_prompt": "I implemented the changes you requested.",
+  "logs_collected": "Logs collected",
+  "feedback_received": "Feedback received",
+  "argparse_language_help": "Interface language, automatically detects available languages"
+}
+```
+
+### Adding New Languages
+
+To add support for a new language:
+
+1. Create a new JSON file in the `languages/` directory (e.g., `languages/es.json` for Spanish)
+2. Include the `name` field with the language's display name
+3. Translate all the text keys according to the structure above
+4. The language will be automatically detected and available in the language selector
+
+### Usage
+
+You can specify the language when running the application:
+
+```bash
+# Use English (default)
+python feedback_ui.py --language en
+
+# Use Chinese
+python feedback_ui.py --language zh
+
+# Use French
+python feedback_ui.py --language fr
+```
+
+The language preference is automatically saved and restored between sessions.
+
 ## Acknowledgements & Contact
 
 If you find this Interactive Feedback MCP useful, the best way to show appreciation is by following Fábio Ferreira on [X @fabiomlferreira](https://x.com/fabiomlferreira).
