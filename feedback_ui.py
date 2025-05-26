@@ -211,10 +211,10 @@ class FeedbackUI(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         else:
-            self.resize(800, 600)
+            self.resize(800, 480)  # Reduced height for more compact default size
             screen = QApplication.primaryScreen().geometry()
             x = (screen.width() - 800) // 2
-            y = (screen.height() - 600) // 2
+            y = (screen.height() - 480) // 2
             self.move(x, y)
         state = self.settings.value("windowState")
         if state:
@@ -296,7 +296,7 @@ class FeedbackUI(QMainWindow):
                 font-size: 14px;
                 font-weight: 400;
                 line-height: 1.5;
-                margin-bottom: 4px;
+                margin-bottom: 8px;
             }}
             
             QTextEdit {{
@@ -355,8 +355,8 @@ class FeedbackUI(QMainWindow):
                 font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
                 color: palette(text);
                 spacing: 12px;
-                padding: 6px 0px;
-                min-height: 24px;
+                padding: 8px 0px;
+                min-height: 32px;
             }}
             
             QCheckBox::indicator {{
@@ -401,7 +401,7 @@ class FeedbackUI(QMainWindow):
                 background-color: {separator_color};
                 border: none;
                 max-height: 1px;
-                margin: 8px 0px;
+                margin: 12px 0px;
             }}
         """
     
@@ -452,8 +452,8 @@ class FeedbackUI(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)  # Apple 8pt grid: 2 units
+        layout.setContentsMargins(20, 20, 20, 20)  # Slightly reduced for better balance
 
         # Apply dynamic stylesheet
         self._update_stylesheet()
@@ -461,15 +461,15 @@ class FeedbackUI(QMainWindow):
         # Feedback section - using 8pt grid system
         self.feedback_group = QGroupBox("")
         feedback_layout = QVBoxLayout(self.feedback_group)
-        feedback_layout.setSpacing(16)
+        feedback_layout.setSpacing(16)  # Apple 8pt grid: 2 units
         feedback_layout.setContentsMargins(0, 0, 0, 0)
 
         # Description label (from self.prompt) - Support multiline with scroll
-        # Top area: 35% - description text box
+        # Top area: expandable description text box
         self.description_label = QTextEdit()
         self.description_label.setPlainText(self.prompt)
         self.description_label.setReadOnly(True)
-        self.description_label.setMaximumHeight(200)
+        # Remove maximum height to allow expansion when window is resized
         self.description_label.setMinimumHeight(80)
         self.description_label.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.description_label.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -478,31 +478,34 @@ class FeedbackUI(QMainWindow):
         # Set dynamic style for description text
         self._update_description_style()
         
-        feedback_layout.addWidget(self.description_label)
+        # Add with stretch factor to allow expansion
+        feedback_layout.addWidget(self.description_label, 1)
 
-        # Middle area: 25% - predefined options
+        # Middle area: predefined options (dynamic height based on option count)
         self.option_checkboxes = []
         if self.predefined_options and len(self.predefined_options) > 0:
             options_frame = QFrame()
-            # Dynamically calculate height based on option count
+            # Calculate height dynamically based on option count
             option_count = len(self.predefined_options)
-            calculated_height = max(60, min(140, option_count * 32 + 16))
-            options_frame.setFixedHeight(calculated_height)
+            calculated_height = option_count * 40 + 24  # 40px per option + 24px padding (reduced)
+            options_frame.setMinimumHeight(calculated_height)
+            options_frame.setMaximumHeight(calculated_height)  # Fixed height to prevent expansion
             
             options_layout = QVBoxLayout(options_frame)
-            options_layout.setContentsMargins(0, 8, 0, 8)
-            options_layout.setSpacing(4)
+            options_layout.setContentsMargins(0, 12, 0, 12)  # Reduced for better balance
+            options_layout.setSpacing(8)  # Apple 8pt grid: 1 unit
             
             for option in self.predefined_options:
                 checkbox = QCheckBox(option)
-                checkbox.setFixedHeight(24)
+                checkbox.setFixedHeight(32)  # Apple 8pt grid: 4 units
                 self.option_checkboxes.append(checkbox)
                 options_layout.addWidget(checkbox)
             
             # Add stretch to align options to top
             options_layout.addStretch()
             
-            feedback_layout.addWidget(options_frame)
+            # Add with no stretch factor to maintain fixed size
+            feedback_layout.addWidget(options_frame, 0)
             
             # Add a separator
             separator = QFrame()
@@ -510,17 +513,18 @@ class FeedbackUI(QMainWindow):
             separator.setFrameShadow(QFrame.Sunken)
             feedback_layout.addWidget(separator)
 
-        # Bottom area: 40% - text input and submit button
+        # Bottom area: fixed size text input and submit button
         input_frame = QFrame()
         input_frame.setMinimumHeight(180)
+        input_frame.setMaximumHeight(180)  # Fixed height to prevent expansion
         input_layout = QVBoxLayout(input_frame)
         input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(12)
+        input_layout.setSpacing(12)  # Reduced for better balance
         
         # Free-form text feedback
         self.feedback_text = FeedbackTextEdit()
         self.feedback_text.setMinimumHeight(120)
-        self.feedback_text.setMaximumHeight(200)
+        self.feedback_text.setMaximumHeight(120)  # Fixed height
 
         self.feedback_text.setPlaceholderText("Enter your feedback here (Press Enter to submit, Shift+Enter for new line)")
         submit_button = QPushButton("Send Feedback")
@@ -530,7 +534,8 @@ class FeedbackUI(QMainWindow):
         input_layout.addWidget(self.feedback_text)
         input_layout.addWidget(submit_button)
         
-        feedback_layout.addWidget(input_frame)
+        # Add with no stretch factor to maintain fixed size
+        feedback_layout.addWidget(input_frame, 0)
 
         # Add widgets
         layout.addWidget(self.feedback_group)
