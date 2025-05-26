@@ -1,226 +1,202 @@
 # Interactive Feedback MCP UI
 # Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
 # Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
+# Enhanced by Pau Oliva (https://x.com/pof) with ideas from https://github.com/ttommyth/interactive-mcp
 import os
 import sys
 import json
-import psutil
 import argparse
+import platform
 import subprocess
-import threading
-import hashlib
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, List
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox
+    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox,
+    QFrame
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings
-from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QFont, QFontDatabase, QPalette, QColor
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QThread
+from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor
 
 class FeedbackResult(TypedDict):
-    command_logs: str
     interactive_feedback: str
 
-class FeedbackConfig(TypedDict):
-    run_command: str
-    execute_automatically: bool
-
-def set_dark_title_bar(widget: QWidget, dark_title_bar: bool) -> None:
-    # Ensure we're on Windows
-    if sys.platform != "win32":
-        return
-
-    from ctypes import windll, c_uint32, byref
-
-    # Get Windows build number
-    build_number = sys.getwindowsversion().build
-    if build_number < 17763:  # Windows 10 1809 minimum
-        return
-
-    # Check if the widget's property already matches the setting
-    dark_prop = widget.property("DarkTitleBar")
-    if dark_prop is not None and dark_prop == dark_title_bar:
-        return
-
-    # Set the property (True if dark_title_bar != 0, False otherwise)
-    widget.setProperty("DarkTitleBar", dark_title_bar)
-
-    # Load dwmapi.dll and call DwmSetWindowAttribute
-    dwmapi = windll.dwmapi
-    hwnd = widget.winId()  # Get the window handle
-    attribute = 20 if build_number >= 18985 else 19  # Use newer attribute for newer builds
-    c_dark_title_bar = c_uint32(dark_title_bar)  # Convert to C-compatible uint32
-    dwmapi.DwmSetWindowAttribute(hwnd, attribute, byref(c_dark_title_bar), 4)
-
-    # HACK: Create a 1x1 pixel frameless window to force redraw
-    temp_widget = QWidget(None, Qt.FramelessWindowHint)
-    temp_widget.resize(1, 1)
-    temp_widget.move(widget.pos())
-    temp_widget.show()
-    temp_widget.deleteLater()  # Safe deletion in Qt event loop
+def is_system_dark_mode():
+    """Detect if system is in dark mode"""
+    system = platform.system()
+    
+    if system == "Darwin":  # macOS
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.stdout.strip() == "Dark"
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            return False
+    elif system == "Windows":
+        try:
+            import winreg
+            registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+            reg_keypath = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+            reg_key = winreg.OpenKey(registry, reg_keypath)
+            reg_value = winreg.QueryValueEx(reg_key, 'AppsUseLightTheme')[0]
+            return reg_value == 0
+        except (ImportError, OSError, FileNotFoundError):
+            return False
+    elif system == "Linux":
+        try:
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            theme = result.stdout.strip().strip("'\"").lower()
+            return "dark" in theme
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            return False
+    
+    return False
 
 def get_dark_mode_palette(app: QApplication):
+    """Get dark mode palette following Apple design principles and WCAG standards"""
     darkPalette = app.palette()
-    darkPalette.setColor(QPalette.Window, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.WindowText, Qt.white)
-    darkPalette.setColor(QPalette.Disabled, QPalette.WindowText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.Base, QColor(42, 42, 42))
-    darkPalette.setColor(QPalette.AlternateBase, QColor(66, 66, 66))
-    darkPalette.setColor(QPalette.ToolTipBase, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.ToolTipText, Qt.white)
-    darkPalette.setColor(QPalette.Text, Qt.white)
-    darkPalette.setColor(QPalette.Disabled, QPalette.Text, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.Dark, QColor(35, 35, 35))
-    darkPalette.setColor(QPalette.Shadow, QColor(20, 20, 20))
-    darkPalette.setColor(QPalette.Button, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.ButtonText, Qt.white)
-    darkPalette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.BrightText, Qt.red)
-    darkPalette.setColor(QPalette.Link, QColor(42, 130, 218))
-    darkPalette.setColor(QPalette.Highlight, QColor(42, 130, 218))
-    darkPalette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(80, 80, 80))
-    darkPalette.setColor(QPalette.HighlightedText, Qt.white)
-    darkPalette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.PlaceholderText, QColor(127, 127, 127))
+    
+    darkPalette.setColor(QPalette.Window, QColor(28, 28, 30))
+    darkPalette.setColor(QPalette.WindowText, QColor(255, 255, 255))
+    darkPalette.setColor(QPalette.Disabled, QPalette.WindowText, QColor(174, 174, 178))
+    
+    darkPalette.setColor(QPalette.Base, QColor(44, 44, 46))
+    darkPalette.setColor(QPalette.AlternateBase, QColor(58, 58, 60))
+    
+    darkPalette.setColor(QPalette.ToolTipBase, QColor(72, 72, 74))
+    darkPalette.setColor(QPalette.ToolTipText, QColor(255, 255, 255))
+    
+    darkPalette.setColor(QPalette.Text, QColor(255, 255, 255))
+    darkPalette.setColor(QPalette.Disabled, QPalette.Text, QColor(174, 174, 178))
+    
+    darkPalette.setColor(QPalette.Dark, QColor(72, 72, 74))
+    darkPalette.setColor(QPalette.Shadow, QColor(0, 0, 0))
+    
+    darkPalette.setColor(QPalette.Button, QColor(58, 58, 60))
+    darkPalette.setColor(QPalette.ButtonText, QColor(255, 255, 255))
+    darkPalette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(174, 174, 178))
+    
+    darkPalette.setColor(QPalette.BrightText, QColor(255, 69, 58))
+    darkPalette.setColor(QPalette.Link, QColor(10, 132, 255))
+    darkPalette.setColor(QPalette.Highlight, QColor(10, 132, 255))
+    darkPalette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(99, 99, 102))
+    darkPalette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    darkPalette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor(174, 174, 178))
+    
+    darkPalette.setColor(QPalette.PlaceholderText, QColor(174, 174, 178))
+    
     return darkPalette
 
-def kill_tree(process: subprocess.Popen):
-    killed: list[psutil.Process] = []
-    parent = psutil.Process(process.pid)
-    for proc in parent.children(recursive=True):
-        try:
-            proc.kill()
-            killed.append(proc)
-        except psutil.Error:
-            pass
-    try:
-        parent.kill()
-    except psutil.Error:
-        pass
-    killed.append(parent)
+def get_light_mode_palette(app: QApplication):
+    """Get light mode palette following Apple design principles and WCAG standards"""
+    lightPalette = app.palette()
+    
+    lightPalette.setColor(QPalette.Window, QColor(255, 255, 255))
+    lightPalette.setColor(QPalette.WindowText, QColor(0, 0, 0))
+    lightPalette.setColor(QPalette.Disabled, QPalette.WindowText, QColor(142, 142, 147))
+    
+    lightPalette.setColor(QPalette.Base, QColor(255, 255, 255))
+    lightPalette.setColor(QPalette.AlternateBase, QColor(242, 242, 247))
+    
+    lightPalette.setColor(QPalette.ToolTipBase, QColor(255, 255, 220))
+    lightPalette.setColor(QPalette.ToolTipText, QColor(0, 0, 0))
+    
+    lightPalette.setColor(QPalette.Text, QColor(0, 0, 0))
+    lightPalette.setColor(QPalette.Disabled, QPalette.Text, QColor(142, 142, 147))
+    
+    lightPalette.setColor(QPalette.Dark, QColor(209, 209, 214))
+    lightPalette.setColor(QPalette.Shadow, QColor(0, 0, 0, 30))
+    
+    lightPalette.setColor(QPalette.Button, QColor(242, 242, 247))
+    lightPalette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
+    lightPalette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(142, 142, 147))
+    
+    lightPalette.setColor(QPalette.BrightText, QColor(255, 59, 48))
+    lightPalette.setColor(QPalette.Link, QColor(0, 122, 255))
+    lightPalette.setColor(QPalette.Highlight, QColor(0, 122, 255))
+    lightPalette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(209, 209, 214))
+    lightPalette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    lightPalette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor(142, 142, 147))
+    
+    lightPalette.setColor(QPalette.PlaceholderText, QColor(142, 142, 147))
+    
+    return lightPalette
 
-    # Terminate any remaining processes
-    for proc in killed:
-        try:
-            if proc.is_running():
-                proc.terminate()
-        except psutil.Error:
-            pass
-
-def get_user_environment() -> dict[str, str]:
-    if sys.platform != "win32":
-        return os.environ.copy()
-
-    import ctypes
-    from ctypes import wintypes
-
-    # Load required DLLs
-    advapi32 = ctypes.WinDLL("advapi32")
-    userenv = ctypes.WinDLL("userenv")
-    kernel32 = ctypes.WinDLL("kernel32")
-
-    # Constants
-    TOKEN_QUERY = 0x0008
-
-    # Function prototypes
-    OpenProcessToken = advapi32.OpenProcessToken
-    OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
-    OpenProcessToken.restype = wintypes.BOOL
-
-    CreateEnvironmentBlock = userenv.CreateEnvironmentBlock
-    CreateEnvironmentBlock.argtypes = [ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.BOOL]
-    CreateEnvironmentBlock.restype = wintypes.BOOL
-
-    DestroyEnvironmentBlock = userenv.DestroyEnvironmentBlock
-    DestroyEnvironmentBlock.argtypes = [wintypes.LPVOID]
-    DestroyEnvironmentBlock.restype = wintypes.BOOL
-
-    GetCurrentProcess = kernel32.GetCurrentProcess
-    GetCurrentProcess.argtypes = []
-    GetCurrentProcess.restype = wintypes.HANDLE
-
-    CloseHandle = kernel32.CloseHandle
-    CloseHandle.argtypes = [wintypes.HANDLE]
-    CloseHandle.restype = wintypes.BOOL
-
-    # Get process token
-    token = wintypes.HANDLE()
-    if not OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
-        raise RuntimeError("Failed to open process token")
-
-    try:
-        # Create environment block
-        environment = ctypes.c_void_p()
-        if not CreateEnvironmentBlock(ctypes.byref(environment), token, False):
-            raise RuntimeError("Failed to create environment block")
-
-        try:
-            # Convert environment block to list of strings
-            result = {}
-            env_ptr = ctypes.cast(environment, ctypes.POINTER(ctypes.c_wchar))
-            offset = 0
-
-            while True:
-                # Get string at current offset
-                current_string = ""
-                while env_ptr[offset] != "\0":
-                    current_string += env_ptr[offset]
-                    offset += 1
-
-                # Skip null terminator
-                offset += 1
-
-                # Break if we hit double null terminator
-                if not current_string:
-                    break
-
-                equal_index = current_string.index("=")
-                if equal_index == -1:
-                    continue
-
-                key = current_string[:equal_index]
-                value = current_string[equal_index + 1:]
-                result[key] = value
-
-            return result
-
-        finally:
-            DestroyEnvironmentBlock(environment)
-
-    finally:
-        CloseHandle(token)
+class ThemeWatcher(QObject):
+    """System theme change watcher"""
+    theme_changed = Signal(bool)  # True for dark mode, False for light mode
+    
+    def __init__(self):
+        super().__init__()
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_theme)
+        self.current_dark_mode = is_system_dark_mode()
+        
+    def start_watching(self, interval_ms=1000):
+        """Start theme monitoring, checks every second by default"""
+        self.timer.start(interval_ms)
+        
+    def stop_watching(self):
+        """Stop theme monitoring"""
+        self.timer.stop()
+        
+    def check_theme(self):
+        """Check if current theme has changed"""
+        current_mode = is_system_dark_mode()
+        if current_mode != self.current_dark_mode:
+            self.current_dark_mode = current_mode
+            self.theme_changed.emit(current_mode)
 
 class FeedbackTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
 
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
-            # Find the parent FeedbackUI instance and call submit
-            parent = self.parent()
-            while parent and not isinstance(parent, FeedbackUI):
-                parent = parent.parent()
-            if parent:
-                parent._submit_feedback()
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            if event.modifiers() == Qt.ShiftModifier:
+                # Shift+Enter: insert line break
+                super().keyPressEvent(event)
+            elif event.modifiers() == Qt.ControlModifier:
+                # Ctrl+Enter: submit (for compatibility)
+                self._submit_feedback()
+            elif event.modifiers() == Qt.NoModifier:
+                # Enter alone: submit directly
+                self._submit_feedback()
+            else:
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
-
-class LogSignals(QObject):
-    append_log = Signal(str)
+    
+    def _submit_feedback(self):
+        """Helper method to submit feedback"""
+        # Find the parent FeedbackUI instance and call submit
+        parent = self.parent()
+        while parent and not isinstance(parent, FeedbackUI):
+            parent = parent.parent()
+        if parent:
+            parent._submit_feedback()
 
 class FeedbackUI(QMainWindow):
-    def __init__(self, project_directory: str, prompt: str):
+    def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None):
         super().__init__()
-        self.project_directory = project_directory
         self.prompt = prompt
+        self.predefined_options = predefined_options or []
 
-        self.process: Optional[subprocess.Popen] = None
-        self.log_buffer = []
         self.feedback_result = None
-        self.log_signals = LogSignals()
-        self.log_signals.append_log.connect(self._append_log)
-
+        
+        # Create theme watcher
+        self.theme_watcher = ThemeWatcher()
+        self.theme_watcher.theme_changed.connect(self.on_theme_changed)
+        
         self.setWindowTitle("Interactive Feedback MCP")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(script_dir, "images", "feedback.png")
@@ -235,326 +211,433 @@ class FeedbackUI(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         else:
-            self.resize(800, 600)
+            self.resize(800, 480)  # Reduced height for more compact default size
             screen = QApplication.primaryScreen().geometry()
             x = (screen.width() - 800) // 2
-            y = (screen.height() - 600) // 2
+            y = (screen.height() - 480) // 2
             self.move(x, y)
         state = self.settings.value("windowState")
         if state:
             self.restoreState(state)
         self.settings.endGroup() # End "MainWindow_General" group
-        
-        # Load project-specific settings (command, auto-execute, command section visibility)
-        self.project_group_name = get_project_settings_group(self.project_directory)
-        self.settings.beginGroup(self.project_group_name)
-        loaded_run_command = self.settings.value("run_command", "", type=str)
-        loaded_execute_auto = self.settings.value("execute_automatically", False, type=bool)
-        command_section_visible = self.settings.value("commandSectionVisible", False, type=bool)
-        self.settings.endGroup() # End project-specific group
-        
-        self.config: FeedbackConfig = {
-            "run_command": loaded_run_command,
-            "execute_automatically": loaded_execute_auto
-        }
 
-        self._create_ui() # self.config is used here to set initial values
-
-        # Set command section visibility AFTER _create_ui has created relevant widgets
-        self.command_group.setVisible(command_section_visible)
-        if command_section_visible:
-            self.toggle_command_button.setText("Hide Command Section")
+        self._create_ui()
+        
+        # Start theme monitoring
+        self.theme_watcher.start_watching()
+    
+    def on_theme_changed(self, is_dark_mode: bool):
+        """Handle system theme changes"""
+        app = QApplication.instance()
+        if is_dark_mode:
+            app.setPalette(get_dark_mode_palette(app))
         else:
-            self.toggle_command_button.setText("Show Command Section")
+            app.setPalette(get_light_mode_palette(app))
+        
+        # Update stylesheet for new theme
+        self._update_stylesheet(is_dark_mode)
+        
+        # Force UI redraw
+        self.update()
 
-        set_dark_title_bar(self, True)
-
-        if self.config.get("execute_automatically", False):
-            self._run_command()
-
-    def _format_windows_path(self, path: str) -> str:
-        if sys.platform == "win32":
-            # Convert forward slashes to backslashes
-            path = path.replace("/", "\\")
-            # Capitalize drive letter if path starts with x:\
-            if len(path) >= 2 and path[1] == ":" and path[0].isalpha():
-                path = path[0].upper() + path[1:]
-        return path
+    def _get_dynamic_stylesheet(self, is_dark_mode: bool = None):
+        """Get dynamic stylesheet with colors based on theme mode"""
+        if is_dark_mode is None:
+            is_dark_mode = is_system_dark_mode()
+            
+        # Select colors based on theme
+        if is_dark_mode:
+            # Dark mode colors
+            hover_color = "rgba(10, 132, 255, 0.8)"
+            pressed_color = "rgba(10, 132, 255, 0.6)"
+            checkbox_hover_bg = "rgba(10, 132, 255, 0.05)"
+            checkbox_hover_checked = "rgba(10, 132, 255, 0.9)"
+            checkbox_border = "rgba(174, 174, 178, 0.6)"
+            checkbox_disabled_border = "rgba(174, 174, 178, 0.3)"
+            checkbox_disabled_bg = "rgba(174, 174, 178, 0.1)"
+            separator_color = "rgba(255, 255, 255, 0.1)"
+            scrollbar_handle = "rgba(255, 255, 255, 0.3)"
+            scrollbar_handle_hover = "rgba(255, 255, 255, 0.5)"
+        else:
+            # Light mode colors
+            hover_color = "rgba(0, 122, 255, 0.8)"
+            pressed_color = "rgba(0, 122, 255, 0.6)"
+            checkbox_hover_bg = "rgba(0, 122, 255, 0.05)"
+            checkbox_hover_checked = "rgba(0, 122, 255, 0.9)"
+            checkbox_border = "rgba(142, 142, 147, 0.6)"
+            checkbox_disabled_border = "rgba(142, 142, 147, 0.3)"
+            checkbox_disabled_bg = "rgba(142, 142, 147, 0.1)"
+            separator_color = "rgba(0, 0, 0, 0.1)"
+            scrollbar_handle = "rgba(0, 0, 0, 0.3)"
+            scrollbar_handle_hover = "rgba(0, 0, 0, 0.5)"
+        
+        return f"""
+            QMainWindow {{
+                background-color: palette(window);
+            }}
+            
+            QGroupBox {{
+                border: none;
+                background-color: transparent;
+                margin: 0px;
+                padding: 0px;
+            }}
+            
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0px;
+                color: transparent;
+                background-color: transparent;
+            }}
+            
+            QLabel {{
+                color: palette(text);
+                font-size: 14px;
+                font-weight: 400;
+                line-height: 1.5;
+                margin-bottom: 8px;
+            }}
+            
+            QTextEdit {{
+                border: 1px solid palette(dark);
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+                background-color: palette(base);
+                color: palette(text);
+                selection-background-color: palette(highlight);
+                selection-color: palette(highlighted-text);
+                min-height: 80px;
+            }}
+            
+            QTextEdit:focus {{
+                border: 2px solid palette(highlight);
+                outline: none;
+            }}
+            
+            QPushButton {{
+                background-color: palette(highlight);
+                color: palette(highlighted-text);
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 500;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+                min-height: 24px;
+                min-width: 80px;
+            }}
+            
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+            
+            QPushButton:pressed {{
+                background-color: {pressed_color};
+                transform: scale(0.98);
+            }}
+            
+            QPushButton:disabled {{
+                background-color: palette(button);
+                color: palette(disabled, button-text);
+                opacity: 0.5;
+            }}
+            
+            QPushButton:focus {{
+                outline: 2px solid palette(highlight);
+                outline-offset: 2px;
+            }}
+            
+            QCheckBox {{
+                font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+                color: palette(text);
+                spacing: 12px;
+                padding: 8px 0px;
+                min-height: 32px;
+            }}
+            
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 1.5px solid {checkbox_border};
+                border-radius: 4px;
+                background-color: white;
+            }}
+            
+            QCheckBox::indicator:hover {{
+                border-color: palette(highlight);
+                background-color: {checkbox_hover_bg};
+            }}
+            
+            QCheckBox::indicator:checked {{
+                background-color: palette(highlight);
+                border-color: palette(highlight);
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xMC42IDEuNEw0LjMgNy43TDEuNCA0LjgiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==);
+            }}
+            
+            QCheckBox::indicator:checked:hover {{
+                background-color: {checkbox_hover_checked};
+            }}
+            
+            QCheckBox::indicator:focus {{
+                outline: 2px solid palette(highlight);
+                outline-offset: 2px;
+            }}
+            
+            QCheckBox:disabled {{
+                color: palette(disabled, text);
+            }}
+            
+            QCheckBox::indicator:disabled {{
+                border-color: {checkbox_disabled_border};
+                background-color: {checkbox_disabled_bg};
+            }}
+            
+            QFrame[frameShape="4"] {{
+                color: {separator_color};
+                background-color: {separator_color};
+                border: none;
+                max-height: 1px;
+                margin: 12px 0px;
+            }}
+        """
+    
+    def _update_stylesheet(self, is_dark_mode: bool = None):
+        """Update stylesheet to adapt to theme changes"""
+        stylesheet = self._get_dynamic_stylesheet(is_dark_mode)
+        self.setStyleSheet(stylesheet)
+        
+        # Also update description label scrollbar style
+        if hasattr(self, 'description_label'):
+            if is_dark_mode is None:
+                is_dark_mode = is_system_dark_mode()
+                
+            scrollbar_handle = "rgba(255, 255, 255, 0.3)" if is_dark_mode else "rgba(0, 0, 0, 0.3)"
+            scrollbar_handle_hover = "rgba(255, 255, 255, 0.5)" if is_dark_mode else "rgba(0, 0, 0, 0.5)"
+            
+            description_style = f"""
+                QTextEdit {{
+                    border: none;
+                    background-color: transparent;
+                    color: palette(text);
+                    font-size: 14px;
+                    font-weight: 400;
+                    padding: 0px;
+                    margin: 0px;
+                }}
+                QScrollBar:vertical {{
+                    background-color: transparent;
+                    width: 8px;
+                    border-radius: 4px;
+                }}
+                QScrollBar::handle:vertical {{
+                    background-color: {scrollbar_handle};
+                    border-radius: 4px;
+                    min-height: 20px;
+                }}
+                QScrollBar::handle:vertical:hover {{
+                    background-color: {scrollbar_handle_hover};
+                }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                    border: none;
+                    background: none;
+                }}
+            """
+            self.description_label.setStyleSheet(description_style)
 
     def _create_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
+        layout.setSpacing(16)  # Apple 8pt grid: 2 units
+        layout.setContentsMargins(20, 20, 20, 20)  # Slightly reduced for better balance
 
-        # Toggle Command Section Button
-        self.toggle_command_button = QPushButton("Show Command Section")
-        self.toggle_command_button.clicked.connect(self._toggle_command_section)
-        layout.addWidget(self.toggle_command_button)
+        # Apply dynamic stylesheet
+        self._update_stylesheet()
 
-        # Command section
-        self.command_group = QGroupBox("Command")
-        command_layout = QVBoxLayout(self.command_group)
-
-        # Working directory label
-        formatted_path = self._format_windows_path(self.project_directory)
-        working_dir_label = QLabel(f"Working directory: {formatted_path}")
-        command_layout.addWidget(working_dir_label)
-
-        # Command input row
-        command_input_layout = QHBoxLayout()
-        self.command_entry = QLineEdit()
-        self.command_entry.setText(self.config["run_command"])
-        self.command_entry.returnPressed.connect(self._run_command)
-        self.command_entry.textChanged.connect(self._update_config)
-        self.run_button = QPushButton("&Run")
-        self.run_button.clicked.connect(self._run_command)
-
-        command_input_layout.addWidget(self.command_entry)
-        command_input_layout.addWidget(self.run_button)
-        command_layout.addLayout(command_input_layout)
-
-        # Auto-execute and save config row
-        auto_layout = QHBoxLayout()
-        self.auto_check = QCheckBox("Execute automatically on next run")
-        self.auto_check.setChecked(self.config.get("execute_automatically", False))
-        self.auto_check.stateChanged.connect(self._update_config)
-
-        save_button = QPushButton("&Save Configuration")
-        save_button.clicked.connect(self._save_config)
-
-        auto_layout.addWidget(self.auto_check)
-        auto_layout.addStretch()
-        auto_layout.addWidget(save_button)
-        command_layout.addLayout(auto_layout)
-
-        # Console section (now part of command_group)
-        console_group = QGroupBox("Console")
-        console_layout_internal = QVBoxLayout(console_group)
-        console_group.setMinimumHeight(200)
-
-        # Log text area
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        font = QFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
-        font.setPointSize(9)
-        self.log_text.setFont(font)
-        console_layout_internal.addWidget(self.log_text)
-
-        # Clear button
-        button_layout = QHBoxLayout()
-        self.clear_button = QPushButton("&Clear")
-        self.clear_button.clicked.connect(self.clear_logs)
-        button_layout.addStretch()
-        button_layout.addWidget(self.clear_button)
-        console_layout_internal.addLayout(button_layout)
-        
-        command_layout.addWidget(console_group)
-
-        self.command_group.setVisible(False) 
-        layout.addWidget(self.command_group)
-
-        # Feedback section with adjusted height
-        self.feedback_group = QGroupBox("Feedback")
+        # Feedback section - using 8pt grid system
+        self.feedback_group = QGroupBox("")
         feedback_layout = QVBoxLayout(self.feedback_group)
+        feedback_layout.setSpacing(16)  # Apple 8pt grid: 2 units
+        feedback_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Short description label (from self.prompt)
-        self.description_label = QLabel(self.prompt)
-        self.description_label.setWordWrap(True)
-        feedback_layout.addWidget(self.description_label)
+        # Description label (from self.prompt) - Support multiline with scroll
+        # Top area: expandable description text box
+        self.description_label = QTextEdit()
+        self.description_label.setPlainText(self.prompt)
+        self.description_label.setReadOnly(True)
+        # Remove maximum height to allow expansion when window is resized
+        self.description_label.setMinimumHeight(80)
+        self.description_label.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.description_label.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.description_label.setFrameStyle(QFrame.NoFrame)
+        
+        # Set dynamic style for description text
+        self._update_description_style()
+        
+        # Add with stretch factor to allow expansion
+        feedback_layout.addWidget(self.description_label, 1)
 
+        # Middle area: predefined options (dynamic height based on option count)
+        self.option_checkboxes = []
+        if self.predefined_options and len(self.predefined_options) > 0:
+            options_frame = QFrame()
+            # Calculate height dynamically based on option count
+            option_count = len(self.predefined_options)
+            calculated_height = option_count * 40 + 24  # 40px per option + 24px padding (reduced)
+            options_frame.setMinimumHeight(calculated_height)
+            options_frame.setMaximumHeight(calculated_height)  # Fixed height to prevent expansion
+            
+            options_layout = QVBoxLayout(options_frame)
+            options_layout.setContentsMargins(0, 12, 0, 12)  # Reduced for better balance
+            options_layout.setSpacing(8)  # Apple 8pt grid: 1 unit
+            
+            for option in self.predefined_options:
+                checkbox = QCheckBox(option)
+                checkbox.setFixedHeight(32)  # Apple 8pt grid: 4 units
+                self.option_checkboxes.append(checkbox)
+                options_layout.addWidget(checkbox)
+            
+            # Add stretch to align options to top
+            options_layout.addStretch()
+            
+            # Add with no stretch factor to maintain fixed size
+            feedback_layout.addWidget(options_frame, 0)
+            
+            # Add a separator
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setFrameShadow(QFrame.Sunken)
+            feedback_layout.addWidget(separator)
+
+        # Bottom area: fixed size text input and submit button
+        input_frame = QFrame()
+        input_frame.setMinimumHeight(180)
+        input_frame.setMaximumHeight(180)  # Fixed height to prevent expansion
+        input_layout = QVBoxLayout(input_frame)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(12)  # Reduced for better balance
+        
+        # Free-form text feedback
         self.feedback_text = FeedbackTextEdit()
-        font_metrics = self.feedback_text.fontMetrics()
-        row_height = font_metrics.height()
-        # Calculate height for 5 lines + some padding for margins
-        padding = self.feedback_text.contentsMargins().top() + self.feedback_text.contentsMargins().bottom() + 5 # 5 is extra vertical padding
-        self.feedback_text.setMinimumHeight(5 * row_height + padding)
+        self.feedback_text.setMinimumHeight(120)
+        self.feedback_text.setMaximumHeight(120)  # Fixed height
 
-        self.feedback_text.setPlaceholderText("Enter your feedback here (Ctrl+Enter to submit)")
-        submit_button = QPushButton("&Send Feedback (Ctrl+Enter)")
+        self.feedback_text.setPlaceholderText("Enter your feedback here (Press Enter to submit, Shift+Enter for new line)")
+        submit_button = QPushButton("Send Feedback")
         submit_button.clicked.connect(self._submit_feedback)
+        submit_button.setDefault(True)
 
-        feedback_layout.addWidget(self.feedback_text)
-        feedback_layout.addWidget(submit_button)
+        input_layout.addWidget(self.feedback_text)
+        input_layout.addWidget(submit_button)
+        
+        # Add with no stretch factor to maintain fixed size
+        feedback_layout.addWidget(input_frame, 0)
 
-        # Set minimum height for feedback_group to accommodate its contents
-        # This will be based on the description label and the 5-line feedback_text
-        self.feedback_group.setMinimumHeight(self.description_label.sizeHint().height() + self.feedback_text.minimumHeight() + submit_button.sizeHint().height() + feedback_layout.spacing() * 2 + feedback_layout.contentsMargins().top() + feedback_layout.contentsMargins().bottom() + 10) # 10 for extra padding
-
-        # Add widgets in a specific order
+        # Add widgets
         layout.addWidget(self.feedback_group)
 
-        # Credits/Contact Label
-        contact_label = QLabel('Need to improve? Contact Fábio Ferreira on <a href="https://x.com/fabiomlferreira">X.com</a> or visit <a href="https://dotcursorrules.com/">dotcursorrules.com</a>')
-        contact_label.setOpenExternalLinks(True)
-        contact_label.setAlignment(Qt.AlignCenter)
-        # Optionally, make font a bit smaller and less prominent
-        # contact_label_font = contact_label.font()
-        # contact_label_font.setPointSize(contact_label_font.pointSize() - 1)
-        # contact_label.setFont(contact_label_font)
-        contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
-        layout.addWidget(contact_label)
-
-    def _toggle_command_section(self):
-        is_visible = self.command_group.isVisible()
-        self.command_group.setVisible(not is_visible)
-        if not is_visible:
-            self.toggle_command_button.setText("Hide Command Section")
-        else:
-            self.toggle_command_button.setText("Show Command Section")
-        
-        # Immediately save the visibility state for this project
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("commandSectionVisible", self.command_group.isVisible())
-        self.settings.endGroup()
-
-        # Adjust window height only
-        new_height = self.centralWidget().sizeHint().height()
-        if self.command_group.isVisible() and self.command_group.layout().sizeHint().height() > 0 :
-             # if command group became visible and has content, ensure enough height
-             min_content_height = self.command_group.layout().sizeHint().height() + self.feedback_group.minimumHeight() + self.toggle_command_button.height() + layout().spacing() * 2
-             new_height = max(new_height, min_content_height)
-
-        current_width = self.width()
-        self.resize(current_width, new_height)
-
-    def _update_config(self):
-        self.config["run_command"] = self.command_entry.text()
-        self.config["execute_automatically"] = self.auto_check.isChecked()
-
-    def _append_log(self, text: str):
-        self.log_buffer.append(text)
-        self.log_text.append(text.rstrip())
-        cursor = self.log_text.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.log_text.setTextCursor(cursor)
-
-    def _check_process_status(self):
-        if self.process and self.process.poll() is not None:
-            # Process has terminated
-            exit_code = self.process.poll()
-            self._append_log(f"\nProcess exited with code {exit_code}\n")
-            self.run_button.setText("&Run")
-            self.process = None
-            self.activateWindow()
-            self.feedback_text.setFocus()
-
-    def _run_command(self):
-        if self.process:
-            kill_tree(self.process)
-            self.process = None
-            self.run_button.setText("&Run")
-            return
-
-        # Clear the log buffer but keep UI logs visible
-        self.log_buffer = []
-
-        command = self.command_entry.text()
-        if not command:
-            self._append_log("Please enter a command to run\n")
-            return
-
-        self._append_log(f"$ {command}\n")
-        self.run_button.setText("Sto&p")
-
-        try:
-            self.process = subprocess.Popen(
-                command,
-                shell=True,
-                cwd=self.project_directory,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=get_user_environment(),
-                text=True,
-                bufsize=1,
-                encoding="utf-8",
-                errors="ignore",
-                close_fds=True,
-            )
-
-            def read_output(pipe):
-                for line in iter(pipe.readline, ""):
-                    self.log_signals.append_log.emit(line)
-
-            threading.Thread(
-                target=read_output,
-                args=(self.process.stdout,),
-                daemon=True
-            ).start()
-
-            threading.Thread(
-                target=read_output,
-                args=(self.process.stderr,),
-                daemon=True
-            ).start()
-
-            # Start process status checking
-            self.status_timer = QTimer()
-            self.status_timer.timeout.connect(self._check_process_status)
-            self.status_timer.start(100)  # Check every 100ms
-
-        except Exception as e:
-            self._append_log(f"Error running command: {str(e)}\n")
-            self.run_button.setText("&Run")
-
     def _submit_feedback(self):
+        feedback_text = self.feedback_text.toPlainText().strip()
+        selected_options = []
+        
+        # Get selected predefined options if any
+        if self.option_checkboxes:
+            for i, checkbox in enumerate(self.option_checkboxes):
+                if checkbox.isChecked():
+                    selected_options.append(self.predefined_options[i])
+        
+        # Combine selected options and feedback text
+        final_feedback_parts = []
+        
+        # Add selected options
+        if selected_options:
+            final_feedback_parts.append("; ".join(selected_options))
+        
+        # Add user's text feedback
+        if feedback_text:
+            final_feedback_parts.append(feedback_text)
+            
+        # Join with a newline if both parts exist
+        final_feedback = "\n\n".join(final_feedback_parts)
+            
         self.feedback_result = FeedbackResult(
-            logs="".join(self.log_buffer),
-            interactive_feedback=self.feedback_text.toPlainText().strip(),
+            interactive_feedback=final_feedback,
         )
         self.close()
 
-    def clear_logs(self):
-        self.log_buffer = []
-        self.log_text.clear()
-
-    def _save_config(self):
-        # Save run_command and execute_automatically to QSettings under project group
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("run_command", self.config["run_command"])
-        self.settings.setValue("execute_automatically", self.config["execute_automatically"])
-        self.settings.endGroup()
-        self._append_log("Configuration saved for this project.\n")
-
     def closeEvent(self, event):
+        # Stop theme monitoring
+        self.theme_watcher.stop_watching()
+        
         # Save general UI settings for the main window (geometry, state)
         self.settings.beginGroup("MainWindow_General")
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
         self.settings.endGroup()
 
-        # Save project-specific command section visibility (this is now slightly redundant due to immediate save in toggle, but harmless)
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("commandSectionVisible", self.command_group.isVisible())
-        self.settings.endGroup()
-
-        if self.process:
-            kill_tree(self.process)
         super().closeEvent(event)
 
     def run(self) -> FeedbackResult:
         self.show()
         QApplication.instance().exec()
 
-        if self.process:
-            kill_tree(self.process)
-
         if not self.feedback_result:
-            return FeedbackResult(logs="".join(self.log_buffer), interactive_feedback="")
+            return FeedbackResult(interactive_feedback="")
 
         return self.feedback_result
 
-def get_project_settings_group(project_dir: str) -> str:
-    # Create a safe, unique group name from the project directory path
-    # Using only the last component + hash of full path to keep it somewhat readable but unique
-    basename = os.path.basename(os.path.normpath(project_dir))
-    full_hash = hashlib.md5(project_dir.encode('utf-8')).hexdigest()[:8]
-    return f"{basename}_{full_hash}"
+    def _update_description_style(self):
+        """Update description label style"""
+        is_dark_mode = is_system_dark_mode()
+        scrollbar_handle = "rgba(255, 255, 255, 0.3)" if is_dark_mode else "rgba(0, 0, 0, 0.3)"
+        scrollbar_handle_hover = "rgba(255, 255, 255, 0.5)" if is_dark_mode else "rgba(0, 0, 0, 0.5)"
+        
+        description_style = f"""
+            QTextEdit {{
+                border: none;
+                background-color: transparent;
+                color: palette(text);
+                font-size: 14px;
+                font-weight: 400;
+                padding: 0px;
+                margin: 0px;
+            }}
+            QScrollBar:vertical {{
+                background-color: transparent;
+                width: 8px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {scrollbar_handle};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {scrollbar_handle_hover};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                border: none;
+                background: none;
+            }}
+        """
+        if hasattr(self, 'description_label'):
+            self.description_label.setStyleSheet(description_style)
 
-def feedback_ui(project_directory: str, prompt: str, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
+def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
     app = QApplication.instance() or QApplication()
-    app.setPalette(get_dark_mode_palette(app))
+    
+    # Automatically select palette based on system theme
+    if is_system_dark_mode():
+        app.setPalette(get_dark_mode_palette(app))
+    else:
+        app.setPalette(get_light_mode_palette(app))
+    
     app.setStyle("Fusion")
-    ui = FeedbackUI(project_directory, prompt)
+    ui = FeedbackUI(prompt, predefined_options)
     result = ui.run()
 
     if output_file and result:
@@ -569,13 +652,14 @@ def feedback_ui(project_directory: str, prompt: str, output_file: Optional[str] 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the feedback UI")
-    parser.add_argument("--project-directory", default=os.getcwd(), help="The project directory to run the command in")
     parser.add_argument("--prompt", default="I implemented the changes you requested.", help="The prompt to show to the user")
+    parser.add_argument("--predefined-options", default="", help="Pipe-separated list of predefined options (|||)")
     parser.add_argument("--output-file", help="Path to save the feedback result as JSON")
     args = parser.parse_args()
 
-    result = feedback_ui(args.project_directory, args.prompt, args.output_file)
+    predefined_options = [opt for opt in args.predefined_options.split("|||") if opt] if args.predefined_options else None
+    
+    result = feedback_ui(args.prompt, predefined_options, args.output_file)
     if result:
-        print(f"\nLogs collected: \n{result['logs']}")
         print(f"\nFeedback received:\n{result['interactive_feedback']}")
     sys.exit(0)
