@@ -20,9 +20,9 @@ from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize
 from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter
 
 # 添加图片处理相关常量
-MAX_IMAGE_WIDTH = 1280  # 最大图片宽度 - 从1920降低到1280
-MAX_IMAGE_HEIGHT = 720  # 最大图片高度 - 从1080降低到720
-MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 最大文件大小 (2MB) - 从5MB降低到2MB
+MAX_IMAGE_WIDTH = 512  # 最大图片宽度 - 从1280降低到512，优化LLM处理
+MAX_IMAGE_HEIGHT = 512  # 最大图片高度 - 从720降低到512，优化LLM处理
+MAX_IMAGE_BYTES = 1048576  # 最大文件大小 (1MB) - 从2MB降低到1MB
 
 # 修改 FeedbackResult 类型定义，使其与 MCP 格式一致
 class ContentItem(TypedDict):
@@ -380,7 +380,11 @@ class FeedbackUI(QMainWindow):
         print("初始化FeedbackUI...", file=sys.stderr)
         super().__init__()
         self.prompt = prompt
+        
+        # 添加调试信息，查看收到的选项
+        print(f"DEBUG: 收到的预定义选项: {predefined_options}", file=sys.stderr)
         self.predefined_options = predefined_options or []
+        print(f"DEBUG: 初始化使用的预定义选项: {self.predefined_options}", file=sys.stderr)
 
         self.feedback_result = None
         self.image_pixmap = None  # 存储粘贴的图片
@@ -620,12 +624,18 @@ class FeedbackUI(QMainWindow):
 
     def get_image_content_data(self, image_id=None):
         """
-        获取指定ID或最后一个图片的 Base64 编码数据和 MIME 类型。
-        返回一个符合 MCP 服务要求的字典 {type: "image", data: base64_string, mimeType: "image/png"},
+        获取指定ID或最后一个图片的 Base64 编码数据和 MIME 类型，以及图片元数据。
+        返回一个包含图片元数据和Base64编码数据的字典。
         如果无有效图片或处理失败，则返回 None。
         
         Args:
             image_id: 指定图片ID，如果为None则使用最后添加的图片
+        
+        Returns:
+            dict: 包含以下键的字典:
+                - image_data: 包含type, data, mimeType的图片数据字典
+                - metadata: 包含width, height, format, size的元数据字典
+                如果处理失败则返回None
         """
         print(f"DEBUG: 开始处理图片 ID: {image_id}", file=sys.stderr)
         
@@ -648,10 +658,13 @@ class FeedbackUI(QMainWindow):
             print("DEBUG: 图片无效 (None 或 isNull)", file=sys.stderr)
             return None
             
-        print(f"DEBUG: 原始图片尺寸: {pixmap_to_save.width()}x{pixmap_to_save.height()}", file=sys.stderr)
+        # 记录原始图片信息
+        original_width = pixmap_to_save.width()
+        original_height = pixmap_to_save.height()
+        print(f"DEBUG: 原始图片尺寸: {original_width}x{original_height}", file=sys.stderr)
         
         # 检查并缩放图片，确保不超过最大尺寸限制
-        if pixmap_to_save.width() > MAX_IMAGE_WIDTH or pixmap_to_save.height() > MAX_IMAGE_HEIGHT:
+        if original_width > MAX_IMAGE_WIDTH or original_height > MAX_IMAGE_HEIGHT:
             print(f"DEBUG: 图片尺寸超过限制，进行缩放", file=sys.stderr)
             # 保持长宽比例缩放
             pixmap_to_save = pixmap_to_save.scaled(
@@ -666,53 +679,50 @@ class FeedbackUI(QMainWindow):
         byte_array = QByteArray()
         buffer = QBuffer(byte_array)
         
-        # 优先使用 PNG 格式 (更适合截图和UI界面)
-        save_format = "PNG"
-        mime_type = "image/png"
+        # 默认使用 JPEG 格式，固定质量为80
+        save_format = "JPEG"
+        mime_type = "image/jpeg"
         saved_successfully = False
+        quality = 80  # 固定JPEG质量为80
         
         if buffer.open(QIODevice.WriteOnly):
-            if pixmap_to_save.save(buffer, save_format):
+            if pixmap_to_save.save(buffer, save_format, quality):
                 saved_successfully = True
-                print(f"DEBUG: 成功保存为 PNG 格式, 大小: {byte_array.size()} 字节", file=sys.stderr)
+                print(f"DEBUG: 成功保存为 JPEG 格式, 质量: {quality}%, 大小: {byte_array.size()} 字节", file=sys.stderr)
             else:
-                print("DEBUG: PNG 格式保存失败", file=sys.stderr)
+                print(f"DEBUG: JPEG 格式保存失败 (质量: {quality}%)", file=sys.stderr)
             buffer.close()
         
-        # 如果 PNG 失败或文件过大，尝试 JPEG
+        # 如果 JPEG 保存失败或文件仍然过大，尝试降低质量
         if (not saved_successfully or byte_array.isEmpty() or 
             (byte_array.size() > MAX_IMAGE_BYTES)):
                 
-            print(f"DEBUG: 尝试转换为 JPEG 格式 (PNG失败或过大: {byte_array.size()} 字节)", file=sys.stderr)
-            byte_array.clear()
-            buffer = QBuffer(byte_array)
-            save_format = "JPEG"
-            mime_type = "image/jpeg"
+            print(f"DEBUG: JPEG 质量 {quality}% 后文件仍然过大 ({byte_array.size()} 字节)，尝试降低质量", file=sys.stderr)
             
             # 尝试不同的质量级别，以找到适合的大小
-            quality_levels = [85, 70, 50, 30]
+            quality_levels = [70, 60, 50, 40]
             
-            for quality in quality_levels:
+            for lower_quality in quality_levels:
+                byte_array.clear()
+                buffer = QBuffer(byte_array)
+                
                 if buffer.open(QIODevice.WriteOnly):
-                    if pixmap_to_save.save(buffer, save_format, quality):
+                    if pixmap_to_save.save(buffer, save_format, lower_quality):
                         saved_successfully = True
-                        print(f"DEBUG: 成功保存为 JPEG 格式，质量: {quality}%, 大小: {byte_array.size()} 字节", file=sys.stderr)
+                        print(f"DEBUG: 成功保存为 JPEG 格式，降低质量至: {lower_quality}%, 大小: {byte_array.size()} 字节", file=sys.stderr)
                         buffer.close()
                         
                         # 如果文件大小满足要求，跳出循环
                         if byte_array.size() <= MAX_IMAGE_BYTES:
+                            quality = lower_quality  # 更新使用的质量值
                             break
-                        
-                        # 如果文件仍然太大，继续尝试更低的质量
-                        byte_array.clear()
-                        buffer = QBuffer(byte_array)
                     else:
-                        print(f"DEBUG: JPEG 格式保存失败 (质量: {quality}%)", file=sys.stderr)
+                        print(f"DEBUG: JPEG 格式保存失败 (质量: {lower_quality}%)", file=sys.stderr)
                         buffer.close()
         
         if not saved_successfully or byte_array.isEmpty():
-            print("ERROR: 无法将图片保存为 PNG 或 JPEG 格式", file=sys.stderr)
-            QMessageBox.critical(self, "图像处理错误", "无法将图像保存为 PNG 或 JPEG 格式。")
+            print("ERROR: 无法将图片保存为 JPEG 格式", file=sys.stderr)
+            QMessageBox.critical(self, "图像处理错误", "无法将图像保存为 JPEG 格式。")
             return None
             
         # 检查图片大小是否超过限制
@@ -745,35 +755,80 @@ class FeedbackUI(QMainWindow):
                 print(f"WARNING: Base64验证失败: {e}", file=sys.stderr)
                 # 继续使用编码后的数据，不中断流程
             
-            # 返回符合 MCP 服务要求的字典结构
-            result = {
+            # 收集图片元数据
+            processed_width = pixmap_to_save.width()
+            processed_height = pixmap_to_save.height()
+            format_type = save_format.lower()  # 如 'jpeg', 'png'
+            byte_size = byte_array.size()
+            
+            # 构建元数据字典
+            metadata = {
+                "width": processed_width,
+                "height": processed_height,
+                "format": format_type,
+                "size": byte_size
+            }
+            
+            # 构建图片数据字典
+            image_data_dict = {
                 "type": "image",
                 "data": base64_encoded_data,
                 "mimeType": mime_type  # 确保 MIME 类型与实际保存的格式匹配
             }
             
             # 验证数据格式是否符合MCP要求
-            if "type" not in result or "data" not in result or "mimeType" not in result:
+            if "type" not in image_data_dict or "data" not in image_data_dict or "mimeType" not in image_data_dict:
                 print("WARNING: 返回的图片数据结构缺少必要字段", file=sys.stderr)
             
-            print(f"DEBUG: 返回图片数据结构: type={result['type']}, mimeType={result['mimeType']}", file=sys.stderr)
-            return result
+            print(f"DEBUG: 返回图片数据结构: type={image_data_dict['type']}, mimeType={image_data_dict['mimeType']}", file=sys.stderr)
+            print(f"DEBUG: 返回图片元数据: {json.dumps(metadata)}", file=sys.stderr)
+            
+            # 返回包含图片数据和元数据的字典
+            return {
+                "image_data": image_data_dict,
+                "metadata": metadata
+            }
             
         except Exception as e:
-            print(f"ERROR: Base64编码失败: {e}", file=sys.stderr)
+            print(f"ERROR: Base64编码或元数据处理失败: {e}", file=sys.stderr)
             QMessageBox.critical(self, "图像处理错误", f"图像数据编码失败: {e}")
             return None
     
     def get_all_images_content_data(self):
-        """获取所有图片的内容数据列表"""
+        """
+        获取所有图片的内容数据列表
+        
+        Returns:
+            List[Dict]: 包含每张图片的元数据和图片数据的列表
+                每个元素是一个字典，包含两个键：
+                - metadata_item: 包含图片元数据的ContentItem字典
+                - image_item: 包含图片数据的ContentItem字典
+        """
         result = []
         print(f"DEBUG: 开始处理所有图片, 共 {len(self.image_widgets)} 张", file=sys.stderr)
         
         for image_id in self.image_widgets.keys():
             print(f"DEBUG: 处理图片 ID: {image_id}", file=sys.stderr)
-            image_data = self.get_image_content_data(image_id)
-            if image_data:
-                result.append(image_data)
+            processed_data = self.get_image_content_data(image_id)
+            if processed_data:
+                # 从处理结果中提取元数据和图片数据
+                metadata = processed_data["metadata"]
+                image_data_dict = processed_data["image_data"]
+                
+                # 创建元数据文本项
+                metadata_item = {
+                    "type": "text",
+                    "text": json.dumps(metadata)
+                }
+                
+                # 图片数据项已经是正确格式
+                image_item = image_data_dict
+                
+                # 将元数据和图片数据作为一对添加到结果列表
+                result.append({
+                    "metadata_item": metadata_item,
+                    "image_item": image_item
+                })
                 print(f"DEBUG: 成功处理图片 ID: {image_id}", file=sys.stderr)
             else:
                 print(f"DEBUG: 图片处理失败 ID: {image_id}", file=sys.stderr)
@@ -828,8 +883,19 @@ class FeedbackUI(QMainWindow):
         # 2. 添加图片内容
         image_contents = self.get_all_images_content_data()
         if image_contents:
-            content_list.extend(image_contents)
-            print(f"DEBUG: 添加了 {len(image_contents)} 张图片到内容列表", file=sys.stderr)
+            print(f"DEBUG: 处理 {len(image_contents)} 对图片数据和元数据", file=sys.stderr)
+            for image_pair in image_contents:
+                # 首先添加元数据文本项 - 确保元数据文本项在图片数据项之前
+                metadata_item = image_pair["metadata_item"]
+                content_list.append(metadata_item)
+                print(f"DEBUG: 添加图片元数据文本项: {metadata_item['text']}", file=sys.stderr)
+                
+                # 然后添加图片数据项
+                image_item = image_pair["image_item"]
+                content_list.append(image_item)
+                print(f"DEBUG: 添加图片数据项: type={image_item['type']}, mimeType={image_item['mimeType']}", file=sys.stderr)
+            
+            print(f"DEBUG: 添加了 {len(image_contents)} 张图片的数据和元数据到内容列表", file=sys.stderr)
             
         # 3. 检查是否有内容可提交
         if not content_list:
@@ -896,7 +962,18 @@ class FeedbackUI(QMainWindow):
                     print(f"DEBUG: 文本内容长度: {len(text_content)}", file=sys.stderr)
                     # 只打印前50个字符作为示例
                     if text_content:
-                        print(f"DEBUG: 文本内容示例: {text_content[:50]}{'...' if len(text_content) > 50 else ''}", file=sys.stderr)
+                        # 检查是否是JSON格式的元数据
+                        is_metadata = False
+                        try:
+                            json_data = json.loads(text_content)
+                            if isinstance(json_data, dict) and "width" in json_data and "height" in json_data:
+                                is_metadata = True
+                                print(f"DEBUG: 图片元数据: 宽度={json_data['width']}, 高度={json_data['height']}, 格式={json_data.get('format', 'unknown')}, 大小={json_data.get('size', 0)/1024:.1f}KB", file=sys.stderr)
+                        except:
+                            pass
+                            
+                        if not is_metadata:
+                            print(f"DEBUG: 文本内容示例: {text_content[:50]}{'...' if len(text_content) > 50 else ''}", file=sys.stderr)
                 elif item_type == "image":
                     mime_type = item.get("mimeType", "unknown")
                     data = item.get("data", "")
@@ -1666,6 +1743,7 @@ class DraggableListWidget(QListWidget):
 
 def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
     print("进入feedback_ui函数...", file=sys.stderr)
+    print(f"DEBUG: 函数接收到的预定义选项: {predefined_options}", file=sys.stderr)
     app = QApplication.instance() or QApplication()
     print("QApplication实例化完成", file=sys.stderr)
     app.setPalette(get_dark_mode_palette(app))
@@ -1868,12 +1946,19 @@ if __name__ == "__main__":
     if debug_mode:
         print("DEBUG: 运行在调试模式", file=sys.stderr)
         
-    # 如果没有指定预定义选项但设置了full-ui，添加一些示例选项
-    if args.full_ui and not args.predefined_options:
+    # 修复：先检查是否有传入预定义选项，只有在没有时才使用默认示例选项
+    if args.predefined_options:
+        # 有传入预定义选项，使用传入的选项
+        predefined_options = [opt for opt in args.predefined_options.split("|||") if opt]
+        print(f"使用传入的预定义选项: {predefined_options}", file=sys.stderr)
+    elif args.full_ui:
+        # 没有传入预定义选项但启用了完整UI
         predefined_options = ["选项 A", "选项 B", "选项 C"]
         print(f"启用完整UI模式，使用示例预定义选项: {predefined_options}", file=sys.stderr)
     else:
-        predefined_options = [opt for opt in args.predefined_options.split("|||") if opt] if args.predefined_options else None
+        # 既没有传入预定义选项也没有启用完整UI
+        predefined_options = None
+        print("不使用预定义选项", file=sys.stderr)
     
     print(f"预定义选项: {predefined_options}", file=sys.stderr)
     
