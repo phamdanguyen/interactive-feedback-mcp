@@ -82,6 +82,48 @@ The "Save Configuration" button in the UI primarily saves the current command ty
 
 Similar setup principles apply. You would configure the server command (e.g., `uv run server.py` with the correct `--directory` argument pointing to the project directory) in the respective tool's MCP settings, using `interactive-feedback-mcp` as the server identifier.
 
+## WSL2 Troubleshooting
+
+If `feedback_ui.py` is not running correctly in your WSL2 environment, this section provides steps to help you troubleshoot the setup and ensure the graphical user interface (GUI) can display correctly.
+
+### Prerequisites
+
+*   WSL2 installed and configured.
+*   Python 3.11+ and `uv` package manager installed (refer to the main project's `README.md` for installation).
+*   This code repository cloned and you are in the project directory.
+
+### Configuration Steps
+
+#### Step 1: Check `DISPLAY` environment variable
+
+The `DISPLAY` variable tells GUI applications where to send their display.
+```bash
+echo $DISPLAY
+```
+*   **With WSLg (Win11)**: This usually defaults to `:0` or a similar local display.
+*   **With a manual X Server (Win10)**: It might be set to something like `$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0.0` or `localhost:0.0`. Ensure this matches your X Server's configuration. If it's not set correctly, you might need to set it manually in your `.bashrc` or `.zshrc`, for example: `export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0.0` (for X Servers listening on all interfaces) or `export DISPLAY=localhost:0.0`.
+
+#### Step 2: Install essential dependencies
+```bash
+sudo apt update && sudo apt install -y libgl1-mesa-glx libegl1-mesa
+```
+If you encounter further errors when running `uv run python feedback_ui.py`, install other required libraries based on the error messages.
+
+If you always encounter errors, try to install `x11-apps`.
+
+#### Step 3: Run Feedback UI (and install dependencies if needed)
+
+`uv run` will automatically create a virtual environment and install dependencies listed in `pyproject.toml` if they are not already present.
+Now, you should be able to run the feedback UI:
+```bash
+uv run python feedback_ui.py
+```
+Or, if you need to pass arguments (example):
+```bash
+uv run python feedback_ui.py --project_directory "/mnt/c/Users/YourUser/Projects/MyProject" --summary "Draft implementation of feature X."
+```
+The GUI window should appear on your Windows desktop.
+
 ## Development
 
 To run the server in development mode with a web interface for testing:
