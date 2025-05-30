@@ -107,7 +107,9 @@ echo $DISPLAY
 ```bash
 sudo apt update && sudo apt install -y libgl1-mesa-glx libegl1-mesa
 ```
-These are essential dependencies. If you encounter further errors when running `uv run python feedback_ui.py`, install other required libraries based on the error messages.
+If you encounter further errors when running `uv run python feedback_ui.py`, install other required libraries based on the error messages.
+
+If you always encounter errors, try to install `x11-apps`.
 
 #### Step 3: Run Feedback UI (and install dependencies if needed)
 
