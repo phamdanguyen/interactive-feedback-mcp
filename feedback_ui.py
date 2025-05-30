@@ -153,14 +153,27 @@ class FeedbackTextEdit(QTextEdit):
         # 设置纯文本编辑模式
         self.setPlainText("")
         
-        # 优化文本编辑性能
-        self.setUndoRedoEnabled(True)  # 启用撤销/重做但限制深度
+        # 进一步优化文本编辑性能
+        # 减少撤销堆栈深度，减轻内存负担
+        self.setUndoRedoEnabled(True)
         document.setUndoRedoEnabled(True)
-        document.setMaximumBlockCount(5000)  # 限制块数以提高性能
+        document.setMaximumBlockCount(1000)  # 减少最大块数以提高性能
+        document.setDocumentMargin(2)  # 减少文档边距
         
-        # 禁用不需要的功能以提高性能
+        # 禁用可能影响性能的文本格式化功能
         self.setLineWrapMode(QTextEdit.WidgetWidth)
         self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        
+        # 批量删除性能优化相关变量
+        self.delete_timer = QTimer(self)
+        self.delete_timer.setSingleShot(True)
+        self.delete_timer.setInterval(50)  # 50毫秒的防抖动时间
+        self.delete_timer.timeout.connect(self._perform_batched_delete)
+        self.delete_pending = False
+        self.batch_delete_mode = False
+        self.delete_start_pos = 0
+        self.delete_current_pos = 0
+        self.last_key_time = 0
         
         # 创建图片预览容器（重叠在文本编辑框上）
         self.images_container = QWidget(self)
@@ -195,6 +208,9 @@ class FeedbackTextEdit(QTextEdit):
         # 禁用文本编辑器的复杂功能，专注于基本文本编辑
         self.setTabChangesFocus(True)  # Tab键改变焦点而不是插入制表符
         
+        # 禁用复杂的文本格式化功能，提高删除时的性能
+        self.document().setDefaultTextOption(QTextOption())
+        
     def resizeEvent(self, event):
         """当文本框大小改变时，调整图片预览容器的位置和大小"""
         super().resizeEvent(event)
@@ -217,63 +233,144 @@ class FeedbackTextEdit(QTextEdit):
         # 根据图片预览区域可见性设置边距
         if self.images_container.isVisible():
             self.setViewportMargins(0, 0, 0, container_height)
-
+        
+    def _perform_batched_delete(self):
+        """执行批量删除操作"""
+        if not self.batch_delete_mode or self.delete_start_pos == self.delete_current_pos:
+            self.batch_delete_mode = False
+            self.delete_pending = False
+            return
+            
+        # 获取当前光标
+        cursor = self.textCursor()
+        
+        # 开始批量编辑
+        cursor.beginEditBlock()
+        
+        # 设置选区从起始位置到当前位置
+        cursor.setPosition(self.delete_start_pos)
+        cursor.setPosition(self.delete_current_pos, QTextCursor.KeepAnchor)
+        
+        # 删除选中文本
+        cursor.removeSelectedText()
+        
+        # 结束批量编辑
+        cursor.endEditBlock()
+        
+        # 重置批量删除模式
+        self.batch_delete_mode = False
+        self.delete_pending = False
+        
     def keyPressEvent(self, event: QKeyEvent):
+        # 获取当前时间，用于计算按键间隔
+        current_time = time.time()
+        key_interval = current_time - self.last_key_time
+        self.last_key_time = current_time
+        
         # 优化后退键处理，提高删除文字时的流畅度
         if event.key() == Qt.Key_Backspace:
-            # 直接删除选中文本或光标前一个字符，不使用复杂处理
+            # 如果有选中文本，直接删除
             cursor = self.textCursor()
             if cursor.hasSelection():
+                cursor.beginEditBlock()
                 cursor.removeSelectedText()
+                cursor.endEditBlock()
+                return
+                
+            # 检测是否是快速连续按键 (小于200毫秒)
+            if key_interval < 0.2:
+                # 如果没有处于批量删除模式，初始化批量删除
+                if not self.batch_delete_mode:
+                    self.batch_delete_mode = True
+                    self.delete_start_pos = cursor.position()
+                    # 初始位置向前移动一个字符，因为我们即将删除它
+                    if self.delete_start_pos > 0:
+                        self.delete_start_pos += 1
+                
+                # 更新当前位置
+                self.delete_current_pos = cursor.position() - 1
+                if self.delete_current_pos < 0:
+                    self.delete_current_pos = 0
+                
+                # 如果有等待的删除操作，取消它
+                if self.delete_pending:
+                    self.delete_timer.stop()
+                
+                # 执行简单的字符删除以提供视觉反馈
+                if not cursor.atStart():
+                    cursor.deletePreviousChar()
+                
+                # 设置新的延迟删除操作
+                self.delete_pending = True
+                self.delete_timer.start()
+                return
             else:
-                # 只删除当前光标前的一个字符
-                cursor.deletePreviousChar()
-            return
-        
-        # 按Enter键发送消息，按Shift+Enter换行
-        elif event.key() == Qt.Key_Return:
-            # 如果按下Shift+Enter，则执行换行操作
-            if event.modifiers() == Qt.ShiftModifier:
-                super().keyPressEvent(event)
-            # 如果按下Ctrl+Enter或单独按Enter，则发送消息
-            elif event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.NoModifier:
-                # 查找父FeedbackUI实例并调用提交方法
-                parent = self.parent()
-                while parent and not isinstance(parent, FeedbackUI):
-                    parent = parent.parent()
-                if parent:
-                    # 调用父窗口的提交方法（已优化为使用按键序列）
-                    parent._submit_feedback()
-            else:
-                super().keyPressEvent(event)
-        # 处理Ctrl+V粘贴图片
-        elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
-            # 查找剪贴板是否有图片
-            clipboard = QApplication.clipboard()
-            mime_data = clipboard.mimeData()
-            
-            # 如果剪贴板有图片且有父FeedbackUI实例，则调用粘贴图片方法
-            if mime_data.hasImage():
-                parent = self.parent()
-                while parent and not isinstance(parent, FeedbackUI):
-                    parent = parent.parent()
-                if parent:
-                    # 如果成功处理了图片粘贴，则不执行默认粘贴行为
-                    if parent.handle_paste_image():
-                        return
-            
-            # 如果没有图片或没找到父FeedbackUI实例，则执行默认粘贴行为
-            super().keyPressEvent(event)
-        # 优化删除键处理
-        elif event.key() == Qt.Key_Delete:
-            cursor = self.textCursor()
-            if cursor.hasSelection():
-                cursor.removeSelectedText()
-            else:
-                cursor.deleteChar()
+                # 如果是慢速按键，结束任何批量删除模式
+                if self.batch_delete_mode:
+                    self._perform_batched_delete()
+                
+                # 简单删除当前字符
+                if not cursor.atStart():
+                    cursor.deletePreviousChar()
+                return
         else:
-            # 对于其他按键，使用默认处理
-            super().keyPressEvent(event)
+            # 对于非删除键，如果有待处理的批量删除，立即执行
+            if self.batch_delete_mode:
+                self._perform_batched_delete()
+            
+            # 按Enter键发送消息，按Shift+Enter换行
+            if event.key() == Qt.Key_Return:
+                # 如果按下Shift+Enter，则执行换行操作
+                if event.modifiers() == Qt.ShiftModifier:
+                    super().keyPressEvent(event)
+                # 如果按下Ctrl+Enter或单独按Enter，则发送消息
+                elif event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.NoModifier:
+                    # 查找父FeedbackUI实例并调用提交方法
+                    parent = self.parent()
+                    while parent and not isinstance(parent, FeedbackUI):
+                        parent = parent.parent()
+                    if parent:
+                        # 调用父窗口的提交方法（已优化为使用按键序列）
+                        parent._submit_feedback()
+                else:
+                    super().keyPressEvent(event)
+            # 处理Ctrl+V粘贴图片
+            elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
+                # 查找剪贴板是否有图片
+                clipboard = QApplication.clipboard()
+                mime_data = clipboard.mimeData()
+                
+                # 如果剪贴板有图片且有父FeedbackUI实例，则调用粘贴图片方法
+                if mime_data.hasImage():
+                    parent = self.parent()
+                    while parent and not isinstance(parent, FeedbackUI):
+                        parent = parent.parent()
+                    if parent:
+                        # 如果成功处理了图片粘贴，则不执行默认粘贴行为
+                        if parent.handle_paste_image():
+                            return
+                
+                # 如果没有图片或没找到父FeedbackUI实例，则执行默认粘贴行为
+                super().keyPressEvent(event)
+            # 优化删除键处理
+            elif event.key() == Qt.Key_Delete:
+                cursor = self.textCursor()
+                cursor.beginEditBlock()
+                if cursor.hasSelection():
+                    cursor.removeSelectedText()
+                else:
+                    cursor.deleteChar()
+                cursor.endEditBlock()
+            else:
+                # 对于其他按键，使用默认处理
+                super().keyPressEvent(event)
+    
+    def keyReleaseEvent(self, event):
+        """处理键盘释放事件，用于结束批量删除模式"""
+        if event.key() == Qt.Key_Backspace and self.batch_delete_mode:
+            # 当释放BackSpace键时，执行批量删除
+            self._perform_batched_delete()
+        super().keyReleaseEvent(event)
             
     def insertFromMimeData(self, source):
         # 处理粘贴内容，包括图片和文本
@@ -295,7 +392,7 @@ class FeedbackTextEdit(QTextEdit):
                         parent.add_image_preview(pixmap)
                         handled = True
         
-        # 处理文本内容（即使已处理了图片）
+        # 处理文本内容（即使已处理了图片也检查文本)
         if source.hasText():
             text = source.text().strip()
             if text:
