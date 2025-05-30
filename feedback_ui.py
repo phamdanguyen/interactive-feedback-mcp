@@ -25,14 +25,10 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox,
     QFrame, QSizePolicy, QScrollArea, QToolTip, QDialog, QListWidget,
     QMessageBox, QListWidgetItem, QComboBox, QGridLayout, QSpacerItem, QLayout,
-    QDialogButtonBox, QFileDialog, QPlainTextEdit
+    QDialogButtonBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize, QStringListModel, QByteArray, QBuffer, QIODevice, QMimeData, QPoint, QRect, QRectF
-from PySide6.QtGui import (
-    QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, 
-    QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, 
-    QPen, QAction, QFontMetrics, QTextOption
-)
+from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, QPen, QAction, QFontMetrics
 
 # 添加自定义ClickableLabel类
 class ClickableLabel(QLabel):
@@ -140,19 +136,18 @@ def get_dark_mode_palette(app: QApplication):
     darkPalette.setColor(QPalette.PlaceholderText, QColor(127, 127, 127))
     return darkPalette
 
-class FeedbackTextEdit(QPlainTextEdit):
+class FeedbackTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 设置纯文本模式
-        self.setUndoRedoEnabled(True)
-        
-        # 简化文档设置，提高性能
+        # 设置接受纯文本模式
+        self.setAcceptRichText(False)
+        # 禁用自动格式化
         document = self.document()
-        document.setMaximumBlockCount(1000)  # 限制最大块数
-        document.setDocumentMargin(2)  # 减少文档边距
-        
-        # 使用简单的换行模式
-        self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        document.setDefaultStyleSheet("")
+        # 确保没有HTML格式处理
+        self.setAutoFormatting(QTextEdit.AutoNone)
+        # 设置纯文本编辑模式
+        self.setPlainText("")
         
         # 创建图片预览容器（重叠在文本编辑框上）
         self.images_container = QWidget(self)
@@ -174,18 +169,12 @@ class FeedbackTextEdit(QPlainTextEdit):
         
         # 直接设置文本颜色和字体大小
         self.setStyleSheet("""
-            QPlainTextEdit {
+            QTextEdit {
                 color: #ffffff;
                 font-size: 11pt;
                 font-family: 'Segoe UI', Arial, sans-serif;
             }
         """)
-        
-        # 设置Tab键行为
-        self.setTabChangesFocus(True)  # Tab键改变焦点而不是插入制表符
-        
-        # 优化光标设置
-        self.setCursorWidth(2)
         
     def resizeEvent(self, event):
         """当文本框大小改变时，调整图片预览容器的位置和大小"""
@@ -209,26 +198,38 @@ class FeedbackTextEdit(QPlainTextEdit):
         # 根据图片预览区域可见性设置边距
         if self.images_container.isVisible():
             self.setViewportMargins(0, 0, 0, container_height)
-        
+
     def keyPressEvent(self, event: QKeyEvent):
-        # 优化按键处理，使用最简单的方法
-        # 处理Enter键作为提交
-        if event.key() == Qt.Key_Return and event.modifiers() != Qt.ShiftModifier:
-            # 查找父FeedbackUI实例并调用提交方法
-            parent = self.parent()
-            while parent and not isinstance(parent, FeedbackUI):
-                parent = parent.parent()
-            if parent:
-                # 调用父窗口的提交方法
-                parent._submit_feedback()
+        # 添加对BackSpace键的特殊处理，提高删除文字时的响应速度
+        if event.key() == Qt.Key_Backspace:
+            # 获取当前光标位置
+            cursor = self.textCursor()
+            # 直接调用标准删除操作，而不触发额外的处理
+            if not cursor.hasSelection():
+                # 如果没有选择文本，则简单地删除前一个字符
+                cursor.deletePreviousChar()
+            else:
+                # 如果有选择文本，则删除选定内容
+                cursor.removeSelectedText()
+            # 不调用父类方法，避免额外处理
             return
             
-        # 处理Shift+Enter作为换行
-        elif event.key() == Qt.Key_Return and event.modifiers() == Qt.ShiftModifier:
-            # 使用默认处理插入换行
-            super().keyPressEvent(event)
-            return
-            
+        # 按Enter键发送消息，按Shift+Enter换行
+        elif event.key() == Qt.Key_Return:
+            # 如果按下Shift+Enter，则执行换行操作
+            if event.modifiers() == Qt.ShiftModifier:
+                super().keyPressEvent(event)
+            # 如果按下Ctrl+Enter或单独按Enter，则发送消息
+            elif event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.NoModifier:
+                # 查找父FeedbackUI实例并调用提交方法
+                parent = self.parent()
+                while parent and not isinstance(parent, FeedbackUI):
+                    parent = parent.parent()
+                if parent:
+                    # 调用父窗口的提交方法（已优化为使用按键序列）
+                    parent._submit_feedback()
+            else:
+                super().keyPressEvent(event)
         # 处理Ctrl+V粘贴图片
         elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
             # 查找剪贴板是否有图片
@@ -244,31 +245,44 @@ class FeedbackTextEdit(QPlainTextEdit):
                     # 如果成功处理了图片粘贴，则不执行默认粘贴行为
                     if parent.handle_paste_image():
                         return
-        
-        # 对于所有其他按键，直接使用QPlainTextEdit默认处理
-        super().keyPressEvent(event)
+            
+            # 如果没有图片或没找到父FeedbackUI实例，则执行默认粘贴行为
+            super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
             
     def insertFromMimeData(self, source):
-        # 处理粘贴内容，使用简化处理
-        # 如果有图片，交给父窗口处理
+        # 处理粘贴内容，包括图片和文本
+        handled = False
+        
+        # 如果有图片，先尝试处理图片
         if source.hasImage():
+            # 寻找父FeedbackUI实例
             parent = self.parent()
             while parent and not isinstance(parent, FeedbackUI):
                 parent = parent.parent()
                 
+            # 如果找到父实例，使用其处理图片
             if parent:
                 image = source.imageData()
                 if image and not image.isNull():
                     pixmap = QPixmap.fromImage(QImage(image))
                     if not pixmap.isNull():
                         parent.add_image_preview(pixmap)
+                        handled = True
+                        print("DEBUG: insertFromMimeData处理了图片内容", file=sys.stderr)
         
-        # 对于文本内容，直接使用默认处理
+        # 处理文本内容（即使已处理了图片）
         if source.hasText():
-            # 使用QPlainTextEdit的默认文本粘贴，它已经足够高效
-            super().insertFromMimeData(source)
-        elif not source.hasImage():
-            # 如果既没有文本也没有图片，调用父类处理
+            text = source.text().strip()
+            if text:
+                # 确保只插入纯文本，忽略所有格式
+                self.insertPlainText(text)
+                handled = True
+                print("DEBUG: insertFromMimeData处理了文本内容", file=sys.stderr)
+        
+        # 如果没有处理任何内容，调用父类方法
+        if not handled:
             super().insertFromMimeData(source)
 
     def show_images_container(self, visible):
@@ -278,10 +292,206 @@ class FeedbackTextEdit(QPlainTextEdit):
         self.setViewportMargins(0, 0, 0, container_height)
         # 强制重新绘制
         self.viewport().update()
+
+class ImagePreviewWidget(QWidget):
+    """图片预览小部件，鼠标悬停时放大，支持删除功能"""
+    
+    image_deleted = Signal(int)  # 图片删除信号，参数为图片ID
+    
+    def __init__(self, image_pixmap, image_id, parent=None):
+        super().__init__(parent)
+        self.image_pixmap = image_pixmap
+        self.image_id = image_id
+        self.original_pixmap = image_pixmap  # 保存原始图片
+        self.is_hovering = False
+        self.hover_color = False  # 控制悬停时的颜色变化
         
-    def toPlainText(self):
-        # 确保这个方法返回文本内容，兼容QTextEdit接口
-        return super().toPlainText()
+        # 设置固定大小，让图片预览图标更小，适合显示在输入框底部
+        self.setFixedSize(48, 48)
+        
+        # 创建水平布局
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(0)
+        
+        # 图片缩略图标签
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        # 缩放图片创建缩略图
+        thumbnail = image_pixmap.scaled(
+            44, 44, 
+            Qt.KeepAspectRatio, 
+            Qt.SmoothTransformation
+        )
+        self.original_thumbnail = thumbnail  # 保存原始缩略图
+        self.red_thumbnail = self._create_red_thumbnail(thumbnail)  # 创建浅红色缩略图
+        self.thumbnail_label.setPixmap(thumbnail)
+        
+        # 删除按钮放在右上角
+        layout.addWidget(self.thumbnail_label)
+        
+        # 设置小部件样式
+        self.setStyleSheet("""
+            ImagePreviewWidget {
+                background-color: rgba(51, 51, 51, 200);
+                border: 1px solid #555;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            ImagePreviewWidget:hover {
+                border: 1px solid #2a82da;
+            }
+        """)
+        
+        # 设置工具提示
+        self.setToolTip("悬停查看大图，点击图标删除图片")
+        
+        # 确保鼠标跟踪，以便接收鼠标悬停事件
+        self.setMouseTracking(True)
+    
+    def _create_red_thumbnail(self, pixmap):
+        """创建浅红色版本的缩略图"""
+        if pixmap.isNull():
+            return pixmap
+            
+        # 创建一个新的pixmap
+        red_pixmap = QPixmap(pixmap.size())
+        red_pixmap.fill(Qt.transparent)
+        
+        # 创建QPainter来绘制红色效果
+        painter = QPainter(red_pixmap)
+        
+        # 先绘制原始图片
+        painter.drawPixmap(0, 0, pixmap)
+        
+        # 添加一个红色半透明层
+        painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
+        painter.fillRect(red_pixmap.rect(), QColor(255, 100, 100, 160))
+        
+        # 结束绘制
+        painter.end()
+        
+        return red_pixmap
+    
+    def enterEvent(self, event):
+        """鼠标进入事件，显示大图预览并变为浅红色"""
+        self.is_hovering = True
+        self.hover_color = True
+        
+        # 更新缩略图为红色
+        self.thumbnail_label.setPixmap(self.red_thumbnail)
+        
+        # 显示大图预览
+        self._show_full_image()
+        return super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """鼠标离开事件，隐藏大图预览并恢复颜色"""
+        self.is_hovering = False
+        self.hover_color = False
+        
+        # 恢复原始缩略图
+        self.thumbnail_label.setPixmap(self.original_thumbnail)
+        
+        QToolTip.hideText()
+        
+        # 关闭预览窗口
+        if hasattr(self, 'preview_window') and self.preview_window:
+            self.preview_window.close()
+            
+        return super().leaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        """处理鼠标点击事件，点击图标直接删除"""
+        if event.button() == Qt.LeftButton:
+            # 点击图标任何位置都删除图片
+            self._delete_image()
+            return
+        return super().mousePressEvent(event)
+        
+    def _show_full_image(self):
+        """显示大图预览"""
+        if self.is_hovering and not self.original_pixmap.isNull():
+            # 限制预览图最大尺寸
+            max_width = 400
+            max_height = 300
+            
+            # 调整图片大小，保持纵横比
+            preview_pixmap = self.original_pixmap
+            if preview_pixmap.width() > max_width or preview_pixmap.height() > max_height:
+                preview_pixmap = preview_pixmap.scaled(
+                    max_width, max_height,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+            
+            # 创建一个QLabel来显示图片
+            preview_label = QLabel()
+            preview_label.setPixmap(preview_pixmap)
+            preview_label.setStyleSheet("background-color: #333; padding: 5px; border: 1px solid #666;")
+            
+            # 获取当前鼠标位置
+            cursor_pos = QCursor.pos()
+            
+            # 显示工具提示
+            QToolTip.showText(
+                cursor_pos,
+                f"<div style='background-color: #333; padding: 10px; border: 1px solid #666;'>"
+                f"<div style='color: white; margin-bottom: 5px;'>图片预览 ({self.original_pixmap.width()}x{self.original_pixmap.height()})</div>"
+                f"</div>",
+                self
+            )
+            
+            # 创建一个无模态对话框显示图片预览
+            self.preview_window = QMainWindow(self)
+            self.preview_window.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+            self.preview_window.setAttribute(Qt.WA_DeleteOnClose)
+            self.preview_window.setAttribute(Qt.WA_TranslucentBackground)
+            
+            # 创建中央部件
+            preview_widget = QWidget()
+            preview_layout = QVBoxLayout(preview_widget)
+            preview_layout.setContentsMargins(10, 10, 10, 10)
+            
+            # 添加图片标签
+            preview_image_label = QLabel()
+            preview_image_label.setPixmap(preview_pixmap)
+            preview_image_label.setAlignment(Qt.AlignCenter)
+            preview_image_label.setStyleSheet("background-color: #333; padding: 5px; border: 1px solid #666; border-radius: 4px;")
+            preview_layout.addWidget(preview_image_label)
+            
+            # 添加图片信息标签
+            info_label = QLabel(f"尺寸: {self.original_pixmap.width()} x {self.original_pixmap.height()} 像素")
+            info_label.setAlignment(Qt.AlignCenter)
+            info_label.setStyleSheet("color: white; background-color: #333; padding: 5px;")
+            preview_layout.addWidget(info_label)
+            
+            self.preview_window.setCentralWidget(preview_widget)
+            
+            # 调整大小
+            self.preview_window.resize(preview_pixmap.width() + 30, preview_pixmap.height() + 70)
+            
+            # 移动到合适位置
+            cursor_pos = QCursor.pos()
+            preview_window_x = cursor_pos.x() + 20
+            preview_window_y = cursor_pos.y() + 20
+            
+            # 确保预览窗口不会超出屏幕边界
+            screen = QApplication.primaryScreen().geometry()
+            if preview_window_x + self.preview_window.width() > screen.width():
+                preview_window_x = screen.width() - self.preview_window.width()
+            if preview_window_y + self.preview_window.height() > screen.height():
+                preview_window_y = screen.height() - self.preview_window.height()
+                
+            self.preview_window.move(preview_window_x, preview_window_y)
+            
+            # 显示预览窗口
+            self.preview_window.show()
+    
+    def _delete_image(self):
+        """删除图片"""
+        self.image_deleted.emit(self.image_id)
+        self.deleteLater()  # 从UI中移除此部件
 
 class FeedbackUI(QMainWindow):
     def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None):
@@ -518,6 +728,18 @@ class FeedbackUI(QMainWindow):
         text_input_layout.setContentsMargins(0, 0, 0, 0)
         text_input_layout.setSpacing(8)
         
+        # 文本编辑框
+        self.feedback_text = FeedbackTextEdit()
+        self.feedback_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.feedback_text.setMinimumWidth(950)  # 确保文本编辑框足够宽
+        self.feedback_text.setMinimumHeight(220)  # 设置最小高度为220，增加可见行数
+        self.feedback_text.setPlaceholderText("在此输入反馈内容 (纯文本格式，按Enter发送，Shift+Enter换行，Ctrl+V粘贴图片)")
+        
+
+        
+        # 连接文本变化信号，更新提交按钮文本
+        self.feedback_text.textChanged.connect(self._update_submit_button_text)
+        
         # 功能按钮区域 - 总是创建，确保界面完整
         buttons_container = QWidget()
         buttons_layout = QHBoxLayout(buttons_container)
@@ -552,15 +774,9 @@ class FeedbackUI(QMainWindow):
         # 添加弹性空间，将后续按钮推到右侧
         buttons_layout.addStretch(1)
         
-        # 文本编辑框
-        self.feedback_text = FeedbackTextEdit()
-        self.feedback_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.feedback_text.setMinimumWidth(950)  # 确保文本编辑框足够宽
-        self.feedback_text.setMinimumHeight(220)  # 设置最小高度为220，增加可见行数
-        self.feedback_text.setPlaceholderText("在此输入反馈内容 (纯文本格式，按Enter发送，Shift+Enter换行，Ctrl+V粘贴图片)")
-        
-        # 连接文本变化信号，更新提交按钮文本
-        self.feedback_text.textChanged.connect(self._update_submit_button_text)
+        # 按顺序添加所有控件到文本输入布局
+        text_input_layout.addWidget(self.feedback_text, 1)  # 设置拉伸因子为1，允许垂直拉伸
+        text_input_layout.addWidget(buttons_container)  # 添加功能按钮区域
         
         # 提交按钮 - 修改为占据整行，使其更明显
         self.submit_button = QPushButton("提交反馈")
@@ -2336,203 +2552,3 @@ if __name__ == "__main__":
                             print(f"WARNING: 内容项 {i+1} 有未知类型: {item['type']}", file=sys.stderr)
             
     sys.exit(0)
-
-class ImagePreviewWidget(QWidget):
-    """图片预览小部件，鼠标悬停时放大，支持删除功能"""
-    
-    image_deleted = Signal(int)  # 图片删除信号，参数为图片ID
-    
-    def __init__(self, image_pixmap, image_id, parent=None):
-        super().__init__(parent)
-        self.image_pixmap = image_pixmap
-        self.image_id = image_id
-        self.original_pixmap = image_pixmap  # 保存原始图片
-        self.is_hovering = False
-        self.hover_color = False  # 控制悬停时的颜色变化
-        
-        # 设置固定大小，让图片预览图标更小，适合显示在输入框底部
-        self.setFixedSize(48, 48)
-        
-        # 创建水平布局
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(0)
-        
-        # 图片缩略图标签
-        self.thumbnail_label = QLabel()
-        self.thumbnail_label.setAlignment(Qt.AlignCenter)
-        # 缩放图片创建缩略图
-        thumbnail = image_pixmap.scaled(
-            44, 44, 
-            Qt.KeepAspectRatio, 
-            Qt.SmoothTransformation
-        )
-        self.original_thumbnail = thumbnail  # 保存原始缩略图
-        self.red_thumbnail = self._create_red_thumbnail(thumbnail)  # 创建浅红色缩略图
-        self.thumbnail_label.setPixmap(thumbnail)
-        
-        # 删除按钮放在右上角
-        layout.addWidget(self.thumbnail_label)
-        
-        # 设置小部件样式
-        self.setStyleSheet("""
-            ImagePreviewWidget {
-                background-color: rgba(51, 51, 51, 200);
-                border: 1px solid #555;
-                border-radius: 4px;
-                margin: 2px;
-            }
-            ImagePreviewWidget:hover {
-                border: 1px solid #2a82da;
-            }
-        """)
-        
-        # 设置工具提示
-        self.setToolTip("悬停查看大图，点击图标删除图片")
-        
-        # 确保鼠标跟踪，以便接收鼠标悬停事件
-        self.setMouseTracking(True)
-    
-    def _create_red_thumbnail(self, pixmap):
-        """创建浅红色版本的缩略图"""
-        if pixmap.isNull():
-            return pixmap
-            
-        # 创建一个新的pixmap
-        red_pixmap = QPixmap(pixmap.size())
-        red_pixmap.fill(Qt.transparent)
-        
-        # 创建QPainter来绘制红色效果
-        painter = QPainter(red_pixmap)
-        
-        # 先绘制原始图片
-        painter.drawPixmap(0, 0, pixmap)
-        
-        # 添加一个红色半透明层
-        painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
-        painter.fillRect(red_pixmap.rect(), QColor(255, 100, 100, 160))
-        
-        # 结束绘制
-        painter.end()
-        
-        return red_pixmap
-    
-    def enterEvent(self, event):
-        """鼠标进入事件，显示大图预览并变为浅红色"""
-        self.is_hovering = True
-        self.hover_color = True
-        
-        # 更新缩略图为红色
-        self.thumbnail_label.setPixmap(self.red_thumbnail)
-        
-        # 显示大图预览
-        self._show_full_image()
-        return super().enterEvent(event)
-    
-    def leaveEvent(self, event):
-        """鼠标离开事件，隐藏大图预览并恢复颜色"""
-        self.is_hovering = False
-        self.hover_color = False
-        
-        # 恢复原始缩略图
-        self.thumbnail_label.setPixmap(self.original_thumbnail)
-        
-        QToolTip.hideText()
-        
-        # 关闭预览窗口
-        if hasattr(self, 'preview_window') and self.preview_window:
-            self.preview_window.close()
-            
-        return super().leaveEvent(event)
-        
-    def mousePressEvent(self, event):
-        """处理鼠标点击事件，点击图标直接删除"""
-        if event.button() == Qt.LeftButton:
-            # 点击图标任何位置都删除图片
-            self._delete_image()
-            return
-        return super().mousePressEvent(event)
-        
-    def _show_full_image(self):
-        """显示大图预览"""
-        if self.is_hovering and not self.original_pixmap.isNull():
-            # 限制预览图最大尺寸
-            max_width = 400
-            max_height = 300
-            
-            # 调整图片大小，保持纵横比
-            preview_pixmap = self.original_pixmap
-            if preview_pixmap.width() > max_width or preview_pixmap.height() > max_height:
-                preview_pixmap = preview_pixmap.scaled(
-                    max_width, max_height,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-            
-            # 创建一个QLabel来显示图片
-            preview_label = QLabel()
-            preview_label.setPixmap(preview_pixmap)
-            preview_label.setStyleSheet("background-color: #333; padding: 5px; border: 1px solid #666;")
-            
-            # 获取当前鼠标位置
-            cursor_pos = QCursor.pos()
-            
-            # 显示工具提示
-            QToolTip.showText(
-                cursor_pos,
-                f"<div style='background-color: #333; padding: 10px; border: 1px solid #666;'>"
-                f"<div style='color: white; margin-bottom: 5px;'>图片预览 ({self.original_pixmap.width()}x{self.original_pixmap.height()})</div>"
-                f"</div>",
-                self
-            )
-            
-            # 创建一个无模态对话框显示图片预览
-            self.preview_window = QMainWindow(self)
-            self.preview_window.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
-            self.preview_window.setAttribute(Qt.WA_DeleteOnClose)
-            self.preview_window.setAttribute(Qt.WA_TranslucentBackground)
-            
-            # 创建中央部件
-            preview_widget = QWidget()
-            preview_layout = QVBoxLayout(preview_widget)
-            preview_layout.setContentsMargins(10, 10, 10, 10)
-            
-            # 添加图片标签
-            preview_image_label = QLabel()
-            preview_image_label.setPixmap(preview_pixmap)
-            preview_image_label.setAlignment(Qt.AlignCenter)
-            preview_image_label.setStyleSheet("background-color: #333; padding: 5px; border: 1px solid #666; border-radius: 4px;")
-            preview_layout.addWidget(preview_image_label)
-            
-            # 添加图片信息标签
-            info_label = QLabel(f"尺寸: {self.original_pixmap.width()} x {self.original_pixmap.height()} 像素")
-            info_label.setAlignment(Qt.AlignCenter)
-            info_label.setStyleSheet("color: white; background-color: #333; padding: 5px;")
-            preview_layout.addWidget(info_label)
-            
-            self.preview_window.setCentralWidget(preview_widget)
-            
-            # 调整大小
-            self.preview_window.resize(preview_pixmap.width() + 30, preview_pixmap.height() + 70)
-            
-            # 移动到合适位置
-            cursor_pos = QCursor.pos()
-            preview_window_x = cursor_pos.x() + 20
-            preview_window_y = cursor_pos.y() + 20
-            
-            # 确保预览窗口不会超出屏幕边界
-            screen = QApplication.primaryScreen().geometry()
-            if preview_window_x + self.preview_window.width() > screen.width():
-                preview_window_x = screen.width() - self.preview_window.width()
-            if preview_window_y + self.preview_window.height() > screen.height():
-                preview_window_y = screen.height() - self.preview_window.height()
-                
-            self.preview_window.move(preview_window_x, preview_window_y)
-            
-            # 显示预览窗口
-            self.preview_window.show()
-    
-    def _delete_image(self):
-        """删除图片"""
-        self.image_deleted.emit(self.image_id)
-        self.deleteLater()  # 从UI中移除此部件
