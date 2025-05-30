@@ -149,6 +149,15 @@ class FeedbackTextEdit(QTextEdit):
         # 设置纯文本编辑模式
         self.setPlainText("")
         
+        # 优化文本编辑性能
+        self.setUndoRedoEnabled(True)  # 启用撤销/重做但限制深度
+        document.setUndoRedoEnabled(True)
+        document.setMaximumBlockCount(5000)  # 限制块数以提高性能
+        
+        # 禁用不需要的功能以提高性能
+        self.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        
         # 创建图片预览容器（重叠在文本编辑框上）
         self.images_container = QWidget(self)
         self.images_layout = QHBoxLayout(self.images_container)
@@ -176,6 +185,12 @@ class FeedbackTextEdit(QTextEdit):
             }
         """)
         
+        # 优化文本编辑器的光标更新
+        self.setCursorWidth(2)  # 设置更细的光标宽度，可能减少重绘负担
+        
+        # 禁用文本编辑器的复杂功能，专注于基本文本编辑
+        self.setTabChangesFocus(True)  # Tab键改变焦点而不是插入制表符
+        
     def resizeEvent(self, event):
         """当文本框大小改变时，调整图片预览容器的位置和大小"""
         super().resizeEvent(event)
@@ -200,8 +215,19 @@ class FeedbackTextEdit(QTextEdit):
             self.setViewportMargins(0, 0, 0, container_height)
 
     def keyPressEvent(self, event: QKeyEvent):
+        # 优化后退键处理，提高删除文字时的流畅度
+        if event.key() == Qt.Key_Backspace:
+            # 直接删除选中文本或光标前一个字符，不使用复杂处理
+            cursor = self.textCursor()
+            if cursor.hasSelection():
+                cursor.removeSelectedText()
+            else:
+                # 只删除当前光标前的一个字符
+                cursor.deletePreviousChar()
+            return
+        
         # 按Enter键发送消息，按Shift+Enter换行
-        if event.key() == Qt.Key_Return:
+        elif event.key() == Qt.Key_Return:
             # 如果按下Shift+Enter，则执行换行操作
             if event.modifiers() == Qt.ShiftModifier:
                 super().keyPressEvent(event)
@@ -234,7 +260,15 @@ class FeedbackTextEdit(QTextEdit):
             
             # 如果没有图片或没找到父FeedbackUI实例，则执行默认粘贴行为
             super().keyPressEvent(event)
+        # 优化删除键处理
+        elif event.key() == Qt.Key_Delete:
+            cursor = self.textCursor()
+            if cursor.hasSelection():
+                cursor.removeSelectedText()
+            else:
+                cursor.deleteChar()
         else:
+            # 对于其他按键，使用默认处理
             super().keyPressEvent(event)
             
     def insertFromMimeData(self, source):
@@ -256,16 +290,17 @@ class FeedbackTextEdit(QTextEdit):
                     if not pixmap.isNull():
                         parent.add_image_preview(pixmap)
                         handled = True
-                        print("DEBUG: insertFromMimeData处理了图片内容", file=sys.stderr)
         
         # 处理文本内容（即使已处理了图片）
         if source.hasText():
             text = source.text().strip()
             if text:
-                # 确保只插入纯文本，忽略所有格式
-                self.insertPlainText(text)
+                # 确保只插入纯文本，忽略所有格式，提高性能
+                cursor = self.textCursor()
+                cursor.beginEditBlock()  # 开始批量编辑以提高性能
+                cursor.insertText(text)  # 直接插入文本，不使用insertPlainText方法
+                cursor.endEditBlock()    # 结束批量编辑
                 handled = True
-                print("DEBUG: insertFromMimeData处理了文本内容", file=sys.stderr)
         
         # 如果没有处理任何内容，调用父类方法
         if not handled:

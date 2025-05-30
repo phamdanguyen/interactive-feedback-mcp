@@ -34,7 +34,8 @@ tmp/
 .DS_Store
 uv.lock
 
-# 二次开发建议不提交
+# 不提交的文件
 二次开发建议.md
+todolist.md
 
 .cursor/rules/
