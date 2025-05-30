@@ -1,4 +1,4 @@
-# Interactive Feedback MCP UI
+﻿# Interactive Feedback MCP UI
 # Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
 # Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
 # Enhanced by Pau Oliva (https://x.com/pof) with ideas from https://github.com/ttommyth/interactive-mcp
@@ -7,17 +7,94 @@ import sys
 import json
 import argparse
 import base64  # 确保导入 base64 模块
-from typing import Optional, TypedDict, List, Dict, Any
+from typing import Optional, TypedDict, List, Dict, Any, Union, Tuple
 from io import BytesIO  # 导入 BytesIO 用于处理二进制数据
+import time  # 添加时间模块
+import traceback
+from datetime import datetime
+import functools # 添加导入
+
+# 添加pyperclip模块，用于剪贴板操作
+try:
+    import pyperclip
+except ImportError:
+    print("警告: 无法导入pyperclip模块，部分剪贴板功能可能无法正常工作", file=sys.stderr)
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox,
     QFrame, QSizePolicy, QScrollArea, QToolTip, QDialog, QListWidget,
-    QMessageBox, QListWidgetItem
+    QMessageBox, QListWidgetItem, QComboBox, QGridLayout, QSpacerItem, QLayout,
+    QDialogButtonBox, QFileDialog
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize, QStringListModel, QByteArray, QBuffer, QIODevice
-from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize, QStringListModel, QByteArray, QBuffer, QIODevice, QMimeData, QPoint, QRect, QRectF
+from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, QPen, QAction, QFontMetrics
+
+# 添加自定义ClickableLabel类
+class ClickableLabel(QLabel):
+    """自定义标签类，允许文本选择但禁止光标变化"""
+    
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        # 设置文本可选标志 - 只读
+        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        
+        # 使用更强的方式设置标签样式
+        self.setStyleSheet("""
+            QLabel {
+                color: #e0e0e0;
+                selection-background-color: #2a82da;
+                selection-color: white;
+            }
+        """)
+        
+        # 禁用光标重设 - 关键设置
+        self.setCursor(Qt.ArrowCursor)
+        self.setMouseTracking(True)  # 启用鼠标跟踪以便处理所有鼠标移动事件
+        
+        # 创建事件过滤器对象，并安装到自身
+        self._cursor_filter = CursorOverrideFilter(self)
+        self.installEventFilter(self._cursor_filter)
+    
+    # 重写mouseMoveEvent确保光标不变
+    def mouseMoveEvent(self, event):
+        QApplication.restoreOverrideCursor()  # 先清除可能的光标堆栈
+        QApplication.setOverrideCursor(Qt.ArrowCursor)  # 强制设置为箭头光标
+        super().mouseMoveEvent(event)
+    
+    # 重写以下事件来确保光标始终为箭头
+    def enterEvent(self, event):
+        QApplication.setOverrideCursor(Qt.ArrowCursor)
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        QApplication.restoreOverrideCursor()
+        super().leaveEvent(event)
+    
+    def mousePressEvent(self, event):
+        QApplication.setOverrideCursor(Qt.ArrowCursor)
+        super().mousePressEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        QApplication.setOverrideCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+# 添加一个专用的事件过滤器类用于光标控制
+class CursorOverrideFilter(QObject):
+    """确保特定控件永远使用箭头光标的事件过滤器"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+    
+    def eventFilter(self, obj, event):
+        # 捕获所有可能导致光标变化的事件
+        if event.type() in (QEvent.Enter, QEvent.HoverEnter, QEvent.HoverMove, 
+                           QEvent.MouseMove, QEvent.MouseButtonPress, 
+                           QEvent.MouseButtonRelease):
+            # 确保使用箭头光标
+            obj.setCursor(Qt.ArrowCursor)
+            return False  # 继续处理事件
+        return False  # 让所有其他事件继续传递
 
 # 添加图片处理相关常量
 MAX_IMAGE_WIDTH = 512  # 最大图片宽度 - 从1280降低到512，优化LLM处理
@@ -135,6 +212,7 @@ class FeedbackTextEdit(QTextEdit):
                 while parent and not isinstance(parent, FeedbackUI):
                     parent = parent.parent()
                 if parent:
+                    # 调用父窗口的提交方法（已优化为使用按键序列）
                     parent._submit_feedback()
             else:
                 super().keyPressEvent(event)
@@ -160,11 +238,37 @@ class FeedbackTextEdit(QTextEdit):
             super().keyPressEvent(event)
             
     def insertFromMimeData(self, source):
-        # 强制只插入纯文本，忽略所有格式
+        # 处理粘贴内容，包括图片和文本
+        handled = False
+        
+        # 如果有图片，先尝试处理图片
+        if source.hasImage():
+            # 寻找父FeedbackUI实例
+            parent = self.parent()
+            while parent and not isinstance(parent, FeedbackUI):
+                parent = parent.parent()
+                
+            # 如果找到父实例，使用其处理图片
+            if parent:
+                image = source.imageData()
+                if image and not image.isNull():
+                    pixmap = QPixmap.fromImage(QImage(image))
+                    if not pixmap.isNull():
+                        parent.add_image_preview(pixmap)
+                        handled = True
+                        print("DEBUG: insertFromMimeData处理了图片内容", file=sys.stderr)
+        
+        # 处理文本内容（即使已处理了图片）
         if source.hasText():
-            # 使用insertPlainText而不是默认的insertHtml或insertText
-            self.insertPlainText(source.text())
-        else:
+            text = source.text().strip()
+            if text:
+                # 确保只插入纯文本，忽略所有格式
+                self.insertPlainText(text)
+                handled = True
+                print("DEBUG: insertFromMimeData处理了文本内容", file=sys.stderr)
+        
+        # 如果没有处理任何内容，调用父类方法
+        if not handled:
             super().insertFromMimeData(source)
 
     def show_images_container(self, visible):
@@ -377,8 +481,15 @@ class ImagePreviewWidget(QWidget):
 
 class FeedbackUI(QMainWindow):
     def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None):
-        print("初始化FeedbackUI...", file=sys.stderr)
+        """初始化交互式反馈UI
+        
+        Args:
+            prompt (str): 要显示的提示
+            predefined_options (Optional[List[str]], optional): 预定义选项列表. Defaults to None.
+        """
         super().__init__()
+        
+        print("初始化FeedbackUI...", file=sys.stderr)
         self.prompt = prompt
         
         # 添加调试信息，查看收到的选项
@@ -386,7 +497,7 @@ class FeedbackUI(QMainWindow):
         self.predefined_options = predefined_options or []
         print(f"DEBUG: 初始化使用的预定义选项: {self.predefined_options}", file=sys.stderr)
 
-        self.feedback_result = None
+        self.result = None  # 使用统一的属性名 result
         self.image_pixmap = None  # 存储粘贴的图片
         self.next_image_id = 0  # 用于生成唯一的图片ID
         self.image_widgets = {}  # 存储图片预览部件 {id: widget}
@@ -394,7 +505,13 @@ class FeedbackUI(QMainWindow):
         # 用于控制是否自动最小化的标志
         self.disable_auto_minimize = False
         
+        # 用于记录是否已尝试过直接对话模式
+        self.attempted_direct_dialog = False
+        
+        # 设置窗口标题和窗口最小宽度
         self.setWindowTitle("Interactive Feedback MCP")
+        self.setMinimumWidth(1000)  # 明确设置最小宽度为1000
+        
         script_dir = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(script_dir, "images", "feedback.png")
         
@@ -417,17 +534,27 @@ class FeedbackUI(QMainWindow):
         
         self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
         
-        # Load general UI settings for the main window (geometry, state)
+        # 首先设置我们想要的默认窗口大小，这样即使恢复几何失败也能保持这个尺寸
+        self.resize(1000, 750)  # 将高度从600增加到750
+        self.setMinimumHeight(700)  # 设置最小高度
+        
+        # 窗口居中显示
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - 1000) // 2
+        y = (screen.height() - 750) // 2
+        self.move(x, y)
+        
+        # 然后尝试加载保存的布局设置，但确保窗口宽度至少为1000
         self.settings.beginGroup("MainWindow_General")
         geometry = self.settings.value("geometry")
         if geometry:
+            # 先恢复几何
             self.restoreGeometry(geometry)
-        else:
-            self.resize(800, 600)
-            screen = QApplication.primaryScreen().geometry()
-            x = (screen.width() - 800) // 2
-            y = (screen.height() - 600) // 2
-            self.move(x, y)
+            # 然后检查窗口宽度是否满足最小要求
+            if self.width() < 1000:
+                self.setMinimumWidth(1000)
+                self.resize(1000, self.height())
+                print(f"DEBUG: 应用最小宽度1000 (恢复的宽度为 {self.width()})", file=sys.stderr)
         state = self.settings.value("windowState")
         if state:
             self.restoreState(state)
@@ -441,9 +568,10 @@ class FeedbackUI(QMainWindow):
         print("创建中央窗口部件...", file=sys.stderr)
         # 创建中央窗口部件
         central_widget = QWidget()
+        central_widget.setMinimumWidth(1000)  # 确保中央部件也足够宽
         self.setCentralWidget(central_widget)
         
-        # 主布局 - 垂直布局
+        # 主布局 - 垂直布局，减小边距使界面更紧凑
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
@@ -452,11 +580,13 @@ class FeedbackUI(QMainWindow):
         # 创建反馈分组框
         self.feedback_group = QGroupBox("Feedback")
         self.feedback_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.feedback_group.setMinimumWidth(980)  # 留出一些边距
         
         # 反馈区域布局 - 垂直布局
         feedback_layout = QVBoxLayout(self.feedback_group)
-        feedback_layout.setSpacing(12)
-
+        feedback_layout.setContentsMargins(12, 15, 12, 15)  # 增加内边距
+        feedback_layout.setSpacing(15)  # 增加元素间距
+        
         # 创建提示文字的滚动区域
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # 允许内部控件调整大小
@@ -466,7 +596,7 @@ class FeedbackUI(QMainWindow):
         scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         
         # 设置滚动区域的最大高度，确保不会占用太多空间
-        scroll_area.setMaximumHeight(150)  # 根据需要调整这个值
+        scroll_area.setMaximumHeight(200)  # 从140增加到200，以显示更多提示文本
         
         # 创建容器小部件用于放置描述标签
         description_container = QWidget()
@@ -478,7 +608,40 @@ class FeedbackUI(QMainWindow):
         self.description_label.setWordWrap(True)
         self.description_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.description_label.setStyleSheet("font-weight: bold; margin-bottom: 8px;")  # 添加粗体和底部间距
+        # 启用文本选择
+        self.description_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         description_layout.addWidget(self.description_label)
+        
+        # 添加图片处理说明
+        self.image_usage_label = QLabel("提示: 当您添加图片后，点击提交按钮将直接激活Cursor对话框，并自动填充内容。")
+        self.image_usage_label.setWordWrap(True)
+        self.image_usage_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.image_usage_label.setStyleSheet("color: #ff8c00; font-style: italic; font-size: 10pt; margin-top: 5px;")
+        # 启用文本选择
+        self.image_usage_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.image_usage_label.setVisible(False)  # 初始隐藏，只有添加图片后才显示
+        description_layout.addWidget(self.image_usage_label)
+        
+        # 粘贴优化提示（仅在首次启动时显示，现在默认不显示）
+        self.paste_optimization_label = QLabel("新功能: 已优化粘贴后的发送逻辑，图片和文本会一次性完整发送到Cursor。使用Ctrl+V粘贴内容。")
+        self.paste_optimization_label.setWordWrap(True)
+        self.paste_optimization_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.paste_optimization_label.setStyleSheet("color: #4caf50; font-style: italic; font-size: 10pt; margin-top: 5px;")
+        # 启用文本选择
+        self.paste_optimization_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        # 默认隐藏粘贴优化提示
+        self.paste_optimization_label.setVisible(False)
+        description_layout.addWidget(self.paste_optimization_label)
+        
+        # 创建状态标签
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.status_label.setAlignment(Qt.AlignLeft)
+        # 启用文本选择
+        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status_label.setVisible(False)  # 初始不可见
+        description_layout.addWidget(self.status_label)
 
         # 将容器设置为滚动区域的小部件
         scroll_area.setWidget(description_container)
@@ -487,68 +650,54 @@ class FeedbackUI(QMainWindow):
         feedback_layout.addWidget(scroll_area)
 
         # 添加预定义选项（如果有）
-        self.option_checkboxes = []
+        self.option_checkboxes = [] # 存储 QCheckBox 实例
+        self.option_labels = [] # 存储 QLabel 实例
         
         # 创建选项框架，无论是否有预定义选项都创建
         options_frame = QFrame()
         options_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        options_frame.setMinimumWidth(950)  # 确保选项区域足够宽
         
-        # 选项布局 - 垂直或网格布局
+        # 选项布局 - 垂直或网格布局，优化间距和边距
         options_layout = QVBoxLayout(options_frame)
         options_layout.setContentsMargins(2, 2, 2, 2)  # 减少所有边距，使元素更紧凑
-        options_layout.setSpacing(4)  # 减小间距
+        options_layout.setSpacing(2)  # 进一步减小间距
+
+        # 不添加常用语按钮，因为已经在顶部添加了
         
-        # 无论是否有预定义选项，都创建常用语按钮
-        # 常用语按钮始终显示在外部区域
-        canned_responses_container = QWidget()
-        canned_layout = QHBoxLayout(canned_responses_container)
-        canned_layout.setContentsMargins(0, 0, 0, 0)
-        canned_layout.addStretch(1)  # 将按钮推到右侧
-        
-        # 常用语按钮
-        canned_responses_button = QPushButton("常用语")
-        canned_responses_button.setFixedSize(80, 30)  # 调整大小更明显
-        canned_responses_button.setToolTip("选择或管理常用反馈短语")
-        canned_responses_button.clicked.connect(self._show_canned_responses)
-        canned_responses_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2a82da;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 4px;
-                font-size: 10pt;
-                font-weight: bold;
-                margin: 0px;
-            }
-            QPushButton:hover {
-                background-color: #3a92ea;
-            }
-            QPushButton:pressed {
-                background-color: #1a72ca;
-            }
-        """)
-        canned_layout.addWidget(canned_responses_button)
-        
-        # 如果有预定义选项时，创建复选框
+        # 如果有预定义选项时，创建复选框和标签
         if self.predefined_options and len(self.predefined_options) > 0:
-            # 创建复选框
-            for option in self.predefined_options:
-                # 创建水平布局用于放置选项
-                option_row = QHBoxLayout()
-                option_row.setContentsMargins(0, 0, 0, 0)
+            for option_text in self.predefined_options:
+                option_row_layout = QHBoxLayout()
+                option_row_layout.setContentsMargins(0, 0, 0, 0)
+                option_row_layout.setSpacing(5)  # 减小间距
                 
-                # 创建复选框
-                checkbox = QCheckBox(option)
+                # 创建复选框 - 不再包含文本
+                checkbox = QCheckBox()
+                checkbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)  # 固定大小
                 self.option_checkboxes.append(checkbox)
-                option_row.addWidget(checkbox)
                 
-                # 添加到选项布局
-                options_layout.addLayout(option_row)
+                # 直接将复选框添加到行布局，不再使用额外的容器布局
+                option_row_layout.addWidget(checkbox)
+                
+                # 创建文本标签 - 使用ClickableLabel，仅用于显示和文本选择
+                label = ClickableLabel(option_text)
+                label.setWordWrap(True)
+                self.option_labels.append(label)
+                
+                # 将标签添加到行布局，调整权重
+                option_row_layout.addWidget(label)
+                
+                # 确保标签获取所有额外空间
+                option_row_layout.setStretchFactor(checkbox, 0)  # 复选框不伸缩
+                option_row_layout.setStretchFactor(label, 1)     # 标签获取所有额外空间
+                
+                # 将行布局添加到选项布局
+                options_layout.addLayout(option_row_layout)
         
         # 添加选项框架和常用语按钮容器到布局
         feedback_layout.addWidget(options_frame)
-        feedback_layout.addWidget(canned_responses_container)
+        #feedback_layout.addWidget(canned_responses_container)  # 已经添加到options_layout中，不需要再次添加
             
         # 添加分隔线
         separator = QFrame()
@@ -559,6 +708,8 @@ class FeedbackUI(QMainWindow):
         # 自由文本反馈区
         # 创建文本编辑区和提交按钮的容器
         text_input_container = QWidget()
+        text_input_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        text_input_container.setMinimumWidth(950)  # 确保文本输入区域足够宽
         text_input_layout = QVBoxLayout(text_input_container)
         text_input_layout.setContentsMargins(0, 0, 0, 0)
         text_input_layout.setSpacing(8)
@@ -566,7 +717,11 @@ class FeedbackUI(QMainWindow):
         # 文本编辑框
         self.feedback_text = FeedbackTextEdit()
         self.feedback_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.feedback_text.setMinimumWidth(950)  # 确保文本编辑框足够宽
+        self.feedback_text.setMinimumHeight(220)  # 设置最小高度为220，增加可见行数
         self.feedback_text.setPlaceholderText("在此输入反馈内容 (纯文本格式，按Enter发送，Shift+Enter换行，Ctrl+V粘贴图片)")
+        
+
         
         # 连接文本变化信号，更新提交按钮文本
         self.feedback_text.textChanged.connect(self._update_submit_button_text)
@@ -577,25 +732,30 @@ class FeedbackUI(QMainWindow):
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(8)
         
-        # 添加清除所有图片按钮 - 初始不可见但会在需要时显示
-        self.clear_images_button = QPushButton("清除所有图片")
-        self.clear_images_button.setVisible(False)  # 初始隐藏，但布局中已预留位置
-        self.clear_images_button.setToolTip("清除所有已粘贴的图片")
-        self.clear_images_button.clicked.connect(self.clear_all_images)
-        self.clear_images_button.setStyleSheet("""
+        # 添加常用语按钮到左下角
+        self.bottom_canned_responses_button = QPushButton("常用语")
+        self.bottom_canned_responses_button.setFixedSize(100, 30)  # 调整大小
+        self.bottom_canned_responses_button.setToolTip("选择或管理常用反馈短语")
+        # 直接连接到_show_canned_responses方法
+        self.bottom_canned_responses_button.clicked.connect(self._show_canned_responses)
+        self.bottom_canned_responses_button.setStyleSheet("""
             QPushButton {
-                background-color: #555;
+                background-color: #2a82da;
                 color: white;
                 border: none;
                 border-radius: 4px;
                 padding: 5px 10px;
                 font-size: 10pt;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #d32f2f;
+                background-color: #3a92ea;
+            }
+            QPushButton:pressed {
+                background-color: #1a72ca;
             }
         """)
-        buttons_layout.addWidget(self.clear_images_button)
+        buttons_layout.addWidget(self.bottom_canned_responses_button)
         
         # 添加弹性空间，将后续按钮推到右侧
         buttons_layout.addStretch(1)
@@ -607,7 +767,24 @@ class FeedbackUI(QMainWindow):
         # 提交按钮 - 修改为占据整行，使其更明显
         self.submit_button = QPushButton("提交反馈")
         self.submit_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.submit_button.setMinimumHeight(40)  # 设置按钮最小高度
+        self.submit_button.setMinimumHeight(50)  # 增加按钮高度
+        self.submit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2a82da;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 20px;
+                font-weight: bold;
+                font-size: 12pt;
+            }
+            QPushButton:hover {
+                background-color: #3a92ea;
+            }
+            QPushButton:pressed {
+                background-color: #1a72ca;
+            }
+        """)
         self.submit_button.clicked.connect(self._submit_feedback)
         text_input_layout.addWidget(self.submit_button)  # 直接添加到主布局，占据整行
         
@@ -855,10 +1032,7 @@ class FeedbackUI(QMainWindow):
         if selected_options:
             print(f"DEBUG: 选定的选项: {selected_options}", file=sys.stderr)
         
-        # 构建最终的 MCP 响应结构
-        content_list = []
-        
-        # 1. 添加文本内容
+        # 组合所有文本部分
         final_text_parts = []
         
         # 添加选定的选项
@@ -872,7 +1046,93 @@ class FeedbackUI(QMainWindow):
         # 组合所有文本部分
         combined_text = "\n\n".join(final_text_parts)
         
-        # 如果有文本内容，添加到 content 列表
+        # 检查是否有图片
+        has_images = bool(self.image_widgets)
+        print(f"DEBUG: 检测到图片: {has_images}, 图片数量: {len(self.image_widgets) if has_images else 0}", file=sys.stderr)
+        
+        # 如果有图片，优先使用优化的按键序列
+        if has_images:
+            # 收集所有图片数据
+            image_pixmaps = []
+            for image_id in sorted(self.image_widgets.keys()):
+                widget = self.image_widgets[image_id]
+                if widget and hasattr(widget, 'original_pixmap'):
+                    image_pixmaps.append(widget.original_pixmap)
+            
+            print(f"DEBUG: 准备使用优化按键序列发送 {len(image_pixmaps)} 张图片", file=sys.stderr)
+            
+            # 动态导入直接输入模块
+            try:
+                # 尝试导入优化的按键序列函数
+                try:
+                    from cursor_direct_input import send_to_cursor_with_sequence
+                    use_optimized_sequence = True
+                    print("DEBUG: 成功导入优化按键序列函数", file=sys.stderr)
+                except (ImportError, AttributeError) as seq_error:
+                    print(f"WARNING: 无法导入优化按键序列函数: {seq_error}, 将使用标准函数", file=sys.stderr)
+                    use_optimized_sequence = False
+                
+                # 总是导入标准函数作为备用
+                from cursor_direct_input import send_to_cursor_input
+            except ImportError as e:
+                print(f"ERROR: 无法导入cursor_direct_input模块: {e}", file=sys.stderr)
+                QMessageBox.critical(
+                    self,
+                    "模块导入错误",
+                    f"无法导入cursor_direct_input模块: {e}\n请确保已安装所需的依赖。"
+                )
+            else:
+                # 模块导入成功后执行的代码
+                # 隐藏窗口
+                self.hide()
+                
+                # 先处理一下剩余的事件，确保窗口完全隐藏
+                QApplication.processEvents()
+                
+                # 显示等待消息
+                print("DEBUG: 即将激活Cursor对话框...", file=sys.stderr)
+        
+                # 尝试发送到Cursor对话框
+                try:
+                    # 尝试使用优化的按键序列发送内容
+                    if use_optimized_sequence:
+                        print("DEBUG: 使用优化按键序列发送内容...", file=sys.stderr)
+                        success = send_to_cursor_with_sequence(combined_text, image_pixmaps)
+                    else:
+                        print("DEBUG: 使用标准方法发送内容...", file=sys.stderr)
+                        success = send_to_cursor_input(combined_text, image_pixmaps)
+                    
+                    if success:
+                        print("DEBUG: 成功发送到Cursor对话框，完全关闭MCP服务", file=sys.stderr)
+                        # 设置空结果，表示已成功完成
+                        self.result = {"content": []}
+                        # 关闭窗口
+                        self.close()
+                        # 直接终止进程，确保MCP服务完全关闭
+                        print("DEBUG: MCP服务已完成，即将退出进程", file=sys.stderr)
+                        # 在应用程序退出前确保剩余事件被处理
+                        QApplication.processEvents()
+                        # 完全退出程序
+                        sys.exit(0)
+                        return
+                    else:
+                        # 发送失败，切换到标准MCP模式
+                        print("DEBUG: 直接对话发送失败，使用标准MCP模式", file=sys.stderr)
+                        # 重新显示窗口用于标准模式
+                        self.show()
+                except Exception as e:
+                    print(f"ERROR: 直接对话模式错误: {e}", file=sys.stderr)
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    
+                    # 发生异常，重新显示窗口
+                    self.show()
+        
+        # 纯文本模式或直接对话模式失败时使用标准MCP模式
+        # 构建最终的 MCP 响应结构
+        content_list = []
+        
+        # 添加文本内容
         if combined_text:
             content_list.append({
                 "type": "text",
@@ -880,121 +1140,16 @@ class FeedbackUI(QMainWindow):
             })
             print(f"DEBUG: 添加文本内容, 长度: {len(combined_text)}", file=sys.stderr)
         
-        # 2. 添加图片内容
-        image_contents = self.get_all_images_content_data()
-        if image_contents:
-            print(f"DEBUG: 处理 {len(image_contents)} 对图片数据和元数据", file=sys.stderr)
-            for image_pair in image_contents:
-                # 首先添加元数据文本项 - 确保元数据文本项在图片数据项之前
-                metadata_item = image_pair["metadata_item"]
-                content_list.append(metadata_item)
-                print(f"DEBUG: 添加图片元数据文本项: {metadata_item['text']}", file=sys.stderr)
-                
-                # 然后添加图片数据项
-                image_item = image_pair["image_item"]
-                content_list.append(image_item)
-                print(f"DEBUG: 添加图片数据项: type={image_item['type']}, mimeType={image_item['mimeType']}", file=sys.stderr)
-            
-            print(f"DEBUG: 添加了 {len(image_contents)} 张图片的数据和元数据到内容列表", file=sys.stderr)
-            
-        # 3. 检查是否有内容可提交
+        # 检查是否有内容可提交
         if not content_list:
-            print("DEBUG: 没有内容可提交", file=sys.stderr)
-            QMessageBox.warning(self, "提交失败", "请输入反馈文本或添加图片。")
+            print("DEBUG: 没有内容可提交，直接关闭窗口", file=sys.stderr)
+            # 设置空结果并关闭窗口，等同于用户直接关闭窗口
+            self.close()
             return
         
-        # 4. 验证内容格式是否符合MCP要求
-        is_valid = True
-        for item in content_list:
-            if "type" not in item:
-                print(f"ERROR: 内容项缺少 'type' 字段: {item}", file=sys.stderr)
-                is_valid = False
-            elif item["type"] == "text" and "text" not in item:
-                print(f"ERROR: 文本内容项缺少 'text' 字段: {item}", file=sys.stderr)
-                is_valid = False
-            elif item["type"] == "image" and ("data" not in item or "mimeType" not in item):
-                print(f"ERROR: 图片内容项缺少 'data' 或 'mimeType' 字段: {item}", file=sys.stderr)
-                is_valid = False
-        
-        if not is_valid:
-            QMessageBox.critical(self, "提交失败", "反馈内容格式无效，请重试。")
-            return
-        
-        # 删除"提交中"对话框，直接处理提交
-        print("开始处理反馈提交...", file=sys.stderr)
-        
-        try:
-            # 对于旧版本兼容，构建纯文本版本的反馈
-            text_only_parts = []
-            
-            # 添加选定的选项和文本反馈
-            if combined_text:
-                text_only_parts.append(combined_text)
-                
-            # 如果有图片，添加图片信息
-            if self.image_widgets:
-                # 获取所有图片信息
-                image_infos = []
-                for image_id, widget in self.image_widgets.items():
-                    pixmap = widget.original_pixmap
-                    image_infos.append(f"图片 {image_id+1}: {pixmap.width()}x{pixmap.height()}")
-                
-                # 添加图片信息到反馈中
-                image_info_text = "已添加 {} 张图片: {}".format(
-                    len(image_infos), 
-                    ", ".join(image_infos)
-                )
-                text_only_parts.append(image_info_text)
-                
-            # 用换行符连接多个部分
-            final_text_feedback = "\n\n".join(text_only_parts)
-            
-            # 为了调试目的，打印 MCP 格式的数据
-            mcp_data = {"content": content_list}
-            print(f"DEBUG: MCP 格式提交数据: {json.dumps(mcp_data)}", file=sys.stderr)
-            
-            # 打印更多详细的内容结构信息
-            for i, item in enumerate(content_list):
-                item_type = item.get("type", "unknown")
-                print(f"DEBUG: 内容项 {i+1}: 类型={item_type}", file=sys.stderr)
-                if item_type == "text":
-                    text_content = item.get("text", "")
-                    print(f"DEBUG: 文本内容长度: {len(text_content)}", file=sys.stderr)
-                    # 只打印前50个字符作为示例
-                    if text_content:
-                        # 检查是否是JSON格式的元数据
-                        is_metadata = False
-                        try:
-                            json_data = json.loads(text_content)
-                            if isinstance(json_data, dict) and "width" in json_data and "height" in json_data:
-                                is_metadata = True
-                                print(f"DEBUG: 图片元数据: 宽度={json_data['width']}, 高度={json_data['height']}, 格式={json_data.get('format', 'unknown')}, 大小={json_data.get('size', 0)/1024:.1f}KB", file=sys.stderr)
-                        except:
-                            pass
-                            
-                        if not is_metadata:
-                            print(f"DEBUG: 文本内容示例: {text_content[:50]}{'...' if len(text_content) > 50 else ''}", file=sys.stderr)
-                elif item_type == "image":
-                    mime_type = item.get("mimeType", "unknown")
-                    data = item.get("data", "")
-                    print(f"DEBUG: 图片MIME类型: {mime_type}, Base64数据长度: {len(data)}", file=sys.stderr)
-                    if data:
-                        # 只打印Base64数据的前30个字符
-                        print(f"DEBUG: Base64数据开头: {data[:30]}...", file=sys.stderr)
-            
-            # 直接返回正确格式的数据
-            self.feedback_result = mcp_data
-            
-            print("DEBUG: 反馈结果设置完成", file=sys.stderr)
-            
-        except Exception as e:
-            # 显示错误信息
-            error_message = f"提交反馈时发生错误: {str(e)}"
-            print(f"ERROR: {error_message}", file=sys.stderr)
-            QMessageBox.critical(self, "提交失败", error_message)
-            return
-        
-        print("DEBUG: 提交完成，关闭窗口", file=sys.stderr)
+        # 设置结果并关闭窗口
+        self.result = {"content": content_list}
+        print("DEBUG: 反馈结果设置完成，关闭窗口", file=sys.stderr)
         self.close()
 
     def closeEvent(self, event):
@@ -1010,16 +1165,44 @@ class FeedbackUI(QMainWindow):
         print("开始运行UI...", file=sys.stderr)
         self.show()
         print("UI窗口已显示，准备进入事件循环...", file=sys.stderr)
+        
+        # 添加一个单次定时器，在窗口显示后强制应用宽度
+        # 这是处理某些系统上可能出现的窗口尺寸设置不正确的问题的方法
+        QTimer.singleShot(100, self._enforce_window_size)
+        
         QApplication.instance().exec()
         print("事件循环结束，窗口关闭...", file=sys.stderr)
 
-        if not self.feedback_result:
+        if not self.result:
             # 返回空的内容列表而不是空字符串
             print("未获得反馈结果，返回空内容列表", file=sys.stderr)
             return FeedbackResult(content=[])
 
-        print(f"返回反馈结果: {self.feedback_result}", file=sys.stderr)
-        return self.feedback_result
+        print(f"返回反馈结果: {self.result}", file=sys.stderr)
+        return self.result
+        
+    def _enforce_window_size(self):
+        """强制应用窗口尺寸，确保宽度为1000，高度至少为750"""
+        needs_resize = False
+        
+        # 检查宽度
+        if self.width() < 1000:
+            print(f"DEBUG: 强制应用窗口宽度，当前宽度为 {self.width()}, 调整到 1000", file=sys.stderr)
+            needs_resize = True
+            
+        # 检查高度
+        if self.height() < 750:
+            print(f"DEBUG: 强制应用窗口高度，当前高度为 {self.height()}, 调整到 750", file=sys.stderr)
+            needs_resize = True
+            
+        # 如果需要调整大小
+        if needs_resize:
+            self.resize(1000, 750)
+            # 居中显示
+            screen = QApplication.primaryScreen().geometry()
+            x = (screen.width() - 1000) // 2
+            y = (screen.height() - 750) // 2
+            self.move(x, y)
 
     def event(self, event):
         # 检测窗口失活事件
@@ -1033,10 +1216,13 @@ class FeedbackUI(QMainWindow):
         return super().event(event)
         
     def handle_paste_image(self):
-        """处理粘贴图片操作"""
+        """处理粘贴图片操作，支持同时处理文本和图片"""
         clipboard = QApplication.clipboard()
         mime_data = clipboard.mimeData()
         
+        handled_content = False
+        
+        # 检查是否有图片内容
         if mime_data.hasImage():
             # 从剪贴板获取图片
             image = clipboard.image()
@@ -1044,8 +1230,42 @@ class FeedbackUI(QMainWindow):
                 # 将QImage转换为QPixmap并保存
                 pixmap = QPixmap.fromImage(image)
                 self.add_image_preview(pixmap)
-                return True
-        return False
+                handled_content = True
+                print("DEBUG: 从剪贴板处理了图片内容", file=sys.stderr)
+        
+        # 检查是否有文本内容 (即使已处理了图片也检查文本)
+        if mime_data.hasText():
+            text = mime_data.text().strip()
+            if text:
+                # 只有当文本编辑框为空或当前没有选中文本时，才直接替换整个内容
+                # 否则将文本插入到当前光标位置
+                cursor = self.feedback_text.textCursor()
+                if self.feedback_text.toPlainText().strip() == "" or cursor.hasSelection():
+                    self.feedback_text.setPlainText(text)
+                else:
+                    # 在当前光标位置插入文本
+                    self.feedback_text.insertPlainText(text)
+                handled_content = True
+                print("DEBUG: 从剪贴板处理了文本内容", file=sys.stderr)
+        
+        # 如果有URLs（可能是图片文件）且尚未处理图片，尝试处理
+        if mime_data.hasUrls() and not handled_content:
+            for url in mime_data.urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    # 检查是否是图片文件
+                    if os.path.isfile(file_path) and os.path.splitext(file_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                        pixmap = QPixmap(file_path)
+                        if not pixmap.isNull() and pixmap.width() > 0:
+                            self.add_image_preview(pixmap)
+                            handled_content = True
+                            print(f"DEBUG: 从剪贴板URL处理了图片: {file_path}", file=sys.stderr)
+                            break  # 只处理第一个有效图片文件
+        
+        # 更新提交按钮文本
+        self._update_submit_button_text()
+        
+        return handled_content
     
     def add_image_preview(self, pixmap):
         """添加图片预览小部件"""
@@ -1068,8 +1288,11 @@ class FeedbackUI(QMainWindow):
             # 保存最后一个图片用于提交
             self.image_pixmap = pixmap
             
-            # 显示清除所有图片按钮
-            self.clear_images_button.setVisible(True)
+            # 不再显示清除图片按钮，因为已经移除了这个功能
+            
+            # 显示图片使用提示
+            if hasattr(self, 'image_usage_label'):
+                self.image_usage_label.setVisible(True)
             
             # 更新提交按钮文本
             self._update_submit_button_text()
@@ -1089,7 +1312,11 @@ class FeedbackUI(QMainWindow):
             if not self.image_widgets:
                 self.feedback_text.show_images_container(False)
                 self.image_pixmap = None
-                self.clear_images_button.setVisible(False)
+                # 不再显示清除图片按钮，因为已经移除了这个功能
+                
+                # 隐藏图片使用提示
+                if hasattr(self, 'image_usage_label'):
+                    self.image_usage_label.setVisible(False)
             else:
                 # 更新最后一个图片
                 last_id = max(self.image_widgets.keys())
@@ -1100,29 +1327,24 @@ class FeedbackUI(QMainWindow):
     
     def clear_all_images(self):
         """清除所有图片预览"""
-        # 弹出确认对话框
-        reply = QMessageBox.question(
-            self, 
-            "确认", 
-            "确定要清除所有图片吗？", 
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No  # 默认选择No，避免误操作
-        )
+        # 直接删除所有图片，不显示确认对话框
         
-        if reply == QMessageBox.Yes:
-            # 复制ID列表，因为在循环中会修改字典
-            image_ids = list(self.image_widgets.keys())
-            for image_id in image_ids:
-                self.remove_image(image_id)
-            
-            self.image_pixmap = None
-            self.feedback_text.show_images_container(False)
-            
-            # 隐藏清除图片按钮
-            self.clear_images_button.setVisible(False)
-            
-            # 更新提交按钮文本
-            self._update_submit_button_text()
+        # 复制ID列表，因为在循环中会修改字典
+        image_ids = list(self.image_widgets.keys())
+        for image_id in image_ids:
+            self.remove_image(image_id)
+        
+        self.image_pixmap = None
+        self.feedback_text.show_images_container(False)
+        
+        # 不再需要隐藏清除图片按钮，因为已经移除了这个功能
+        
+        # 隐藏图片使用提示
+        if hasattr(self, 'image_usage_label'):
+            self.image_usage_label.setVisible(False)
+        
+        # 更新提交按钮文本
+        self._update_submit_button_text()
     
     def _update_submit_button_text(self):
         """根据当前输入情况更新提交按钮文本"""
@@ -1130,18 +1352,65 @@ class FeedbackUI(QMainWindow):
         has_images = bool(self.image_widgets)
         
         if has_text and has_images:
-            self.submit_button.setText(f"提交反馈 (含 {len(self.image_widgets)} 张图片)")
+            self.submit_button.setText(f"发送图片反馈 ({len(self.image_widgets)} 张)")
+            self.submit_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #ff6f00;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    min-width: 120px;
+                    min-height: 36px;
+                }
+                QPushButton:hover {
+                    background-color: #ff8f00;
+                }
+                QPushButton:pressed {
+                    background-color: #e56a00;
+                }
+            """)
+            # 更新提交按钮的工具提示
+            self.submit_button.setToolTip("点击后将自动关闭窗口并激活Cursor对话框")
         elif has_images:
-            self.submit_button.setText(f"提交 {len(self.image_widgets)} 张图片")
+            self.submit_button.setText(f"发送 {len(self.image_widgets)} 张图片")
+            self.submit_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #ff6f00;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    min-width: 120px;
+                    min-height: 36px;
+                }
+                QPushButton:hover {
+                    background-color: #ff8f00;
+                }
+                QPushButton:pressed {
+                    background-color: #e56a00;
+                }
+            """)
+            self.submit_button.setToolTip("点击后将自动关闭窗口并激活Cursor对话框")
         elif has_text:
             self.submit_button.setText("提交反馈")
+            self.submit_button.setStyleSheet("")  # 重置为默认样式
+            self.submit_button.setToolTip("")  # 清除工具提示
         else:
             self.submit_button.setText("提交")
+            self.submit_button.setStyleSheet("")  # 重置为默认样式
+            self.submit_button.setToolTip("")  # 清除工具提示
 
     def _show_canned_responses(self):
         """显示常用语对话框"""
         # 临时禁用自动最小化功能
         self.disable_auto_minimize = True
+        
+        print("DEBUG: FeedbackUI._show_canned_responses - START", file=sys.stderr)
         
         try:
             # 获取常用语列表
@@ -1150,15 +1419,118 @@ class FeedbackUI(QMainWindow):
             responses = settings.value("phrases", [])
             settings.endGroup()
             
+            # 确保responses是列表
+            if responses is None:
+                responses = []
+                print("DEBUG: 没有找到常用语设置，使用空列表", file=sys.stderr)
+            elif not isinstance(responses, list):
+                # 如果从QSettings读取的不是列表，尝试转换
+                try:
+                    if isinstance(responses, str):
+                        responses = [responses]
+                    else:
+                        responses = list(responses)
+                except:
+                    responses = []
+                print(f"DEBUG: 常用语设置不是列表，转换后: {responses}", file=sys.stderr)
+            
+            print(f"DEBUG: 加载常用语，数量: {len(responses)}", file=sys.stderr)
+            if responses:
+                print(f"DEBUG: 第一项: {responses[0]}", file=sys.stderr)
+            
             # 显示常用语对话框
             dialog = SelectCannedResponseDialog(responses, self)
             dialog.setWindowModality(Qt.ApplicationModal)  # 设置为模态对话框
+            print("DEBUG: FeedbackUI._show_canned_responses - About to call dialog.exec()", file=sys.stderr)
             dialog.exec()
+            print("DEBUG: FeedbackUI._show_canned_responses - dialog.exec() finished", file=sys.stderr)
             
             # 注意：不需要检查结果，因为双击项目时会直接插入文本并关闭对话框
         finally:
             # 恢复自动最小化功能
             self.disable_auto_minimize = False
+            print("DEBUG: FeedbackUI._show_canned_responses - END", file=sys.stderr)
+
+    def _add_images_from_clipboard(self):
+        """从剪贴板添加图片"""
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+        
+        added_images = 0
+        
+        # 检查剪贴板中是否有图片
+        if mime_data.hasImage():
+            pixmap = QPixmap(clipboard.pixmap())
+            if not pixmap.isNull() and pixmap.width() > 0:
+                self._add_image_widget(pixmap)
+                added_images += 1
+                print(f"DEBUG: 从剪贴板添加了图片，尺寸: {pixmap.width()}x{pixmap.height()}", file=sys.stderr)
+        
+        # 检查剪贴板中是否有URLs（可能是图片文件）
+        if mime_data.hasUrls():
+            for url in mime_data.urls():
+                # 只处理本地文件URL
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    # 检查是否是图片文件
+                    if os.path.isfile(file_path) and os.path.splitext(file_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                        pixmap = QPixmap(file_path)
+                        if not pixmap.isNull() and pixmap.width() > 0:
+                            self._add_image_widget(pixmap)
+                            added_images += 1
+                            print(f"DEBUG: 从剪贴板URL添加了图片: {file_path}", file=sys.stderr)
+        
+        # 更新提交按钮文本
+        self._update_submit_button_text()
+        
+        # 显示添加成功或失败的反馈
+        if added_images > 0:
+            self.status_label.setText(f"成功添加了 {added_images} 张图片")
+            self.status_label.setStyleSheet("color: green;")
+            
+            # 显示图片处理提示
+            if self.image_usage_label:
+                self.image_usage_label.setVisible(True)
+        else:
+            self.status_label.setText("剪贴板中没有找到有效图片")
+            self.status_label.setStyleSheet("color: #ff6f00;")
+        
+        # 使状态标签可见
+        self.status_label.setVisible(True)
+        
+        # 设置定时器在3秒后隐藏状态标签
+        QTimer.singleShot(3000, lambda: self.status_label.setVisible(False))
+        
+        return added_images
+        
+    def _remove_image(self, widget):
+        """移除图片控件"""
+        if widget in self.image_widgets:
+            self.image_widgets.remove(widget)
+            # 从布局中移除并销毁控件
+            self.images_layout.removeWidget(widget)
+            widget.deleteLater()
+            
+            # 更新提交按钮文本
+            self._update_submit_button_text()
+            
+            # 隐藏空的图片区域
+            self.images_scroll_area.setVisible(len(self.image_widgets) > 0)
+            
+            # 更新图片处理提示标签的可见性
+            if self.image_usage_label:
+                self.image_usage_label.setVisible(len(self.image_widgets) > 0)
+            
+            # 显示反馈
+            self.status_label.setText("已移除图片")
+            self.status_label.setStyleSheet("color: green;")
+            self.status_label.setVisible(True)
+            
+            # 设置定时器在3秒后隐藏状态标签
+            QTimer.singleShot(3000, lambda: self.status_label.setVisible(False))
+            
+            print(f"DEBUG: 移除了图片，剩余 {len(self.image_widgets)} 张", file=sys.stderr)
+
 
 class ManageCannedResponsesDialog(QDialog):
     """常用语管理对话框"""
@@ -1167,8 +1539,8 @@ class ManageCannedResponsesDialog(QDialog):
         super().__init__(parent)
         # 设置对话框属性
         self.setWindowTitle("管理常用语")
-        self.resize(500, 400)
-        self.setMinimumSize(400, 300)
+        self.resize(500, 500)  # 增加对话框尺寸
+        self.setMinimumSize(400, 400)  # 增加最小尺寸
         
         # 设置模态属性
         self.setWindowModality(Qt.ApplicationModal)
@@ -1193,6 +1565,8 @@ class ManageCannedResponsesDialog(QDialog):
         # 添加说明标签
         description_label = QLabel("管理您的常用反馈短语。点击列表项进行编辑，编辑完成后点击\"更新\"按钮。")
         description_label.setWordWrap(True)
+        # 启用文本选择
+        description_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         main_layout.addWidget(description_label)
         
         # 创建列表部件
@@ -1321,19 +1695,40 @@ class ManageCannedResponsesDialog(QDialog):
         text = self.input_field.text().strip()
         if text:
             # 检查是否已存在
-            existing_items = self.responses_list.findItems(text, Qt.MatchExactly)
-            if existing_items:
+            exists = False
+            for i in range(self.responses_list.count()):
+                item = self.responses_list.item(i)
+                item_widget = self.responses_list.itemWidget(item)
+                if item_widget:
+                    # 获取文本标签
+                    text_label = item_widget.layout().itemAt(0).widget()
+                    if text_label and isinstance(text_label, QLabel) and text_label.text() == text:
+                        exists = True
+                        break
+            
+            if exists:
                 QMessageBox.warning(self, "重复项", "此常用语已存在，请输入不同的内容。")
                 return
-            
+                
             # 添加到列表
-            self.responses_list.addItem(text)
+            self._add_item_to_list(text)
             
             # 保存设置
-            self._save_canned_responses()
+            self._save_responses()
             
             # 清空输入框
             self.input_field.clear()
+            
+            # 显示成功提示
+            QToolTip.showText(
+                QCursor.pos(),
+                "成功添加常用语",
+                self,
+                QRect(),
+                2000
+            )
+            
+            print(f"DEBUG: 成功添加常用语: {text}", file=sys.stderr)
     
     def _update_response(self):
         """更新选中的常用语"""
@@ -1412,213 +1807,323 @@ class ManageCannedResponsesDialog(QDialog):
         return responses
 
 class SelectCannedResponseDialog(QDialog):
-    """常用语选择对话框"""
+    """常用语选择对话框 - 完全重构版"""
     
     def __init__(self, responses, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("常用语 - 已更新")
-        self.resize(400, 350)  # 调整为更合适的大小
-        self.setMinimumSize(350, 300)
+        print("DEBUG: SelectCannedResponseDialog.__init__ - START", file=sys.stderr)
+        self.setWindowTitle("常用语管理")
+        self.resize(500, 450)
+        self.setMinimumSize(450, 400)
         
         # 设置模态属性
         self.setWindowModality(Qt.ApplicationModal)
         self.setModal(True)
         
-        # 保存常用语列表和父窗口引用
-        self.responses = responses
+        # 保存父窗口引用和响应数据
         self.parent_window = parent
         self.selected_response = None
-        self.drag_start_position = None  # 记录拖拽开始位置
         
-        # 创建设置对象，用于存储常用语
+        # 确保responses是列表
+        self.responses = responses if responses else []
+        print(f"DEBUG: SelectCannedResponseDialog.__init__ - Received {len(self.responses)} responses", file=sys.stderr)
+        
+        # 创建设置对象
         self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
         
-        # 简化窗口样式
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2d2d2d;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
+        # 创建界面
+        self._create_ui()
+        
+        # 加载常用语数据
+        self._load_responses()
+        
+        print(f"DEBUG: SelectCannedResponseDialog.__init__ - END, Loaded {len(self.responses)} responses into UI", file=sys.stderr)
+    
+    def _create_ui(self):
+        """创建用户界面"""
+        print("DEBUG: SelectCannedResponseDialog._create_ui - START", file=sys.stderr)
+        # 主布局
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # 标题标签
+        title = QLabel("常用语列表")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold; color: white;")
+        layout.addWidget(title)
+        
+        # 提示标签
+        hint = QLabel("双击插入文本，点击删除按钮移除项目")
+        hint.setStyleSheet("font-size: 9pt; color: #aaaaaa;")
+        layout.addWidget(hint)
+        
+        # 常用语列表 - 使用DraggableListWidget以支持拖拽排序
+        self.list_widget = DraggableListWidget()
+        self.list_widget.setAlternatingRowColors(True)
+        self.list_widget.setSelectionMode(QListWidget.SingleSelection)
+        
+        # 禁止自动选择第一项
+        self.list_widget.setProperty("NoAutoSelect", True)
+        self.list_widget.setAttribute(Qt.WA_MacShowFocusRect, False)  # 在macOS上禁用焦点矩形
+        
+        # 连接双击信号 - 注意：我们需要同时连接自定义信号和标准信号
+        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
+        # 连接自定义双击信号到处理方法
+        self.list_widget.item_double_clicked.connect(self._insert_text_to_parent)
+        
+        # 连接拖拽完成信号到保存响应函数
+        self.list_widget.drag_completed.connect(self._save_responses)
+        self.list_widget.setStyleSheet("""
             QListWidget {
                 background-color: #333333;
-                color: #ffffff;
-                border: none;
+                color: white;
+                border: 1px solid #444;
                 border-radius: 4px;
                 padding: 4px;
+                font-size: 11pt;
             }
             QListWidget::item {
-                border-bottom: 1px solid #404040;
+                border-bottom: 1px solid #444;
                 padding: 8px;
+                margin: 2px;
             }
             QListWidget::item:hover {
-                background-color: #404040;
+                background-color: #444444;
             }
             QListWidget::item:selected {
-                background-color: #505050;
-            }
-            QLineEdit {
-                background-color: #404040;
-                color: #ffffff;
+                background-color: transparent;
                 border: none;
+            }
+            QListWidget::item:focus {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        # 设置拖拽模式和提示
+        self.list_widget.setDragDropMode(QListWidget.InternalMove)
+        self.list_widget.setToolTip("拖拽项目可以调整顺序")
+        # 禁用水平滚动条
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        layout.addWidget(self.list_widget, 1)  # 1表示可伸缩
+        
+        # 添加常用语区域
+        input_layout = QHBoxLayout()
+        
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("输入新的常用语")
+        self.input_field.returnPressed.connect(self._add_response)
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #444;
                 border-radius: 4px;
                 padding: 8px;
+                font-size: 11pt;
             }
+        """)
+        input_layout.addWidget(self.input_field)
+        
+        self.add_button = QPushButton("保存")
+        self.add_button.clicked.connect(self._add_response)
+        self.add_button.setStyleSheet("""
             QPushButton {
                 background-color: #2a82da;
-                color: #ffffff;
+                color: white;
                 border: none;
                 border-radius: 4px;
-                padding: 6px 12px;
-                min-width: 60px;
+                padding: 8px 15px;
+                font-size: 10pt;
+                font-weight: bold;
+                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #3a92ea;
             }
-            QPushButton:pressed {
-                background-color: #1a72ca;
-            }
         """)
+        input_layout.addWidget(self.add_button)
         
-        # 创建UI
-        self._create_ui()
+        layout.addLayout(input_layout)
         
-        # 加载常用语
-        self._load_responses()
-    
-    def _on_item_double_clicked(self, item):
-        """双击列表项时，将文本插入到父窗口的输入框"""
-        # 获取项目对应的小部件
-        item_widget = self.responses_list.itemWidget(item)
-        if item_widget:
-            # 获取文本标签（第一个子部件）
-            text_label = item_widget.layout().itemAt(0).widget()
-            if text_label and isinstance(text_label, QLabel):
-                text = text_label.text()
-                # 如果有父窗口，将文本插入到输入框
-                if self.parent_window and hasattr(self.parent_window, 'feedback_text'):
-                    # 插入文本并关闭对话框
-                    self.parent_window.feedback_text.insertPlainText(text)
-                    self.accept()  # 关闭对话框
-                    
-                    # 保存选定的常用语
-                    self.selected_response = text
-    
-    def _load_responses(self):
-        """从设置加载常用语到列表"""
-        self.responses_list.clear()
-        for response in self.responses:
-            if response.strip():  # 跳过空字符串
-                self._add_item_to_list(response)
-    
-    def _add_item_to_list(self, text):
-        """添加带有删除按钮的项目到列表，简化布局"""
-        # 创建列表项
-        item = QListWidgetItem()
-        self.responses_list.addItem(item)
-        
-        # 创建项目小部件
-        item_widget = QWidget()
-        item_layout = QHBoxLayout(item_widget)
-        item_layout.setContentsMargins(5, 2, 5, 2)
-        item_layout.setSpacing(10)
-        
-        # 文本标签
-        text_label = QLabel(text)
-        text_label.setWordWrap(True)
-        text_label.setStyleSheet("color: #ffffff;")
-        item_layout.addWidget(text_label, 1)
-        
-        # 删除按钮 - 使用固定尺寸和直接样式
-        delete_button = QPushButton("×")
-        delete_button.setFixedSize(26, 26)
-        delete_button.setCursor(Qt.PointingHandCursor)
-        # 直接应用样式表
-        delete_button.setStyleSheet("""
-            QPushButton {
-                background-color: #444444;
-                color: #dddddd;
-                border: none;
-                border-radius: 13px;
-                font-size: 16pt;
-                font-weight: bold;
-                padding: 0px;
-                margin: 0px;
-                min-width: 26px;
-                min-height: 26px;
-                max-width: 26px;
-                max-height: 26px;
-                line-height: 26px;
-                text-align: center;
+        # 设置整体对话框样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #2d2d2d;
             }
-            QPushButton:hover {
-                background-color: #ff5050;
+            QLabel {
                 color: white;
             }
-            QPushButton:pressed {
-                background-color: #cc3030;
+        """)
+        print("DEBUG: SelectCannedResponseDialog._create_ui - END", file=sys.stderr)
+    
+    def _load_responses(self):
+        """加载常用语到列表"""
+        print(f"DEBUG: SelectCannedResponseDialog._load_responses - START, {len(self.responses)} responses to load", file=sys.stderr)
+        self.list_widget.clear()
+        for i, response in enumerate(self.responses):
+            print(f"DEBUG: SelectCannedResponseDialog._load_responses - Loading item {i+1}: '{response}'", file=sys.stderr)
+            if response and response.strip():
+                self._add_item_to_list(response)
+        
+        # 清除所有选择，避免第一项被自动选中
+        self.list_widget.clearSelection()
+        # 设置当前项为None，确保没有项目被选中
+        self.list_widget.setCurrentItem(None)
+        # 使用样式表禁用选中项的高亮
+        current_stylesheet = self.list_widget.styleSheet()
+        self.list_widget.setStyleSheet(current_stylesheet + """
+            QListWidget::item:selected {
+                background-color: transparent;
+                border: none;
             }
         """)
-        delete_button.clicked.connect(lambda checked, t=text: self._delete_response(t))
-        delete_button.setToolTip("删除此常用语")
-        item_layout.addWidget(delete_button)
-        
-        # 设置项目小部件和高度
-        item.setSizeHint(QSize(item_widget.sizeHint().width(), max(40, text_label.sizeHint().height() + 10)))
-        self.responses_list.setItemWidget(item, item_widget)
+        print("DEBUG: SelectCannedResponseDialog._load_responses - Cleared selection", file=sys.stderr)
+        print("DEBUG: SelectCannedResponseDialog._load_responses - END", file=sys.stderr)
+    
+    def _add_item_to_list(self, text):
+        """将常用语添加到列表 - 单行显示，过长省略"""
+        print(f"DEBUG: SelectCannedResponseDialog._add_item_to_list - Adding: '{text}'", file=sys.stderr)
+        # 创建列表项
+        item = QListWidgetItem()
+        self.list_widget.addItem(item)
+
+        # 创建自定义小部件
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(5, 2, 5, 2) # 调整边距
+        layout.setSpacing(5) # 调整间距
+
+        # 文本标签 - 单行，过长省略
+        label = QLabel(text)
+        # 在PySide6中，QLabel没有setTextElideMode方法，但可以通过样式表和属性实现省略效果
+        label.setStyleSheet("color: white; font-size: 11pt; text-overflow: ellipsis;")
+        label.setWordWrap(False)  # 禁用自动换行
+        # 设置最大宽度，以便在宽度受限时出现省略号
+        label.setMaximumWidth(350) # 限制宽度，以便显示省略号
+        # 设置属性以确保文本正确省略
+        label.setAttribute(Qt.WA_TranslucentBackground)
+        label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred) # 允许水平扩展
+        layout.addWidget(label, 1)  # 1表示可伸缩
+
+        # 删除按钮 - 改为无文字的红色方块
+        delete_btn = QPushButton("")  # 不显示文字
+        delete_btn.setFixedSize(40, 25)  # 固定大小的方块
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d32f2f; /* 明显的红色 */
+                color: white;
+                border: none;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #f44336; /* 鼠标悬停时更亮的红色 */
+            }
+            QPushButton:pressed {
+                background-color: #b71c1c; /* 按下时更深的红色 */
+            }
+        """)
+        delete_btn.setToolTip("删除此常用语")  # 添加工具提示，代替文字说明
+        delete_btn.clicked.connect(lambda: self._delete_response(text))
+        layout.addWidget(delete_btn)
+
+        # 设置小部件
+        self.list_widget.setItemWidget(item, widget)
+
+        # 设置固定项目高度以适应单行文本和按钮
+        # 这个值可能需要根据字体大小和按钮高度微调
+        font_metrics = QFontMetrics(label.font())
+        single_line_height = font_metrics.height()
+        button_height = delete_btn.sizeHint().height()
+        item_height = max(single_line_height + 10, button_height + 10) # 确保至少能容纳按钮，并给文本留出边距
+        item.setSizeHint(QSize(self.list_widget.viewport().width() - 10, item_height)) # 宽度适应视口
     
     def _add_response(self):
         """添加新的常用语"""
         text = self.input_field.text().strip()
-        if text:
-            # 检查是否已存在
-            existing_items = self.responses_list.findItems(text, Qt.MatchExactly)
-            if existing_items:
-                QMessageBox.warning(self, "重复项", "此常用语已存在，请输入不同的内容。")
-                return
+        if not text:
+            return
             
-            # 添加到列表
-            self.responses_list.addItem(text)
-            
-            # 保存设置
-            self._save_canned_responses()
-            
-            # 清空输入框
-            self.input_field.clear()
+        # 检查是否重复
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget:
+                label = widget.layout().itemAt(0).widget()
+                if label and isinstance(label, QLabel) and label.text() == text:
+                    QMessageBox.warning(self, "重复项", "此常用语已存在")
+                    return
+        
+        # 添加到列表
+        self._add_item_to_list(text)
+        
+        # 更新内部数据
+        self.responses.append(text)
+        
+        # 保存设置
+        self._save_responses()
+        
+        # 清空输入框
+        self.input_field.clear()
     
-    def _delete_response(self, text_to_delete):
-        """删除指定的常用语"""
-        # 查找并删除匹配的项目
-        for i in range(self.responses_list.count()):
-            item = self.responses_list.item(i)
-            item_widget = self.responses_list.itemWidget(item)
-            if item_widget:
-                text_label = item_widget.layout().itemAt(0).widget()
-                if text_label and isinstance(text_label, QLabel) and text_label.text() == text_to_delete:
-                    # 找到匹配项，删除它
-                    self.responses_list.takeItem(i)
+    def _delete_response(self, text):
+        """删除常用语"""
+        # 查找并删除项目
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget:
+                label = widget.layout().itemAt(0).widget()
+                if label and isinstance(label, QLabel) and label.text() == text:
+                    # 从列表中移除
+                    self.list_widget.takeItem(i)
                     
-                    # 更新常用语列表并保存
+                    # 从数据中移除
+                    if text in self.responses:
+                        self.responses.remove(text)
+                    
+                    # 保存设置
                     self._save_responses()
-                    break
+                    return
+    
+    def _on_item_double_clicked(self, item):
+        """双击项目时插入文本到父窗口"""
+        widget = self.list_widget.itemWidget(item)
+        if widget:
+            label = widget.layout().itemAt(0).widget()
+            if label and isinstance(label, QLabel):
+                text = label.text()
+                print(f"DEBUG: 双击选择常用语: {text}", file=sys.stderr)
+                
+                # 插入到父窗口输入框
+                if self.parent_window and hasattr(self.parent_window, 'feedback_text'):
+                    self.parent_window.feedback_text.insertPlainText(text)
+                    print("DEBUG: 已插入文本到输入框", file=sys.stderr)
+                    
+                    # 保存选择结果并关闭
+                    self.selected_response = text
+                    self.accept()
     
     def _save_responses(self):
-        """保存当前列表中的常用语到设置"""
-        responses = []
-        for i in range(self.responses_list.count()):
-            item = self.responses_list.item(i)
-            item_widget = self.responses_list.itemWidget(item)
-            if item_widget:
-                text_label = item_widget.layout().itemAt(0).widget()
-                if text_label and isinstance(text_label, QLabel):
-                    responses.append(text_label.text())
+        """保存常用语到设置"""
+        # 在保存前更新responses列表，以确保顺序与UI中显示的一致
+        self.responses = []
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget:
+                label = widget.layout().itemAt(0).widget()
+                if label and isinstance(label, QLabel):
+                    text = label.text()
+                    self.responses.append(text)
+        
+        print(f"DEBUG: SelectCannedResponseDialog._save_responses - Saving {len(self.responses)} responses", file=sys.stderr)
         
         # 保存到设置
         self.settings.beginGroup("CannedResponses")
-        self.settings.setValue("phrases", responses)
+        self.settings.setValue("phrases", self.responses)
         self.settings.endGroup()
+        self.settings.sync()
+        print(f"DEBUG: 已保存 {len(self.responses)} 个常用语", file=sys.stderr)
     
     def closeEvent(self, event):
         """关闭对话框时保存常用语顺序"""
@@ -1629,117 +2134,144 @@ class SelectCannedResponseDialog(QDialog):
         """获取选择的常用语"""
         return self.selected_response
 
-    def _create_ui(self):
-        """创建简化版UI"""
-        # 主布局
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+    def _insert_text_to_parent(self, text):
+        """处理双击文本插入到父窗口的输入框
         
-        # 添加标题标签
-        title_label = QLabel("常用语列表 - 已更新")
-        title_label.setStyleSheet("font-size: 13pt; font-weight: bold;")
-        main_layout.addWidget(title_label)
-        
-        # 添加提示标签
-        hint_label = QLabel("双击插入文本，点击×删除，拖动可调整顺序")
-        hint_label.setStyleSheet("font-size: 9pt; color: #aaaaaa;")
-        main_layout.addWidget(hint_label)
-        
-        # 创建自定义列表部件
-        self.responses_list = DraggableListWidget()
-        self.responses_list.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self.responses_list.setMinimumHeight(150)
-        
-        # 启用拖动后自动保存顺序
-        self.responses_list.model().rowsMoved.connect(self._save_responses)
-        
-        main_layout.addWidget(self.responses_list, 1)  # 列表占据更多空间
-        
-        # 创建底部输入区域，使用简单布局
-        input_container = QWidget()
-        input_layout = QHBoxLayout(input_container)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(0)  # 移除间距使按钮紧贴输入框
-        
-        # 创建输入框容器
-        input_frame = QFrame()
-        input_frame.setFrameShape(QFrame.StyledPanel)
-        input_frame.setStyleSheet("""
-            QFrame {
-                background-color: #404040;
-                border: none;
-                border-radius: 4px;
-                padding: 0px;
-            }
-        """)
-        input_frame_layout = QHBoxLayout(input_frame)
-        input_frame_layout.setContentsMargins(8, 0, 0, 0)  # 左侧留出一些内边距
-        input_frame_layout.setSpacing(0)
-        
-        # 输入框 - 无边框样式
-        self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("输入新的常用语")
-        self.input_field.returnPressed.connect(self._add_response)
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                padding: 8px 0px;
-                font-size: 11pt;
-            }
-        """)
-        input_frame_layout.addWidget(self.input_field)
-        
-        # 保存按钮 - 集成到输入框内
-        save_button = QPushButton("保存")
-        save_button.setCursor(Qt.PointingHandCursor)
-        save_button.clicked.connect(self._add_response)
-        save_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2a82da;
-                color: white;
-                border: none;
-                border-top-right-radius: 4px;
-                border-bottom-right-radius: 4px;
-                border-top-left-radius: 0px;
-                border-bottom-left-radius: 0px;
-                padding: 8px 15px;
-                font-size: 10pt;
-                font-weight: bold;
-                min-width: 60px;
-                max-width: 60px;
-            }
-            QPushButton:hover {
-                background-color: #3a92ea;
-            }
-            QPushButton:pressed {
-                background-color: #1a72ca;
-            }
-        """)
-        input_frame_layout.addWidget(save_button)
-        
-        # 将输入框容器添加到主布局
-        input_layout.addWidget(input_frame)
-        
-        # 添加到主布局
-        main_layout.addWidget(input_container)
+        这是一个新的方法，用于处理来自DraggableListWidget的双击信号
+        """
+        if text and self.parent_window and hasattr(self.parent_window, 'feedback_text'):
+            # 插入文本并关闭对话框
+            self.parent_window.feedback_text.insertPlainText(text)
+            print(f"DEBUG: 通过新方法插入文本到输入框: {text}", file=sys.stderr)
+            # 保存选定的常用语
+            self.selected_response = text
+            # 关闭对话框
+            self.accept()
+        else:
+            print(f"DEBUG: 无法插入文本: text={bool(text)}, parent={bool(self.parent_window)}", file=sys.stderr)
 
 # 添加自定义可拖放列表部件类
 class DraggableListWidget(QListWidget):
-    """简化的可拖放列表部件，使用Qt内置的拖放功能"""
+    """可拖放列表部件，带增强的拖放和双击功能"""
+    
+    # 添加自定义信号，当拖放完成时发出
+    drag_completed = Signal()
+    item_double_clicked = Signal(str)  # 发送双击项的文本内容
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 启用基本拖放功能，但不做任何自定义处理
+        # 初始化拖拽起始位置
+        self.drag_start_position = None
+        
+        # 启用基本拖放功能
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QListWidget.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QListWidget.SingleSelection)
+        
+        # 禁用横向滚动条
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
         # 使拖动项目更明显
         self.setAlternatingRowColors(True)
+        
+        # 禁用自动选择第一项
+        self.setCurrentRow(-1)
+        
+        # 设置更大的图标和项目大小，使拖放区域更明确
+        self.setIconSize(QSize(32, 32))
+        self.setStyleSheet("""
+            QListWidget {
+                background-color: #333333;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                padding: 4px;
+                font-size: 11pt;
+            }
+            QListWidget::item {
+                border-bottom: 1px solid #404040;
+                padding: 8px;
+                margin: 2px 0px;
+            }
+            QListWidget::item:hover {
+                background-color: #404040;
+            }
+            QListWidget::item:selected:!active {
+                background-color: transparent;
+            }
+            QListWidget::item:selected:active {
+                background-color: rgba(42, 130, 218, 0.5);
+                border: 1px solid #2a82da;
+            }
+            /* 禁用横向滚动条 */
+            QScrollBar:horizontal {
+                height: 0px;
+                background: transparent;
+            }
+        """)
+        
+    def showEvent(self, event):
+        """窗口显示时清除选择"""
+        super().showEvent(event)
+        # 确保没有选中项
+        self.clearSelection()
+        self.setCurrentItem(None)
+    
+    def mouseDoubleClickEvent(self, event):
+        """重写鼠标双击事件处理，确保能正确捕获双击"""
+        item = self.itemAt(event.pos())
+        if item:
+            item_widget = self.itemWidget(item)
+            if item_widget:
+                text_label = item_widget.layout().itemAt(0).widget()
+                if text_label and isinstance(text_label, QLabel):
+                    text = text_label.text()
+                    print(f"DEBUG: 双击事件捕获，文本内容: {text}", file=sys.stderr)
+                    # 发出自定义双击信号
+                    self.item_double_clicked.emit(text)
+                    return
+        
+        # 如果没有处理，调用基类方法
+        super().mouseDoubleClickEvent(event)
+    
+    def mousePressEvent(self, event):
+        """重写鼠标按下事件，改进拖拽行为"""
+        if event.button() == Qt.LeftButton:
+            # 记录拖拽起始位置
+            self.drag_start_position = event.pos()
+            # 获取当前项，用于拖拽
+            self.drag_item = self.itemAt(event.pos())
+        
+        # 调用基类的鼠标按下事件处理
+        super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        """重写鼠标移动事件，优化拖拽触发条件"""
+        if (event.buttons() & Qt.LeftButton) and self.drag_start_position:
+            # 计算移动距离，如果超过阈值则开始拖拽
+            distance = (event.pos() - self.drag_start_position).manhattanLength()
+            if distance >= QApplication.startDragDistance():
+                print("DEBUG: 开始拖拽操作", file=sys.stderr)
+                # 如果有拖拽项，则选中它用于拖拽
+                if hasattr(self, 'drag_item') and self.drag_item:
+                    self.drag_item.setSelected(True)
+                    
+        # 调用基类方法继续处理
+        super().mouseMoveEvent(event)
+    
+    def dropEvent(self, event):
+        """重写dropEvent以在拖放完成后发出信号"""
+        # 调用基类的dropEvent方法以正常处理拖放操作
+        super().dropEvent(event)
+        
+        # 拖放完成后，清除选择状态
+        QTimer.singleShot(100, self.clearSelection)
+        
+        # 拖放完成后发出信号
+        print("DEBUG: 拖放操作完成，发出drag_completed信号", file=sys.stderr)
+        self.drag_completed.emit()
 
 def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
     print("进入feedback_ui函数...", file=sys.stderr)
@@ -1748,6 +2280,10 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
     print("QApplication实例化完成", file=sys.stderr)
     app.setPalette(get_dark_mode_palette(app))
     app.setStyle("Fusion")
+    
+    # 设置应用程序属性
+    app.setQuitOnLastWindowClosed(True)
+    
     print("设置应用程序样式完成", file=sys.stderr)
     
     # 应用全局样式表
@@ -1907,10 +2443,10 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
         }
     """)
     
-    # 确保至少有一个预定义选项，以便显示完整的UI
-    if predefined_options is None or len(predefined_options) == 0:
-        print("未提供预定义选项，添加一个示例选项以显示完整UI", file=sys.stderr)
-        predefined_options = ["示例选项 (可以取消选择)"]
+    # 确保预定义选项是一个列表，即使是空列表
+    if predefined_options is None:
+        predefined_options = []
+        print("未提供预定义选项，使用空列表", file=sys.stderr)
     
     print("准备创建FeedbackUI实例...", file=sys.stderr)
     ui = FeedbackUI(prompt, predefined_options)
@@ -1935,7 +2471,7 @@ if __name__ == "__main__":
     parser.add_argument("--predefined-options", default="", help="Pipe-separated list of predefined options (|||)")
     parser.add_argument("--output-file", help="Path to save the feedback result as JSON")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with more verbose output")
-    parser.add_argument("--full-ui", action="store_true", default=True, help="显示完整UI界面，包含所有功能")
+    parser.add_argument("--full-ui", action="store_true", default=False, help="显示完整UI界面，包含所有功能")
     args = parser.parse_args()
     
     print(f"命令行参数: {args}", file=sys.stderr)
@@ -1946,21 +2482,23 @@ if __name__ == "__main__":
     if debug_mode:
         print("DEBUG: 运行在调试模式", file=sys.stderr)
         
-    # 修复：先检查是否有传入预定义选项，只有在没有时才使用默认示例选项
+    # 处理预定义选项
     if args.predefined_options:
         # 有传入预定义选项，使用传入的选项
         predefined_options = [opt for opt in args.predefined_options.split("|||") if opt]
         print(f"使用传入的预定义选项: {predefined_options}", file=sys.stderr)
-    elif args.full_ui:
-        # 没有传入预定义选项但启用了完整UI
-        predefined_options = ["选项 A", "选项 B", "选项 C"]
-        print(f"启用完整UI模式，使用示例预定义选项: {predefined_options}", file=sys.stderr)
     else:
-        # 既没有传入预定义选项也没有启用完整UI
-        predefined_options = None
-        print("不使用预定义选项", file=sys.stderr)
+        # 没有传入预定义选项
+        if args.full_ui:
+            # 仅在手动运行脚本且明确指定--full-ui参数时才使用示例选项
+            predefined_options = ["示例选项1", "示例选项2", "示例选项3"]
+            print(f"启用完整UI模式并使用示例预定义选项: {predefined_options}", file=sys.stderr)
+        else:
+            # 没有选项
+            predefined_options = []
+            print("使用空选项列表", file=sys.stderr)
     
-    print(f"预定义选项: {predefined_options}", file=sys.stderr)
+    print(f"最终使用的预定义选项: {predefined_options}", file=sys.stderr)
     
     print("创建UI...", file=sys.stderr)
     result = feedback_ui(args.prompt, predefined_options, args.output_file)

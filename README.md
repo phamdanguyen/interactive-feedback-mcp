@@ -23,6 +23,17 @@ Essentially, this helps your AI assistant _ask for clarification instead of gues
 - **⏱️ Faster Cycles:** Quick confirmations beat debugging wrong guesses.
 - **🎮 Better Collaboration:** Turns one-way instructions into a dialogue, keeping you in control.
 
+## 🌟 New Feature: Direct Dialog Mode for Images
+
+When you include images in your feedback, the MCP server now automatically switches to "Direct Dialog Mode":
+
+1. Instead of trying to send images through the MCP protocol (which has limitations)
+2. The system will close the MCP window and activate the Cursor dialog input
+3. Your text and images are automatically inserted into the standard Cursor chat
+4. This ensures images are properly processed and understood by the AI
+
+This feature provides a seamless experience when working with images, without requiring you to manually copy/paste content.
+
 ## 🛠️ Tools
 
 This server exposes the following tool via the Model Context Protocol (MCP):
@@ -41,6 +52,12 @@ This server exposes the following tool via the Model Context Protocol (MCP):
     *   Clone this repository:
         `git clone https://github.com/pauoliva/interactive-feedback-mcp.git`
     *   Or download the source code.
+
+3.  **Install dependencies:**
+    *   Navigate to the repository directory and run:
+        *   `uv pip install -r requirements.txt`
+    *   For Direct Dialog Mode (image support), additional packages are required:
+        *   `pyperclip`, `pyautogui`, `Pillow`, and `pywin32` (Windows only)
 
 ## ⚙️ Configuration
 
@@ -72,6 +89,14 @@ This server exposes the following tool via the Model Context Protocol (MCP):
 > Whenever you're about to complete a user request, call the interactive_feedback tool to request user feedback before ending the process. If the feedback is empty you can end the request and don't call the tool in loop.
 
 This will ensure your AI assistant always uses this MCP server to request user feedback when the prompt is unclear and before marking the task as completed.
+
+## 📝 Usage Tips
+
+### Working with Images
+- When you paste images (Ctrl+V) into the feedback window, the submit button will turn orange to indicate "Direct Dialog Mode"
+- After clicking submit, the MCP window will close and the Cursor dialog will automatically activate
+- Your text and images will be automatically inserted - no need to copy/paste again!
+- The system uses the Ctrl+L shortcut to activate the Cursor dialog
 
 ## 🙏 Acknowledgements
 

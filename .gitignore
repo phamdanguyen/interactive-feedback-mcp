@@ -12,9 +12,29 @@ venv*/
 
 # Logs
 *.log
+data/*.log
+
+# Temporary files
+Temp/
+temp/
+tmp/
+*.tmp
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local configuration
+.env
+.env.*
 
 #Others
 .DS_Store
 uv.lock
+
+# 二次开发建议不提交
+二次开发建议.md
 
 .cursor/rules/
