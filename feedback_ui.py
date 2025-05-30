@@ -28,7 +28,11 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize, QStringListModel, QByteArray, QBuffer, QIODevice, QMimeData, QPoint, QRect, QRectF
-from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, QPen, QAction, QFontMetrics
+from PySide6.QtGui import (
+    QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, 
+    QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, 
+    QPen, QAction, QFontMetrics, QTextOption
+)
 
 # 添加自定义ClickableLabel类
 class ClickableLabel(QLabel):
@@ -156,7 +160,7 @@ class FeedbackTextEdit(QTextEdit):
         
         # 禁用不需要的功能以提高性能
         self.setLineWrapMode(QTextEdit.WidgetWidth)
-        self.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         
         # 创建图片预览容器（重叠在文本编辑框上）
         self.images_container = QWidget(self)
