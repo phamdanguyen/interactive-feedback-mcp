@@ -221,6 +221,8 @@ class FeedbackUI(QMainWindow):
         self.log_signals = LogSignals()
         self.log_signals.append_log.connect(self._append_log)
 
+        self.zoom_factor = 1.0  # Default zoom factor
+
         self.setWindowTitle("Interactive Feedback MCP")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(script_dir, "images", "feedback.png")
@@ -243,6 +245,8 @@ class FeedbackUI(QMainWindow):
         state = self.settings.value("windowState")
         if state:
             self.restoreState(state)
+        # Load zoom_factor, defaulting to 1.0 if not found
+        self.zoom_factor = float(self.settings.value("zoomFactor", 1.0))
         self.settings.endGroup() # End "MainWindow_General" group
         
         # Load project-specific settings (command, auto-execute, command section visibility)
@@ -259,6 +263,7 @@ class FeedbackUI(QMainWindow):
         }
 
         self._create_ui() # self.config is used here to set initial values
+        self._apply_zoom()  # Apply initial zoom to all widgets
 
         # Set command section visibility AFTER _create_ui has created relevant widgets
         self.command_group.setVisible(command_section_visible)
@@ -319,18 +324,18 @@ class FeedbackUI(QMainWindow):
         self.auto_check.setChecked(self.config.get("execute_automatically", False))
         self.auto_check.stateChanged.connect(self._update_config)
 
-        save_button = QPushButton("&Save Configuration")
-        save_button.clicked.connect(self._save_config)
+        self.save_button = QPushButton("&Save Configuration") # Store as instance variable
+        self.save_button.clicked.connect(self._save_config)
 
         auto_layout.addWidget(self.auto_check)
         auto_layout.addStretch()
-        auto_layout.addWidget(save_button)
+        auto_layout.addWidget(self.save_button)
         command_layout.addLayout(auto_layout)
 
         # Console section (now part of command_group)
-        console_group = QGroupBox("Console")
-        console_layout_internal = QVBoxLayout(console_group)
-        console_group.setMinimumHeight(200)
+        self.console_group = QGroupBox("Console") # Store as instance variable
+        console_layout_internal = QVBoxLayout(self.console_group)
+        self.console_group.setMinimumHeight(200)
 
         # Log text area
         self.log_text = QTextEdit()
@@ -348,7 +353,7 @@ class FeedbackUI(QMainWindow):
         button_layout.addWidget(self.clear_button)
         console_layout_internal.addLayout(button_layout)
         
-        command_layout.addWidget(console_group)
+        command_layout.addWidget(self.console_group)
 
         self.command_group.setVisible(False) 
         layout.addWidget(self.command_group)
@@ -384,15 +389,15 @@ class FeedbackUI(QMainWindow):
         layout.addWidget(self.feedback_group)
 
         # Credits/Contact Label
-        contact_label = QLabel('Need to improve? Contact Fábio Ferreira on <a href="https://x.com/fabiomlferreira">X.com</a> or visit <a href="https://dotcursorrules.com/">dotcursorrules.com</a>')
-        contact_label.setOpenExternalLinks(True)
-        contact_label.setAlignment(Qt.AlignCenter)
+        self.contact_label = QLabel('Need to improve? Contact Fábio Ferreira on <a href="https://x.com/fabiomlferreira">X.com</a> or visit <a href="https://dotcursorrules.com/">dotcursorrules.com</a>')
+        self.contact_label.setOpenExternalLinks(True)
+        self.contact_label.setAlignment(Qt.AlignCenter)
         # Optionally, make font a bit smaller and less prominent
         # contact_label_font = contact_label.font()
         # contact_label_font.setPointSize(contact_label_font.pointSize() - 1)
         # contact_label.setFont(contact_label_font)
-        contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
-        layout.addWidget(contact_label)
+        self.contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
+        layout.addWidget(self.contact_label)
 
     def _toggle_command_section(self):
         is_visible = self.command_group.isVisible()
@@ -520,6 +525,7 @@ class FeedbackUI(QMainWindow):
         self.settings.beginGroup("MainWindow_General")
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
+        self.settings.setValue("zoomFactor", self.zoom_factor)  # Save zoom_factor
         self.settings.endGroup()
 
         # Save project-specific command section visibility (this is now slightly redundant due to immediate save in toggle, but harmless)
@@ -530,6 +536,88 @@ class FeedbackUI(QMainWindow):
         if self.process:
             kill_tree(self.process)
         super().closeEvent(event)
+
+    def wheelEvent(self, event):
+        # Enable zoom with Ctrl+Wheel (or Cmd+Wheel on macOS)
+        zoom_modifier_pressed = False
+        if sys.platform == "darwin":  # macOS
+            if event.modifiers() & Qt.MetaModifier: # Command key
+                zoom_modifier_pressed = True
+        else:  # Windows, Linux, etc.
+            if event.modifiers() & Qt.ControlModifier: # Control key
+                zoom_modifier_pressed = True
+
+        if zoom_modifier_pressed:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.zoom_factor = min(self.zoom_factor + 0.1, 2.0) # Zoom in, max 2.0x
+            else:
+                self.zoom_factor = max(self.zoom_factor - 0.1, 0.5) # Zoom out, min 0.5x
+            self._apply_zoom()
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def _apply_zoom(self):
+        # Adjust font sizes for all main widgets based on self.zoom_factor
+        base_font_size = 9
+        label_font_size = 10
+        desc_font_size = 11
+        button_font_size = 9
+        # Log text area
+        log_font = QFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        log_font.setPointSizeF(base_font_size * self.zoom_factor)
+        self.log_text.setFont(log_font)
+        # Feedback text area
+        feedback_font = self.feedback_text.font()
+        feedback_font.setPointSizeF(base_font_size * self.zoom_factor)
+        self.feedback_text.setFont(feedback_font)
+        # Description label
+        desc_font = self.description_label.font()
+        desc_font.setPointSizeF(desc_font_size * self.zoom_factor)
+        self.description_label.setFont(desc_font)
+        # Command entry
+        entry_font = self.command_entry.font()
+        entry_font.setPointSizeF(base_font_size * self.zoom_factor)
+        self.command_entry.setFont(entry_font)
+        # Auto-execute checkbox
+        if hasattr(self, 'auto_check'):
+            auto_check_font = self.auto_check.font()
+            auto_check_font.setPointSizeF(base_font_size * self.zoom_factor)
+            self.auto_check.setFont(auto_check_font)
+        # Buttons
+        buttons_to_zoom = [self.run_button, self.clear_button, self.toggle_command_button]
+        if hasattr(self, 'save_button'):
+            buttons_to_zoom.append(self.save_button)
+        for btn in buttons_to_zoom:
+            if btn: # Ensure button exists
+                btn_font = btn.font()
+                btn_font.setPointSizeF(button_font_size * self.zoom_factor)
+                btn.setFont(btn_font)
+        # Feedback send button (specific to feedback_group)
+        for child in self.feedback_group.findChildren(QPushButton):
+            btn_font = child.font()
+            btn_font.setPointSizeF(button_font_size * self.zoom_factor)
+            child.setFont(btn_font)
+        # Labels
+        for group in [self.command_group, self.feedback_group]:
+            if group: # Ensure group exists
+                for label in group.findChildren(QLabel):
+                    label_font = label.font()
+                    label_font.setPointSizeF(label_font_size * self.zoom_factor)
+                    label.setFont(label_font)
+        # GroupBox titles
+        group_box_font_size = label_font_size # Use label_font_size for group titles
+        for group_box in [self.command_group, self.feedback_group, getattr(self, 'console_group', None)]:
+            if group_box: # Ensure group_box exists
+                gb_font = group_box.font()
+                gb_font.setPointSizeF(group_box_font_size * self.zoom_factor)
+                group_box.setFont(gb_font)
+        # Contact label
+        if hasattr(self, 'contact_label'):
+            contact_font = self.contact_label.font()
+            contact_font.setPointSizeF(9 * self.zoom_factor)
+            self.contact_label.setFont(contact_font)
 
     def run(self) -> FeedbackResult:
         self.show()
