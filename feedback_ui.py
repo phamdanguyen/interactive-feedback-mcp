@@ -13,6 +13,7 @@ import time  # 添加时间模块
 import traceback
 from datetime import datetime
 import functools # 添加导入
+import re  # 添加re模块用于正则表达式处理
 
 # 添加pyperclip模块，用于剪贴板操作
 try:
@@ -503,13 +504,12 @@ class FeedbackUI(QMainWindow):
         """
         super().__init__()
         
-        print("初始化FeedbackUI...", file=sys.stderr)
+        # print("初始化FeedbackUI...", file=sys.stderr) # 清理
         self.prompt = prompt
         
-        # 添加调试信息，查看收到的选项
-        print(f"DEBUG: 收到的预定义选项: {predefined_options}", file=sys.stderr)
+        # print(f"DEBUG: 收到的预定义选项: {predefined_options}", file=sys.stderr) # 清理
         self.predefined_options = predefined_options or []
-        print(f"DEBUG: 初始化使用的预定义选项: {self.predefined_options}", file=sys.stderr)
+        # print(f"DEBUG: 初始化使用的预定义选项: {self.predefined_options}", file=sys.stderr) # 清理
 
         self.result = None  # 使用统一的属性名 result
         self.image_pixmap = None  # 存储粘贴的图片
@@ -519,8 +519,8 @@ class FeedbackUI(QMainWindow):
         # 用于控制是否自动最小化的标志
         self.disable_auto_minimize = False
         
-        # 用于记录是否已尝试过直接对话模式
-        self.attempted_direct_dialog = False
+        # 用于控制窗口是否固定的标志
+        self.window_pinned = False
         
         # 设置窗口标题和窗口最小宽度
         self.setWindowTitle("Interactive Feedback MCP")
@@ -538,7 +538,7 @@ class FeedbackUI(QMainWindow):
                 images_dir = os.path.join(script_dir, "images")
                 if not os.path.exists(images_dir):
                     os.makedirs(images_dir, exist_ok=True)
-                print(f"警告: 图标文件不存在: {icon_path}", file=sys.stderr)
+                # print(f"警告: 图标文件不存在: {icon_path}", file=sys.stderr) # 可以保留用于调试，或移除
         except Exception as e:
             print(f"警告: 无法加载图标文件: {e}", file=sys.stderr)
         
@@ -568,19 +568,25 @@ class FeedbackUI(QMainWindow):
             if self.width() < 1000:
                 self.setMinimumWidth(1000)
                 self.resize(1000, self.height())
-                print(f"DEBUG: 应用最小宽度1000 (恢复的宽度为 {self.width()})", file=sys.stderr)
+                # print(f"DEBUG: 应用最小宽度1000 (恢复的宽度为 {self.width()})", file=sys.stderr) # 清理
         state = self.settings.value("windowState")
         if state:
             self.restoreState(state)
+            
+        # 加载窗口固定状态
+        self.window_pinned = self.settings.value("windowPinned", False, type=bool)
         self.settings.endGroup() # End "MainWindow_General" group
 
-        print("开始创建UI...", file=sys.stderr)
+        # print("开始创建UI...", file=sys.stderr) # 清理
         self._create_ui()
-        print("UI创建完成", file=sys.stderr)
+        # print("UI创建完成", file=sys.stderr) # 清理
+        
+        # 如果窗口应该被固定，应用固定设置
+        if self.window_pinned:
+            QTimer.singleShot(100, self._apply_window_pin_state)
 
     def _create_ui(self):
-        print("创建中央窗口部件...", file=sys.stderr)
-        # 创建中央窗口部件
+        # print("创建中央窗口部件...", file=sys.stderr) # 清理
         central_widget = QWidget()
         central_widget.setMinimumWidth(1000)  # 确保中央部件也足够宽
         self.setCentralWidget(central_widget)
@@ -590,7 +596,7 @@ class FeedbackUI(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        print("创建反馈分组框...", file=sys.stderr)
+        # print("创建反馈分组框...", file=sys.stderr) # 清理
         # 创建反馈分组框
         self.feedback_group = QGroupBox("Feedback")
         self.feedback_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -627,10 +633,10 @@ class FeedbackUI(QMainWindow):
         description_layout.addWidget(self.description_label)
         
         # 添加图片处理说明
-        self.image_usage_label = QLabel("提示: 当您添加图片后，点击提交按钮将直接激活Cursor对话框，并自动填充内容。")
+        self.image_usage_label = QLabel("如果图片反馈异常，建议切换cluade3.5")
         self.image_usage_label.setWordWrap(True)
         self.image_usage_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.image_usage_label.setStyleSheet("color: #ff8c00; font-style: italic; font-size: 10pt; margin-top: 5px;")
+        self.image_usage_label.setStyleSheet("color: #ff8c00; font-size: 10pt; margin-top: 5px;")
         # 启用文本选择
         self.image_usage_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.image_usage_label.setVisible(False)  # 初始隐藏，只有添加图片后才显示
@@ -771,6 +777,31 @@ class FeedbackUI(QMainWindow):
         """)
         buttons_layout.addWidget(self.bottom_canned_responses_button)
         
+        # 添加固定窗口按钮
+        self.pin_window_button = QPushButton("固定窗口")
+        self.pin_window_button.setFixedSize(100, 30)  # 调整大小
+        self.pin_window_button.setToolTip("固定窗口，防止自动最小化")
+        self.pin_window_button.clicked.connect(self._toggle_pin_window)
+        # 初始未激活状态
+        self.pin_window_button.setStyleSheet("""
+            QPushButton {
+                background-color: #555555;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #444444;
+            }
+        """)
+        buttons_layout.addWidget(self.pin_window_button)
+        
         # 添加弹性空间，将后续按钮推到右侧
         buttons_layout.addStretch(1)
         
@@ -811,195 +842,128 @@ class FeedbackUI(QMainWindow):
         # 初始更新一次提交按钮文本
         self._update_submit_button_text()
         
-        print(f"UI创建完成，包含 {len(self.option_checkboxes)} 个选项复选框", file=sys.stderr)
+        # print(f"UI创建完成，包含 {len(self.option_checkboxes)} 个选项复选框", file=sys.stderr)
 
-    def get_image_content_data(self, image_id=None):
+    def get_image_content_data(self, image_id=None) -> Optional[Dict[str, Any]]:
         """
-        获取指定ID或最后一个图片的 Base64 编码数据和 MIME 类型，以及图片元数据。
-        返回一个包含图片元数据和Base64编码数据的字典。
-        如果无有效图片或处理失败，则返回 None。
-        
-        Args:
-            image_id: 指定图片ID，如果为None则使用最后添加的图片
-        
-        Returns:
-            dict: 包含以下键的字典:
-                - image_data: 包含type, data, mimeType的图片数据字典
-                - metadata: 包含width, height, format, size的元数据字典
-                如果处理失败则返回None
+        Processes a QPixmap (identified by image_id or the last added one)
+        into a dictionary containing Base64 encoded image data and its metadata.
+        The image is resized and compressed if necessary to meet defined limits.
+        Output structure: {"image_data": {"type": "image", "data": "base64...", "mimeType": "image/jpeg"}, 
+                           "metadata": {"width": ..., "height": ..., "format": ..., "size": ...}}
+        Returns None if processing fails or no valid image is found.
         """
-        print(f"DEBUG: 开始处理图片 ID: {image_id}", file=sys.stderr)
+        # print(f"DEBUG: 开始处理图片 ID: {image_id}", file=sys.stderr) # 清理或根据需要保留详细日志级别
         
-        # 如果指定了ID，使用该ID的图片，否则使用最后一个图片
-        if image_id is not None and image_id in self.image_widgets:
-            pixmap_to_save = self.image_widgets[image_id].original_pixmap
-            print(f"DEBUG: 使用指定图片 ID: {image_id}", file=sys.stderr)
-        elif self.image_widgets:
-            # 使用最后一个图片ID
-            last_id = max(self.image_widgets.keys())
-            pixmap_to_save = self.image_widgets[last_id].original_pixmap
-            print(f"DEBUG: 使用最后一个图片 ID: {last_id}", file=sys.stderr)
+        pixmap_to_save = None 
+        if self.image_widgets:
+            if image_id is not None and image_id in self.image_widgets:
+                pixmap_to_save = self.image_widgets[image_id].original_pixmap
+            elif self.image_widgets: 
+                last_id = max(self.image_widgets.keys())
+                pixmap_to_save = self.image_widgets[last_id].original_pixmap
         else:
-            # 没有图片
-            print("DEBUG: 没有找到有效图片", file=sys.stderr)
             return None
             
-        # 检查图片是否有效
         if pixmap_to_save is None or pixmap_to_save.isNull():
-            print("DEBUG: 图片无效 (None 或 isNull)", file=sys.stderr)
             return None
             
-        # 记录原始图片信息
         original_width = pixmap_to_save.width()
         original_height = pixmap_to_save.height()
-        print(f"DEBUG: 原始图片尺寸: {original_width}x{original_height}", file=sys.stderr)
         
-        # 检查并缩放图片，确保不超过最大尺寸限制
         if original_width > MAX_IMAGE_WIDTH or original_height > MAX_IMAGE_HEIGHT:
-            print(f"DEBUG: 图片尺寸超过限制，进行缩放", file=sys.stderr)
-            # 保持长宽比例缩放
             pixmap_to_save = pixmap_to_save.scaled(
                 MAX_IMAGE_WIDTH, 
                 MAX_IMAGE_HEIGHT,
                 Qt.KeepAspectRatio, 
                 Qt.SmoothTransformation
             )
-            print(f"DEBUG: 缩放后图片尺寸: {pixmap_to_save.width()}x{pixmap_to_save.height()}", file=sys.stderr)
         
-        # 将 QPixmap 保存为字节数据
         byte_array = QByteArray()
         buffer = QBuffer(byte_array)
-        
-        # 默认使用 JPEG 格式，固定质量为80
-        save_format = "JPEG"
+        save_format = "JPEG" # Currently defaults to JPEG
         mime_type = "image/jpeg"
         saved_successfully = False
-        quality = 80  # 固定JPEG质量为80
+        quality = 80
         
         if buffer.open(QIODevice.WriteOnly):
             if pixmap_to_save.save(buffer, save_format, quality):
                 saved_successfully = True
-                print(f"DEBUG: 成功保存为 JPEG 格式, 质量: {quality}%, 大小: {byte_array.size()} 字节", file=sys.stderr)
-            else:
-                print(f"DEBUG: JPEG 格式保存失败 (质量: {quality}%)", file=sys.stderr)
-            buffer.close()
+            buffer.close() 
         
-        # 如果 JPEG 保存失败或文件仍然过大，尝试降低质量
         if (not saved_successfully or byte_array.isEmpty() or 
             (byte_array.size() > MAX_IMAGE_BYTES)):
-                
-            print(f"DEBUG: JPEG 质量 {quality}% 后文件仍然过大 ({byte_array.size()} 字节)，尝试降低质量", file=sys.stderr)
-            
-            # 尝试不同的质量级别，以找到适合的大小
             quality_levels = [70, 60, 50, 40]
-            
             for lower_quality in quality_levels:
                 byte_array.clear()
                 buffer = QBuffer(byte_array)
-                
                 if buffer.open(QIODevice.WriteOnly):
                     if pixmap_to_save.save(buffer, save_format, lower_quality):
                         saved_successfully = True
-                        print(f"DEBUG: 成功保存为 JPEG 格式，降低质量至: {lower_quality}%, 大小: {byte_array.size()} 字节", file=sys.stderr)
                         buffer.close()
-                        
-                        # 如果文件大小满足要求，跳出循环
                         if byte_array.size() <= MAX_IMAGE_BYTES:
-                            quality = lower_quality  # 更新使用的质量值
+                            quality = lower_quality
                             break
                     else:
-                        print(f"DEBUG: JPEG 格式保存失败 (质量: {lower_quality}%)", file=sys.stderr)
                         buffer.close()
         
         if not saved_successfully or byte_array.isEmpty():
-            print("ERROR: 无法将图片保存为 JPEG 格式", file=sys.stderr)
             QMessageBox.critical(self, "图像处理错误", "无法将图像保存为 JPEG 格式。")
             return None
             
-        # 检查图片大小是否超过限制
         if byte_array.size() > MAX_IMAGE_BYTES:
-            print(f"ERROR: 图片大小 ({byte_array.size()} 字节) 超过限制 ({MAX_IMAGE_BYTES} 字节)", file=sys.stderr)
             QMessageBox.critical(self, "图像过大", 
                               f"图像大小 ({byte_array.size() // 1024} KB) 超过了限制 ({MAX_IMAGE_BYTES // 1024} KB)。\n"
                               "请使用更小的图像或进一步压缩。")
             return None
             
-        # 获取图片数据字节
-        image_data = byte_array.data()
-        if not image_data:
-            print("ERROR: 保存操作后没有图片数据", file=sys.stderr)
+        image_data_bytes = byte_array.data()
+        if not image_data_bytes:
             return None
         
         try:
-            # 使用 Base64 编码图片数据
-            base64_encoded_data = base64.b64encode(image_data).decode('utf-8')
-            print(f"DEBUG: Base64编码成功, 编码后长度: {len(base64_encoded_data)}", file=sys.stderr)
-            print(f"DEBUG: Base64编码前10个字符: {base64_encoded_data[:10]}...", file=sys.stderr)
+            base64_encoded_data = base64.b64encode(image_data_bytes).decode('utf-8')
             
-            # 检查 Base64 编码是否有效
-            try:
-                # 尝试解码 Base64 字符串，验证其有效性
-                decoded = base64.b64decode(base64_encoded_data)
-                if len(decoded) != len(image_data):
-                    print(f"WARNING: Base64解码后数据长度不匹配: {len(decoded)} vs 原始 {len(image_data)}", file=sys.stderr)
-            except Exception as e:
-                print(f"WARNING: Base64验证失败: {e}", file=sys.stderr)
-                # 继续使用编码后的数据，不中断流程
+            # Basic validation of base64 string (optional, as b64decode will fail if invalid)
+            # try: 
+            #     decoded = base64.b64decode(base64_encoded_data)
+            #     if len(decoded) != len(image_data_bytes):
+            #         pass 
+            # except Exception as e: 
+            #     pass 
             
-            # 收集图片元数据
-            processed_width = pixmap_to_save.width()
-            processed_height = pixmap_to_save.height()
-            format_type = save_format.lower()  # 如 'jpeg', 'png'
-            byte_size = byte_array.size()
-            
-            # 构建元数据字典
             metadata = {
-                "width": processed_width,
-                "height": processed_height,
-                "format": format_type,
-                "size": byte_size
+                "width": pixmap_to_save.width(),
+                "height": pixmap_to_save.height(),
+                "format": save_format.lower(), 
+                "size": byte_array.size()
             }
-            
-            # 构建图片数据字典
             image_data_dict = {
                 "type": "image",
                 "data": base64_encoded_data,
-                "mimeType": mime_type  # 确保 MIME 类型与实际保存的格式匹配
+                "mimeType": mime_type
             }
             
-            # 验证数据格式是否符合MCP要求
-            if "type" not in image_data_dict or "data" not in image_data_dict or "mimeType" not in image_data_dict:
-                print("WARNING: 返回的图片数据结构缺少必要字段", file=sys.stderr)
-            
-            print(f"DEBUG: 返回图片数据结构: type={image_data_dict['type']}, mimeType={image_data_dict['mimeType']}", file=sys.stderr)
-            print(f"DEBUG: 返回图片元数据: {json.dumps(metadata)}", file=sys.stderr)
-            
-            # 返回包含图片数据和元数据的字典
-            return {
+            return { 
                 "image_data": image_data_dict,
-                "metadata": metadata
+                "metadata": metadata # Metadata is generated but currently not used by server.py for MCP message
             }
             
         except Exception as e:
-            print(f"ERROR: Base64编码或元数据处理失败: {e}", file=sys.stderr)
             QMessageBox.critical(self, "图像处理错误", f"图像数据编码失败: {e}")
             return None
     
-    def get_all_images_content_data(self):
+    def get_all_images_content_data(self) -> List[Dict[str, Any]]:
         """
-        获取所有图片的内容数据列表
-        
-        Returns:
-            List[Dict]: 包含每张图片的元数据和图片数据的列表
-                每个元素是一个字典，包含两个键：
-                - metadata_item: 包含图片元数据的ContentItem字典
-                - image_item: 包含图片数据的ContentItem字典
+        Collects processed data for all currently added images.
+        Calls get_image_content_data for each image.
+        Returns a list of dictionaries, where each dictionary contains
+        an "image_item" (for direct MCP use) and a "metadata_item".
         """
         result = []
-        print(f"DEBUG: 开始处理所有图片, 共 {len(self.image_widgets)} 张", file=sys.stderr)
-        
+        # print(f"DEBUG: 开始处理所有图片, 共 {len(self.image_widgets)} 张", file=sys.stderr) # 清理
         for image_id in self.image_widgets.keys():
-            print(f"DEBUG: 处理图片 ID: {image_id}", file=sys.stderr)
+            # print(f"DEBUG: 处理图片 ID: {image_id}", file=sys.stderr) # 清理
             processed_data = self.get_image_content_data(image_id)
             if processed_data:
                 # 从处理结果中提取元数据和图片数据
@@ -1020,150 +984,67 @@ class FeedbackUI(QMainWindow):
                     "metadata_item": metadata_item,
                     "image_item": image_item
                 })
-                print(f"DEBUG: 成功处理图片 ID: {image_id}", file=sys.stderr)
-            else:
-                print(f"DEBUG: 图片处理失败 ID: {image_id}", file=sys.stderr)
-                
-        print(f"DEBUG: 总共成功处理 {len(result)}/{len(self.image_widgets)} 张图片", file=sys.stderr)
+                # print(f"DEBUG: 成功处理图片 ID: {image_id}", file=sys.stderr) # 清理
+            # else:
+                # print(f"DEBUG: 图片处理失败 ID: {image_id}", file=sys.stderr) # 清理
+        # print(f"DEBUG: 总共成功处理 {len(result)}/{len(self.image_widgets)} 张图片", file=sys.stderr) # 清理
         return result
 
     def _submit_feedback(self):
-        # 获取纯文本反馈，确保使用toPlainText()
+        """
+        Handles the submission of feedback.
+        Collects text from predefined options and the text input field.
+        Collects all added images using get_all_images_content_data.
+        Packages everything into the self.result dictionary with the structure 
+        {"content": [list of text and image items]}.
+        The old logic for direct keyboard injection via cursor_direct_input has been removed.
+        The UI now solely relies on returning this structured data for MCP processing by server.py.
+        """
         feedback_text = self.feedback_text.toPlainText().strip()
         selected_options = []
         
-        print("DEBUG: 开始提交反馈", file=sys.stderr)
-        print(f"DEBUG: 反馈文本长度: {len(feedback_text)}", file=sys.stderr)
-        
-        # 获取所选择的预定义选项
         if self.option_checkboxes:
             for i, checkbox in enumerate(self.option_checkboxes):
                 if checkbox.isChecked():
-                    # 确保选项文本是纯文本
-                    selected_options.append(self.predefined_options[i].strip())
+                    # 获取选项文本并去除可能的编号前缀（如"1. ", "2. "等）
+                    option_text = self.predefined_options[i].strip()
+                    # 使用正则表达式匹配并删除前面的数字和点号
+                    option_text = re.sub(r'^\d+\.\s*', '', option_text)
+                    selected_options.append(option_text)
         
-        print(f"DEBUG: 选定的选项数量: {len(selected_options)}", file=sys.stderr)
-        if selected_options:
-            print(f"DEBUG: 选定的选项: {selected_options}", file=sys.stderr)
+        # 构建最终文本，将选项和用户输入组合起来
+        if selected_options and feedback_text:
+            # 如果有选中选项和用户输入文字，使用换行符分隔
+            combined_text = f"{'; '.join(selected_options)}\n{feedback_text}"
+        elif selected_options:
+            # 如果只有选中选项，无需换行
+            combined_text = f"{'; '.join(selected_options)}"
+        else:
+            # 如果只有用户输入文字
+            combined_text = feedback_text
         
-        # 组合所有文本部分
-        final_text_parts = []
-        
-        # 添加选定的选项
-        if selected_options:
-            final_text_parts.append("; ".join(selected_options))
-        
-        # 添加用户的文本反馈
-        if feedback_text:
-            final_text_parts.append(feedback_text)
-        
-        # 组合所有文本部分
-        combined_text = "\n\n".join(final_text_parts)
-        
-        # 检查是否有图片
-        has_images = bool(self.image_widgets)
-        print(f"DEBUG: 检测到图片: {has_images}, 图片数量: {len(self.image_widgets) if has_images else 0}", file=sys.stderr)
-        
-        # 如果有图片，优先使用优化的按键序列
-        if has_images:
-            # 收集所有图片数据
-            image_pixmaps = []
-            for image_id in sorted(self.image_widgets.keys()):
-                widget = self.image_widgets[image_id]
-                if widget and hasattr(widget, 'original_pixmap'):
-                    image_pixmaps.append(widget.original_pixmap)
-            
-            print(f"DEBUG: 准备使用优化按键序列发送 {len(image_pixmaps)} 张图片", file=sys.stderr)
-            
-            # 动态导入直接输入模块
-            try:
-                # 尝试导入优化的按键序列函数
-                try:
-                    from cursor_direct_input import send_to_cursor_with_sequence
-                    use_optimized_sequence = True
-                    print("DEBUG: 成功导入优化按键序列函数", file=sys.stderr)
-                except (ImportError, AttributeError) as seq_error:
-                    print(f"WARNING: 无法导入优化按键序列函数: {seq_error}, 将使用标准函数", file=sys.stderr)
-                    use_optimized_sequence = False
-                
-                # 总是导入标准函数作为备用
-                from cursor_direct_input import send_to_cursor_input
-            except ImportError as e:
-                print(f"ERROR: 无法导入cursor_direct_input模块: {e}", file=sys.stderr)
-                QMessageBox.critical(
-                    self,
-                    "模块导入错误",
-                    f"无法导入cursor_direct_input模块: {e}\n请确保已安装所需的依赖。"
-                )
-            else:
-                # 模块导入成功后执行的代码
-                # 隐藏窗口
-                self.hide()
-                
-                # 先处理一下剩余的事件，确保窗口完全隐藏
-                QApplication.processEvents()
-                
-                # 显示等待消息
-                print("DEBUG: 即将激活Cursor对话框...", file=sys.stderr)
-        
-                # 尝试发送到Cursor对话框
-                try:
-                    # 尝试使用优化的按键序列发送内容
-                    if use_optimized_sequence:
-                        print("DEBUG: 使用优化按键序列发送内容...", file=sys.stderr)
-                        success = send_to_cursor_with_sequence(combined_text, image_pixmaps)
-                    else:
-                        print("DEBUG: 使用标准方法发送内容...", file=sys.stderr)
-                        success = send_to_cursor_input(combined_text, image_pixmaps)
-                    
-                    if success:
-                        print("DEBUG: 成功发送到Cursor对话框，完全关闭MCP服务", file=sys.stderr)
-                        # 设置空结果，表示已成功完成
-                        self.result = {"content": []}
-                        # 关闭窗口
-                        self.close()
-                        # 直接终止进程，确保MCP服务完全关闭
-                        print("DEBUG: MCP服务已完成，即将退出进程", file=sys.stderr)
-                        # 在应用程序退出前确保剩余事件被处理
-                        QApplication.processEvents()
-                        # 完全退出程序
-                        sys.exit(0)
-                        return
-                    else:
-                        # 发送失败，切换到标准MCP模式
-                        print("DEBUG: 直接对话发送失败，使用标准MCP模式", file=sys.stderr)
-                        # 重新显示窗口用于标准模式
-                        self.show()
-                except Exception as e:
-                    print(f"ERROR: 直接对话模式错误: {e}", file=sys.stderr)
-                    import traceback
-                    traceback.print_exc(file=sys.stderr)
-                    
-                    # 发生异常，重新显示窗口
-                    self.show()
-        
-        # 纯文本模式或直接对话模式失败时使用标准MCP模式
-        # 构建最终的 MCP 响应结构
-        content_list = []
-        
-        # 添加文本内容
+        content_list = [] # This list will hold dictionaries for text and image items
         if combined_text:
             content_list.append({
                 "type": "text",
                 "text": combined_text
             })
-            print(f"DEBUG: 添加文本内容, 长度: {len(combined_text)}", file=sys.stderr)
+
+        # The old keyboard injection logic (using cursor_direct_input) has been removed.
+        # All data, including images, is now packaged for MCP transport.
         
-        # 检查是否有内容可提交
+        all_images_data = self.get_all_images_content_data()
+        if all_images_data:
+            for image_set in all_images_data:
+                if "image_item" in image_set and image_set["image_item"]:
+                    content_list.append(image_set["image_item"])
+        
         if not content_list:
-            print("DEBUG: 没有内容可提交，直接关闭窗口", file=sys.stderr)
-            # 设置空结果并关闭窗口，等同于用户直接关闭窗口
+            self.result = FeedbackResult(content=[])
             self.close()
             return
         
-        # 设置结果并关闭窗口
-        self.result = {"content": content_list}
-        print("DEBUG: 反馈结果设置完成，关闭窗口", file=sys.stderr)
+        self.result = FeedbackResult(content=content_list)
         self.close()
 
     def closeEvent(self, event):
@@ -1171,28 +1052,57 @@ class FeedbackUI(QMainWindow):
         self.settings.beginGroup("MainWindow_General")
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
+        self.settings.setValue("windowPinned", self.window_pinned)
         self.settings.endGroup()
 
         super().closeEvent(event)
+        
+    def _apply_window_pin_state(self):
+        """应用保存的窗口固定状态"""
+        if self.window_pinned:
+            # 更新按钮样式为活跃状态
+            self.pin_window_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #2a82da;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #3a92ea;
+                }
+                QPushButton:pressed {
+                    background-color: #1a72ca;
+                }
+            """)
+            self.pin_window_button.setToolTip("点击取消固定窗口")
+            
+            # 设置窗口标志
+            self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+            self.show()
+            self.raise_()
+            self.activateWindow()
 
     def run(self) -> FeedbackResult:
-        print("开始运行UI...", file=sys.stderr)
+        # print("开始运行UI...", file=sys.stderr) # 清理
         self.show()
-        print("UI窗口已显示，准备进入事件循环...", file=sys.stderr)
+        # print("UI窗口已显示，准备进入事件循环...", file=sys.stderr) # 清理
         
         # 添加一个单次定时器，在窗口显示后强制应用宽度
         # 这是处理某些系统上可能出现的窗口尺寸设置不正确的问题的方法
         QTimer.singleShot(100, self._enforce_window_size)
         
         QApplication.instance().exec()
-        print("事件循环结束，窗口关闭...", file=sys.stderr)
+        # print("事件循环结束，窗口关闭...", file=sys.stderr) # 清理
 
         if not self.result:
-            # 返回空的内容列表而不是空字符串
-            print("未获得反馈结果，返回空内容列表", file=sys.stderr)
+            # print("未获得反馈结果，返回空内容列表", file=sys.stderr) # 清理
             return FeedbackResult(content=[])
 
-        print(f"返回反馈结果: {self.result}", file=sys.stderr)
+        # print(f"返回反馈结果: {self.result}", file=sys.stderr) # 清理
         return self.result
         
     def _enforce_window_size(self):
@@ -1201,12 +1111,12 @@ class FeedbackUI(QMainWindow):
         
         # 检查宽度
         if self.width() < 1000:
-            print(f"DEBUG: 强制应用窗口宽度，当前宽度为 {self.width()}, 调整到 1000", file=sys.stderr)
+            # print(f"DEBUG: 强制应用窗口宽度，当前宽度为 {self.width()}, 调整到 1000", file=sys.stderr) # 清理
             needs_resize = True
             
         # 检查高度
         if self.height() < 750:
-            print(f"DEBUG: 强制应用窗口高度，当前高度为 {self.height()}, 调整到 750", file=sys.stderr)
+            # print(f"DEBUG: 强制应用窗口高度，当前高度为 {self.height()}, 调整到 750", file=sys.stderr) # 清理
             needs_resize = True
             
         # 如果需要调整大小
@@ -1221,7 +1131,12 @@ class FeedbackUI(QMainWindow):
     def event(self, event):
         # 检测窗口失活事件
         if event.type() == QEvent.WindowDeactivate:
-            # 如果窗口当前可见且未最小化，且未禁用自动最小化功能
+            # 如果窗口固定，不执行自动最小化
+            if self.window_pinned:
+                # 固定状态下什么都不做，保持窗口可见
+                return super().event(event)
+                
+            # 未固定状态的默认行为：如果窗口当前可见且未最小化，且未禁用自动最小化功能
             if self.isVisible() and not self.isMinimized() and not self.disable_auto_minimize:
                 # 使用短延迟以避免立即最小化可能导致的焦点问题
                 QTimer.singleShot(100, self.showMinimized)
@@ -1245,7 +1160,7 @@ class FeedbackUI(QMainWindow):
                 pixmap = QPixmap.fromImage(image)
                 self.add_image_preview(pixmap)
                 handled_content = True
-                print("DEBUG: 从剪贴板处理了图片内容", file=sys.stderr)
+                # print("DEBUG: 从剪贴板处理了图片内容", file=sys.stderr) # 清理
         
         # 检查是否有文本内容 (即使已处理了图片也检查文本)
         if mime_data.hasText():
@@ -1260,7 +1175,7 @@ class FeedbackUI(QMainWindow):
                     # 在当前光标位置插入文本
                     self.feedback_text.insertPlainText(text)
                 handled_content = True
-                print("DEBUG: 从剪贴板处理了文本内容", file=sys.stderr)
+                # print("DEBUG: 从剪贴板处理了文本内容", file=sys.stderr) # 清理
         
         # 如果有URLs（可能是图片文件）且尚未处理图片，尝试处理
         if mime_data.hasUrls() and not handled_content:
@@ -1273,7 +1188,7 @@ class FeedbackUI(QMainWindow):
                         if not pixmap.isNull() and pixmap.width() > 0:
                             self.add_image_preview(pixmap)
                             handled_content = True
-                            print(f"DEBUG: 从剪贴板URL处理了图片: {file_path}", file=sys.stderr)
+                            # print(f"DEBUG: 从剪贴板URL处理了图片: {file_path}", file=sys.stderr) # 清理
                             break  # 只处理第一个有效图片文件
         
         # 更新提交按钮文本
@@ -1421,24 +1336,17 @@ class FeedbackUI(QMainWindow):
 
     def _show_canned_responses(self):
         """显示常用语对话框"""
-        # 临时禁用自动最小化功能
         self.disable_auto_minimize = True
         
-        print("DEBUG: FeedbackUI._show_canned_responses - START", file=sys.stderr)
-        
         try:
-            # 获取常用语列表
             settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
             settings.beginGroup("CannedResponses")
             responses = settings.value("phrases", [])
             settings.endGroup()
             
-            # 确保responses是列表
             if responses is None:
                 responses = []
-                print("DEBUG: 没有找到常用语设置，使用空列表", file=sys.stderr)
             elif not isinstance(responses, list):
-                # 如果从QSettings读取的不是列表，尝试转换
                 try:
                     if isinstance(responses, str):
                         responses = [responses]
@@ -1446,24 +1354,14 @@ class FeedbackUI(QMainWindow):
                         responses = list(responses)
                 except:
                     responses = []
-                print(f"DEBUG: 常用语设置不是列表，转换后: {responses}", file=sys.stderr)
-            
-            print(f"DEBUG: 加载常用语，数量: {len(responses)}", file=sys.stderr)
-            if responses:
-                print(f"DEBUG: 第一项: {responses[0]}", file=sys.stderr)
             
             # 显示常用语对话框
-            dialog = SelectCannedResponseDialog(responses, self)
-            dialog.setWindowModality(Qt.ApplicationModal)  # 设置为模态对话框
-            print("DEBUG: FeedbackUI._show_canned_responses - About to call dialog.exec()", file=sys.stderr)
+            dialog = SelectCannedResponseDialog(responses, self) # Corrected indentation for line 1459
+            dialog.setWindowModality(Qt.ApplicationModal)
             dialog.exec()
-            print("DEBUG: FeedbackUI._show_canned_responses - dialog.exec() finished", file=sys.stderr)
             
-            # 注意：不需要检查结果，因为双击项目时会直接插入文本并关闭对话框
         finally:
-            # 恢复自动最小化功能
             self.disable_auto_minimize = False
-            print("DEBUG: FeedbackUI._show_canned_responses - END", file=sys.stderr)
 
     def _add_images_from_clipboard(self):
         """从剪贴板添加图片"""
@@ -1478,7 +1376,7 @@ class FeedbackUI(QMainWindow):
             if not pixmap.isNull() and pixmap.width() > 0:
                 self._add_image_widget(pixmap)
                 added_images += 1
-                print(f"DEBUG: 从剪贴板添加了图片，尺寸: {pixmap.width()}x{pixmap.height()}", file=sys.stderr)
+                # print(f"DEBUG: 从剪贴板添加了图片，尺寸: {pixmap.width()}x{pixmap.height()}", file=sys.stderr) # 清理
         
         # 检查剪贴板中是否有URLs（可能是图片文件）
         if mime_data.hasUrls():
@@ -1492,7 +1390,7 @@ class FeedbackUI(QMainWindow):
                         if not pixmap.isNull() and pixmap.width() > 0:
                             self._add_image_widget(pixmap)
                             added_images += 1
-                            print(f"DEBUG: 从剪贴板URL添加了图片: {file_path}", file=sys.stderr)
+                            # print(f"DEBUG: 从剪贴板URL添加了图片: {file_path}", file=sys.stderr) # 清理
         
         # 更新提交按钮文本
         self._update_submit_button_text()
@@ -1543,7 +1441,66 @@ class FeedbackUI(QMainWindow):
             # 设置定时器在3秒后隐藏状态标签
             QTimer.singleShot(3000, lambda: self.status_label.setVisible(False))
             
-            print(f"DEBUG: 移除了图片，剩余 {len(self.image_widgets)} 张", file=sys.stderr)
+            # print(f"DEBUG: 移除了图片，剩余 {len(self.image_widgets)} 张", file=sys.stderr)
+
+    def _toggle_pin_window(self):
+        """切换窗口固定状态"""
+        self.window_pinned = not self.window_pinned
+        
+        if self.window_pinned:
+            # 如果窗口固定，设置为活跃状态按钮样式
+            self.pin_window_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #2a82da;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #3a92ea;
+                }
+                QPushButton:pressed {
+                    background-color: #1a72ca;
+                }
+            """)
+            self.pin_window_button.setToolTip("点击取消固定窗口")
+            
+            # 保持窗口顶层显示，同时确保保留所有标准窗口按钮
+            # 这里我们使用Qt.WindowStaysOnTopHint确保窗口置顶，并保留现有标志
+            self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)  
+            self.show()  # 需要重新显示窗口以应用标志更改
+            
+            # 确保窗口置顶
+            self.raise_()
+            self.activateWindow()
+            
+        else:
+            # 如果取消固定，设置为非活跃状态按钮样式
+            self.pin_window_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #555555;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #666666;
+                }
+                QPushButton:pressed {
+                    background-color: #444444;
+                }
+            """)
+            self.pin_window_button.setToolTip("固定窗口，防止自动最小化")
+            
+            # 恢复窗口标志为默认
+            self.setWindowFlags(Qt.Window)
+            self.show()  # 需要重新显示窗口以应用标志更改
 
 
 class ManageCannedResponsesDialog(QDialog):
@@ -1742,7 +1699,7 @@ class ManageCannedResponsesDialog(QDialog):
                 2000
             )
             
-            print(f"DEBUG: 成功添加常用语: {text}", file=sys.stderr)
+            # print(f"DEBUG: 成功添加常用语: {text}", file=sys.stderr)
     
     def _update_response(self):
         """更新选中的常用语"""
@@ -1825,7 +1782,7 @@ class SelectCannedResponseDialog(QDialog):
     
     def __init__(self, responses, parent=None):
         super().__init__(parent)
-        print("DEBUG: SelectCannedResponseDialog.__init__ - START", file=sys.stderr)
+        # print("DEBUG: SelectCannedResponseDialog.__init__ - START", file=sys.stderr)
         self.setWindowTitle("常用语管理")
         self.resize(500, 450)
         self.setMinimumSize(450, 400)
@@ -1840,7 +1797,7 @@ class SelectCannedResponseDialog(QDialog):
         
         # 确保responses是列表
         self.responses = responses if responses else []
-        print(f"DEBUG: SelectCannedResponseDialog.__init__ - Received {len(self.responses)} responses", file=sys.stderr)
+        # print(f"DEBUG: SelectCannedResponseDialog.__init__ - Received {len(self.responses)} responses", file=sys.stderr)
         
         # 创建设置对象
         self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
@@ -1851,11 +1808,11 @@ class SelectCannedResponseDialog(QDialog):
         # 加载常用语数据
         self._load_responses()
         
-        print(f"DEBUG: SelectCannedResponseDialog.__init__ - END, Loaded {len(self.responses)} responses into UI", file=sys.stderr)
+        # print(f"DEBUG: SelectCannedResponseDialog.__init__ - END, Loaded {len(self.responses)} responses into UI", file=sys.stderr)
     
     def _create_ui(self):
         """创建用户界面"""
-        print("DEBUG: SelectCannedResponseDialog._create_ui - START", file=sys.stderr)
+        # print("DEBUG: SelectCannedResponseDialog._create_ui - START", file=sys.stderr)
         # 主布局
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -1968,14 +1925,14 @@ class SelectCannedResponseDialog(QDialog):
                 color: white;
             }
         """)
-        print("DEBUG: SelectCannedResponseDialog._create_ui - END", file=sys.stderr)
+        # print("DEBUG: SelectCannedResponseDialog._create_ui - END", file=sys.stderr)
     
     def _load_responses(self):
         """加载常用语到列表"""
-        print(f"DEBUG: SelectCannedResponseDialog._load_responses - START, {len(self.responses)} responses to load", file=sys.stderr)
+        # print(f"DEBUG: SelectCannedResponseDialog._load_responses - START, {len(self.responses)} responses to load", file=sys.stderr)
         self.list_widget.clear()
         for i, response in enumerate(self.responses):
-            print(f"DEBUG: SelectCannedResponseDialog._load_responses - Loading item {i+1}: '{response}'", file=sys.stderr)
+            # print(f"DEBUG: SelectCannedResponseDialog._load_responses - Loading item {i+1}: '{response}'", file=sys.stderr)
             if response and response.strip():
                 self._add_item_to_list(response)
         
@@ -1991,12 +1948,12 @@ class SelectCannedResponseDialog(QDialog):
                 border: none;
             }
         """)
-        print("DEBUG: SelectCannedResponseDialog._load_responses - Cleared selection", file=sys.stderr)
-        print("DEBUG: SelectCannedResponseDialog._load_responses - END", file=sys.stderr)
+        # print("DEBUG: SelectCannedResponseDialog._load_responses - Cleared selection", file=sys.stderr)
+        # print("DEBUG: SelectCannedResponseDialog._load_responses - END", file=sys.stderr)
     
     def _add_item_to_list(self, text):
         """将常用语添加到列表 - 单行显示，过长省略"""
-        print(f"DEBUG: SelectCannedResponseDialog._add_item_to_list - Adding: '{text}'", file=sys.stderr)
+        # print(f"DEBUG: SelectCannedResponseDialog._add_item_to_list - Adding: '{text}'", file=sys.stderr)
         # 创建列表项
         item = QListWidgetItem()
         self.list_widget.addItem(item)
@@ -2106,12 +2063,12 @@ class SelectCannedResponseDialog(QDialog):
             label = widget.layout().itemAt(0).widget()
             if label and isinstance(label, QLabel):
                 text = label.text()
-                print(f"DEBUG: 双击选择常用语: {text}", file=sys.stderr)
+                # print(f"DEBUG: 双击选择常用语: {text}", file=sys.stderr)
                 
                 # 插入到父窗口输入框
                 if self.parent_window and hasattr(self.parent_window, 'feedback_text'):
                     self.parent_window.feedback_text.insertPlainText(text)
-                    print("DEBUG: 已插入文本到输入框", file=sys.stderr)
+                    # print("DEBUG: 已插入文本到输入框", file=sys.stderr)
                     
                     # 保存选择结果并关闭
                     self.selected_response = text
@@ -2130,14 +2087,14 @@ class SelectCannedResponseDialog(QDialog):
                     text = label.text()
                     self.responses.append(text)
         
-        print(f"DEBUG: SelectCannedResponseDialog._save_responses - Saving {len(self.responses)} responses", file=sys.stderr)
+        # print(f"DEBUG: SelectCannedResponseDialog._save_responses - Saving {len(self.responses)} responses", file=sys.stderr)
         
         # 保存到设置
         self.settings.beginGroup("CannedResponses")
         self.settings.setValue("phrases", self.responses)
         self.settings.endGroup()
         self.settings.sync()
-        print(f"DEBUG: 已保存 {len(self.responses)} 个常用语", file=sys.stderr)
+        # print(f"DEBUG: 已保存 {len(self.responses)} 个常用语", file=sys.stderr)
     
     def closeEvent(self, event):
         """关闭对话框时保存常用语顺序"""
@@ -2156,13 +2113,14 @@ class SelectCannedResponseDialog(QDialog):
         if text and self.parent_window and hasattr(self.parent_window, 'feedback_text'):
             # 插入文本并关闭对话框
             self.parent_window.feedback_text.insertPlainText(text)
-            print(f"DEBUG: 通过新方法插入文本到输入框: {text}", file=sys.stderr)
+            # print(f"DEBUG: 通过新方法插入文本到输入框: {text}", file=sys.stderr)
             # 保存选定的常用语
             self.selected_response = text
             # 关闭对话框
             self.accept()
         else:
-            print(f"DEBUG: 无法插入文本: text={bool(text)}, parent={bool(self.parent_window)}", file=sys.stderr)
+            # print(f"DEBUG: 无法插入文本: text={bool(text)}, parent={bool(self.parent_window)}", file=sys.stderr)
+            pass
 
 # 添加自定义可拖放列表部件类
 class DraggableListWidget(QListWidget):
@@ -2242,7 +2200,7 @@ class DraggableListWidget(QListWidget):
                 text_label = item_widget.layout().itemAt(0).widget()
                 if text_label and isinstance(text_label, QLabel):
                     text = text_label.text()
-                    print(f"DEBUG: 双击事件捕获，文本内容: {text}", file=sys.stderr)
+                    # print(f"DEBUG: 双击事件捕获，文本内容: {text}", file=sys.stderr)
                     # 发出自定义双击信号
                     self.item_double_clicked.emit(text)
                     return
@@ -2267,7 +2225,7 @@ class DraggableListWidget(QListWidget):
             # 计算移动距离，如果超过阈值则开始拖拽
             distance = (event.pos() - self.drag_start_position).manhattanLength()
             if distance >= QApplication.startDragDistance():
-                print("DEBUG: 开始拖拽操作", file=sys.stderr)
+                # print("DEBUG: 开始拖拽操作", file=sys.stderr)
                 # 如果有拖拽项，则选中它用于拖拽
                 if hasattr(self, 'drag_item') and self.drag_item:
                     self.drag_item.setSelected(True)
@@ -2284,21 +2242,20 @@ class DraggableListWidget(QListWidget):
         QTimer.singleShot(100, self.clearSelection)
         
         # 拖放完成后发出信号
-        print("DEBUG: 拖放操作完成，发出drag_completed信号", file=sys.stderr)
+        # print("DEBUG: 拖放操作完成，发出drag_completed信号", file=sys.stderr)
         self.drag_completed.emit()
 
 def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
-    print("进入feedback_ui函数...", file=sys.stderr)
-    print(f"DEBUG: 函数接收到的预定义选项: {predefined_options}", file=sys.stderr)
+    # print("进入feedback_ui函数...", file=sys.stderr)
     app = QApplication.instance() or QApplication()
-    print("QApplication实例化完成", file=sys.stderr)
+    # print("QApplication实例化完成", file=sys.stderr)
     app.setPalette(get_dark_mode_palette(app))
     app.setStyle("Fusion")
     
     # 设置应用程序属性
     app.setQuitOnLastWindowClosed(True)
     
-    print("设置应用程序样式完成", file=sys.stderr)
+    # print("设置应用程序样式完成", file=sys.stderr)
     
     # 应用全局样式表
     # 注意：以下样式表仅使用Qt支持的样式属性
@@ -2460,13 +2417,13 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
     # 确保预定义选项是一个列表，即使是空列表
     if predefined_options is None:
         predefined_options = []
-        print("未提供预定义选项，使用空列表", file=sys.stderr)
+        # print("未提供预定义选项，使用空列表", file=sys.stderr)
     
-    print("准备创建FeedbackUI实例...", file=sys.stderr)
+    # print("准备创建FeedbackUI实例...", file=sys.stderr)
     ui = FeedbackUI(prompt, predefined_options)
-    print("FeedbackUI实例创建完成，准备运行...", file=sys.stderr)
+    # print("FeedbackUI实例创建完成，准备运行...", file=sys.stderr)
     result = ui.run()
-    print("UI运行完成，获得结果", file=sys.stderr)
+    # print("UI运行完成，获得结果", file=sys.stderr)
 
     if output_file and result:
         # Ensure the directory exists
@@ -2479,7 +2436,7 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
     return result
 
 if __name__ == "__main__":
-    print("开始执行主程序...", file=sys.stderr)
+    # print("开始执行主程序...", file=sys.stderr)
     parser = argparse.ArgumentParser(description="Run the feedback UI")
     parser.add_argument("--prompt", default="I implemented the changes you requested.", help="The prompt to show to the user")
     parser.add_argument("--predefined-options", default="", help="Pipe-separated list of predefined options (|||)")
@@ -2488,67 +2445,65 @@ if __name__ == "__main__":
     parser.add_argument("--full-ui", action="store_true", default=False, help="显示完整UI界面，包含所有功能")
     args = parser.parse_args()
     
-    print(f"命令行参数: {args}", file=sys.stderr)
+    # print(f"命令行参数: {args}", file=sys.stderr)
 
     # 调试模式标志
     debug_mode = args.debug
     
-    if debug_mode:
-        print("DEBUG: 运行在调试模式", file=sys.stderr)
+    # if debug_mode:
+        # print("DEBUG: 运行在调试模式", file=sys.stderr)
         
     # 处理预定义选项
     if args.predefined_options:
         # 有传入预定义选项，使用传入的选项
         predefined_options = [opt for opt in args.predefined_options.split("|||") if opt]
-        print(f"使用传入的预定义选项: {predefined_options}", file=sys.stderr)
+        # print(f"使用传入的预定义选项: {predefined_options}", file=sys.stderr)
     else:
         # 没有传入预定义选项
         if args.full_ui:
             # 仅在手动运行脚本且明确指定--full-ui参数时才使用示例选项
             predefined_options = ["示例选项1", "示例选项2", "示例选项3"]
-            print(f"启用完整UI模式并使用示例预定义选项: {predefined_options}", file=sys.stderr)
+            # print(f"启用完整UI模式并使用示例预定义选项: {predefined_options}", file=sys.stderr)
         else:
             # 没有选项
             predefined_options = []
-            print("使用空选项列表", file=sys.stderr)
+            # print("使用空选项列表", file=sys.stderr)
     
-    print(f"最终使用的预定义选项: {predefined_options}", file=sys.stderr)
+    # print(f"最终使用的预定义选项: {predefined_options}", file=sys.stderr)
     
-    print("创建UI...", file=sys.stderr)
+    # print("创建UI...", file=sys.stderr)
     result = feedback_ui(args.prompt, predefined_options, args.output_file)
-    print("UI执行完成", file=sys.stderr)
+    # print("UI执行完成", file=sys.stderr)
     if result:
         pretty_result = json.dumps(result, indent=2, ensure_ascii=False)
-        print(f"\n反馈结果:\n{pretty_result}")
+        # print(f"\n反馈结果:\n{pretty_result}")
         
-        # 在调试模式下验证结果格式
-        if debug_mode:
-            print("\nDEBUG: 验证反馈结果格式", file=sys.stderr)
-            if "content" not in result:
-                print("ERROR: 结果缺少 'content' 字段", file=sys.stderr)
-            else:
-                content = result["content"]
-                if not isinstance(content, list):
-                    print(f"ERROR: 'content' 不是列表类型: {type(content)}", file=sys.stderr)
-                else:
-                    print(f"DEBUG: 内容列表包含 {len(content)} 项", file=sys.stderr)
-                    for i, item in enumerate(content):
-                        if "type" not in item:
-                            print(f"ERROR: 内容项 {i+1} 缺少 'type' 字段", file=sys.stderr)
-                        elif item["type"] == "text":
-                            if "text" not in item:
-                                print(f"ERROR: 文本项 {i+1} 缺少 'text' 字段", file=sys.stderr)
-                            else:
-                                print(f"DEBUG: 文本项 {i+1} 有效，长度: {len(item['text'])}", file=sys.stderr)
-                        elif item["type"] == "image":
-                            if "data" not in item:
-                                print(f"ERROR: 图片项 {i+1} 缺少 'data' 字段", file=sys.stderr)
-                            elif "mimeType" not in item:
-                                print(f"ERROR: 图片项 {i+1} 缺少 'mimeType' 字段", file=sys.stderr)
-                            else:
-                                print(f"DEBUG: 图片项 {i+1} 有效, MIME类型: {item['mimeType']}", file=sys.stderr)
-                                print(f"DEBUG: Base64数据长度: {len(item['data'])}", file=sys.stderr)
-                        else:
-                            print(f"WARNING: 内容项 {i+1} 有未知类型: {item['type']}", file=sys.stderr)
-            
+        # if debug_mode: # 调试模式下的验证可以保留，或者根据需要移除
+            # print("\nDEBUG: 验证反馈结果格式", file=sys.stderr)
+            # if "content" not in result:
+                # print("ERROR: 结果缺少 'content' 字段", file=sys.stderr)
+            # else:
+                # content = result["content"]
+                # if not isinstance(content, list):
+                    # print(f"ERROR: 'content' 不是列表类型: {type(content)}", file=sys.stderr)
+                # else:
+                    # print(f"DEBUG: 内容列表包含 {len(content)} 项", file=sys.stderr)
+                    # for i, item in enumerate(content):
+                        # if "type" not in item:
+                            # print(f"ERROR: 内容项 {i+1} 缺少 'type' 字段", file=sys.stderr)
+                        # elif item["type"] == "text":
+                            # if "text" not in item:
+                                # print(f"ERROR: 文本项 {i+1} 缺少 'text' 字段", file=sys.stderr)
+                            # else:
+                                # print(f"DEBUG: 文本项 {i+1} 有效，长度: {len(item['text'])}", file=sys.stderr)
+                        # elif item["type"] == "image":
+                            # if "data" not in item:
+                                # print(f"ERROR: 图片项 {i+1} 缺少 'data' 字段", file=sys.stderr)
+                            # elif "mimeType" not in item:
+                                # print(f"ERROR: 图片项 {i+1} 缺少 'mimeType' 字段", file=sys.stderr)
+                            # else:
+                                # print(f"DEBUG: 图片项 {i+1} 有效, MIME类型: {item['mimeType']}", file=sys.stderr)
+                                # print(f"DEBUG: Base64数据长度: {len(item['data'])}", file=sys.stderr)
+                        # else:
+                            # print(f"WARNING: 内容项 {i+1} 有未知类型: {item['type']}", file=sys.stderr)
     sys.exit(0)
