@@ -14,6 +14,7 @@ import traceback
 from datetime import datetime
 import functools # 添加导入
 import re  # 添加re模块用于正则表达式处理
+import webbrowser  # 添加webbrowser模块用于打开网页链接
 
 # 添加pyperclip模块，用于剪贴板操作
 try:
@@ -1770,6 +1771,39 @@ class FeedbackUI(QMainWindow):
         # 将反馈分组框添加到主布局
         main_layout.addWidget(self.feedback_group)
         
+        # 创建GitHub链接容器 - 移至主布局底部
+        github_container = QWidget()
+        github_layout = QHBoxLayout(github_container)
+        github_layout.setContentsMargins(0, 5, 0, 10)  # 设置上下边距
+        github_layout.setAlignment(Qt.AlignCenter)  # 居中对齐
+        
+        # 创建GitHub链接标签
+        github_label = QLabel()
+        github_label.setText("<a href='#' style='color: #aaaaaa; text-decoration: none;'>GitHub</a>")
+        github_label.setOpenExternalLinks(False)  # 不自动打开链接
+        github_label.setToolTip("访问项目GitHub仓库")
+        github_label.setCursor(Qt.PointingHandCursor)  # 设置指针光标
+        github_label.linkActivated.connect(self._open_github_repo)
+        
+        # 设置GitHub图标标签样式
+        github_label.setStyleSheet("""
+            QLabel {
+                font-size: 11pt;
+                color: #aaaaaa;
+                padding: 4px;
+                margin-top: 5px;
+            }
+            QLabel:hover {
+                color: #ffffff;
+            }
+        """)
+        
+        # 将GitHub标签添加到布局
+        github_layout.addWidget(github_label)
+        
+        # 添加GitHub链接容器到主布局
+        main_layout.addWidget(github_container)
+        
         # 初始更新一次提交按钮文本
         self._update_submit_button_text()
         
@@ -2433,6 +2467,10 @@ class FeedbackUI(QMainWindow):
         self.settings.beginGroup("MainWindow_General")
         self.settings.setValue("windowPinned", self.window_pinned)
         self.settings.endGroup()
+        
+    def _open_github_repo(self):
+        """打开GitHub仓库页面"""
+        webbrowser.open("https://github.com/pawaovo/interactive-feedback-mcp")
 
     def _restore_window_state(self, geometry):
         """恢复窗口位置和大小，并激活窗口"""
