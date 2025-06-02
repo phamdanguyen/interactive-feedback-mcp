@@ -158,6 +158,14 @@ def interactive_feedback(
                         print(f"ERROR server.py: Failed to process image: {e}", file=sys.stderr)
                         # Provide a user-facing message about the failure
                         processed_content.append(f"[Image processing failed: {mime_type or 'unknown type'}]") 
+            elif item_type == "file_reference":
+                # 处理文件引用
+                display_name = item.get("display_name", "")
+                file_path = item.get("path", "")
+                if display_name and file_path:
+                    # 添加文件引用信息
+                    file_info = f"{display_name} -> {file_path}"
+                    processed_content.append(file_info)
     
     if not processed_content:
         # Return a clear message if no feedback was provided or processed

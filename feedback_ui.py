@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QEvent, QSize, QStringListModel, QByteArray, QBuffer, QIODevice, QMimeData, QPoint, QRect, QRectF
-from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, QPen, QAction, QFontMetrics
+from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixmap, QCursor, QPainter, QClipboard, QImage, QFont, QKeySequence, QShortcut, QDrag, QPen, QAction, QFontMetrics, QTextCharFormat
 
 # 添加自定义ClickableLabel类
 class ClickableLabel(QLabel):
@@ -177,6 +177,12 @@ class FeedbackTextEdit(QTextEdit):
             }
         """)
         
+        # 启用拖放功能
+        self.setAcceptDrops(True)
+        
+        # 调试输出
+        print("DEBUG: FeedbackTextEdit 初始化完成，拖放功能已启用", file=sys.stderr)
+        
     def resizeEvent(self, event):
         """当文本框大小改变时，调整图片预览容器的位置和大小"""
         super().resizeEvent(event)
@@ -203,12 +209,34 @@ class FeedbackTextEdit(QTextEdit):
     def keyPressEvent(self, event: QKeyEvent):
         # 添加对BackSpace键的特殊处理，提高删除文字时的响应速度
         if event.key() == Qt.Key_Backspace:
+            # 尝试处理文件引用的特殊删除行为
+            if self._handle_file_reference_deletion(is_backspace=True):
+                return
+                
             # 获取当前光标位置
             cursor = self.textCursor()
             # 直接调用标准删除操作，而不触发额外的处理
             if not cursor.hasSelection():
                 # 如果没有选择文本，则简单地删除前一个字符
                 cursor.deletePreviousChar()
+            else:
+                # 如果有选择文本，则删除选定内容
+                cursor.removeSelectedText()
+            # 不调用父类方法，避免额外处理
+            return
+            
+        # 处理Delete键，类似于BackSpace键的逻辑
+        elif event.key() == Qt.Key_Delete:
+            # 尝试处理文件引用的特殊删除行为
+            if self._handle_file_reference_deletion(is_backspace=False):
+                return
+                
+            # 获取当前光标位置
+            cursor = self.textCursor()
+            # 直接调用标准删除操作，而不触发额外的处理
+            if not cursor.hasSelection():
+                # 如果没有选择文本，则简单地删除后一个字符
+                cursor.deleteChar()
             else:
                 # 如果有选择文本，则删除选定内容
                 cursor.removeSelectedText()
@@ -293,6 +321,334 @@ class FeedbackTextEdit(QTextEdit):
         self.setViewportMargins(0, 0, 0, container_height)
         # 强制重新绘制
         self.viewport().update()
+        
+    def dragEnterEvent(self, event):
+        """处理拖拽进入事件"""
+        mime_data = event.mimeData()
+        
+        # 打印所有可用的格式
+        print(f"DEBUG: 拖拽数据格式: {mime_data.formats()}", file=sys.stderr)
+        
+        # 接受多种类型的拖拽数据
+        if mime_data.hasUrls() or mime_data.hasText() or mime_data.hasHtml() or mime_data.hasImage():
+            print("DEBUG: dragEnterEvent - 接受拖拽事件", file=sys.stderr)
+            event.acceptProposedAction()
+        else:
+            print("DEBUG: dragEnterEvent - 拒绝拖拽事件", file=sys.stderr)
+            event.ignore()
+            
+    def dragMoveEvent(self, event):
+        """处理拖拽移动事件"""
+        if event.mimeData().hasUrls() or event.mimeData().hasText() or event.mimeData().hasHtml() or event.mimeData().hasImage():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event):
+        """处理拖拽放下事件"""
+        mime_data = event.mimeData()
+        print("DEBUG: dropEvent - 开始处理拖拽事件", file=sys.stderr)
+        print(f"DEBUG: 拖拽数据格式: {mime_data.formats()}", file=sys.stderr)
+        
+        # 获取父FeedbackUI实例
+        parent_window = self.parent()
+        while parent_window and not isinstance(parent_window, FeedbackUI):
+            parent_window = parent_window.parent()
+            
+        if not parent_window:
+            print("ERROR: dropEvent - 未找到父FeedbackUI实例", file=sys.stderr)
+            event.ignore()
+            return
+            
+        # 确保父窗口有dropped_file_references字典
+        if not hasattr(parent_window, 'dropped_file_references'):
+            parent_window.dropped_file_references = {}
+            
+        # 处理拖拽的URL（文件）
+        if mime_data.hasUrls():
+            urls = mime_data.urls()
+            print(f"DEBUG: dropEvent - URL数量: {len(urls)}", file=sys.stderr)
+            
+            # 如果URLs数量为0但声称有URLs，可能是特殊情况
+            # 尝试从文本中获取文件路径
+            if len(urls) == 0 and mime_data.hasText():
+                print("DEBUG: dropEvent - URLs为空，尝试从文本中获取文件路径", file=sys.stderr)
+                return self._process_text_drop(event, mime_data, parent_window)
+            
+            for url in urls:
+                url_str = url.toString()
+                print(f"DEBUG: dropEvent - 处理URL: {url_str}", file=sys.stderr)
+                
+                # 处理本地文件
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    file_name = os.path.basename(file_path)
+                    print(f"DEBUG: dropEvent - 本地文件: {file_name}, 路径: {file_path}", file=sys.stderr)
+                    
+                    # 处理图片文件
+                    if os.path.isfile(file_path) and os.path.splitext(file_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                        try:
+                            print(f"DEBUG: dropEvent - 尝试加载图片: {file_path}", file=sys.stderr)
+                            pixmap = QPixmap(file_path)
+                            if not pixmap.isNull() and pixmap.width() > 0:
+                                print(f"DEBUG: dropEvent - 成功加载图片，添加到预览区", file=sys.stderr)
+                                parent_window.add_image_preview(pixmap)
+                                continue  # 成功处理为图片，跳过后续的文件引用处理
+                            else:
+                                print(f"DEBUG: dropEvent - 图片加载失败，作为文件处理", file=sys.stderr)
+                        except Exception as e:
+                            print(f"ERROR: dropEvent - 加载图片出错: {e}", file=sys.stderr)
+                    
+                    # 处理为文件引用 @文件名
+                    self._insert_file_reference(parent_window, file_path, file_name)
+        
+        # 如果没有URL但有文本，可能是从资源管理器拖拽的特殊格式
+        elif mime_data.hasText():
+            return self._process_text_drop(event, mime_data, parent_window)
+        else:
+            # 如果既没有URL也没有文本，则调用父类方法
+            print("DEBUG: dropEvent - 非文件拖拽，调用父类方法处理", file=sys.stderr)
+            super().dropEvent(event)
+            return
+            
+        # 接受事件
+        event.acceptProposedAction()
+        
+    def _process_text_drop(self, event, mime_data, parent_window):
+        """处理文本拖拽，尝试从文本中提取文件路径
+        
+        Args:
+            event: 拖拽事件
+            mime_data: 拖拽的MIME数据
+            parent_window: FeedbackUI实例
+            
+        Returns:
+            bool: 是否成功处理
+        """
+        text = mime_data.text()
+        print(f"DEBUG: _process_text_drop - 拖拽文本: '{text}'", file=sys.stderr)
+        
+        # 检查文本是否包含文件URL格式
+        if text.startswith("file:///"):
+            # 尝试解析文件URL
+            try:
+                from urllib.parse import unquote
+                # 移除前缀并解码URL
+                clean_path = unquote(text.replace("file:///", ""))
+                # Windows路径修正
+                if sys.platform.startswith("win"):
+                    if not clean_path.startswith("C:") and len(clean_path) > 1:
+                        clean_path = clean_path[0] + ":" + clean_path[1:]
+                
+                print(f"DEBUG: _process_text_drop - 解析后的路径: {clean_path}", file=sys.stderr)
+                
+                if os.path.exists(clean_path):
+                    file_name = os.path.basename(clean_path)
+                    print(f"DEBUG: _process_text_drop - 有效文件路径: {clean_path}", file=sys.stderr)
+                    
+                    # 处理图片文件
+                    if os.path.isfile(clean_path) and os.path.splitext(clean_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                        try:
+                            pixmap = QPixmap(clean_path)
+                            if not pixmap.isNull() and pixmap.width() > 0:
+                                parent_window.add_image_preview(pixmap)
+                                event.acceptProposedAction()
+                                return True
+                        except Exception as e:
+                            print(f"ERROR: _process_text_drop - 加载图片失败: {e}", file=sys.stderr)
+                    
+                    # 处理为文件引用
+                    self._insert_file_reference(parent_window, clean_path, file_name)
+                    event.acceptProposedAction()
+                    return True
+            except Exception as e:
+                print(f"ERROR: _process_text_drop - 解析文件URL失败: {e}", file=sys.stderr)
+        
+        # 检查是否包含Windows文件路径格式（例如 "D:\path\to\file.txt"）
+        windows_path_pattern = re.compile(r'^[a-zA-Z]:[/\\].+')
+        if windows_path_pattern.match(text):
+            path = text.replace('\\', '\\\\')  # 确保路径中的反斜杠正确处理
+            print(f"DEBUG: _process_text_drop - 检测到Windows路径格式: {path}", file=sys.stderr)
+            
+            if os.path.exists(path):
+                file_name = os.path.basename(path)
+                print(f"DEBUG: _process_text_drop - 有效Windows路径: {path}", file=sys.stderr)
+                
+                # 处理图片文件
+                if os.path.isfile(path) and os.path.splitext(path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                    try:
+                        pixmap = QPixmap(path)
+                        if not pixmap.isNull() and pixmap.width() > 0:
+                            parent_window.add_image_preview(pixmap)
+                            event.acceptProposedAction()
+                            return True
+                    except Exception as e:
+                        print(f"ERROR: _process_text_drop - 加载Windows路径图片失败: {e}", file=sys.stderr)
+                
+                # 处理为文件引用
+                self._insert_file_reference(parent_window, path, file_name)
+                event.acceptProposedAction()
+                return True
+        
+        # 尝试普通的文本路径解析
+        possible_paths = text.split('\n')
+        for path in possible_paths:
+            path = path.strip()
+            if path and os.path.exists(path):
+                file_name = os.path.basename(path)
+                print(f"DEBUG: _process_text_drop - 从文本提取文件路径: {path}", file=sys.stderr)
+                
+                # 处理图片文件
+                if os.path.isfile(path) and os.path.splitext(path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
+                    try:
+                        pixmap = QPixmap(path)
+                        if not pixmap.isNull() and pixmap.width() > 0:
+                            parent_window.add_image_preview(pixmap)
+                            continue
+                    except Exception as e:
+                        print(f"ERROR: _process_text_drop - 从文本路径加载图片失败: {e}", file=sys.stderr)
+                
+                # 处理为文件引用 @文件名
+                self._insert_file_reference(parent_window, path, file_name)
+                event.acceptProposedAction()
+                return True
+        
+        # 特殊情况：从网络浏览器拖拽链接
+        if text.startswith("http://") or text.startswith("https://"):
+            # 这里我们可以选择直接插入链接文本，或者进一步处理
+            print(f"DEBUG: _process_text_drop - 检测到网页链接: {text}", file=sys.stderr)
+            self.insertPlainText(text)
+            event.acceptProposedAction()
+            return True
+                
+        # 如果是普通文本，直接插入
+        print(f"DEBUG: _process_text_drop - 作为普通文本插入: {text}", file=sys.stderr)
+        self.insertPlainText(text)
+        event.acceptProposedAction()
+        return True
+    
+    def _insert_file_reference(self, parent_window, file_path, file_name):
+        """插入文件引用到文本编辑框
+        
+        Args:
+            parent_window: FeedbackUI实例
+            file_path: 文件完整路径
+            file_name: 文件名
+        """
+        print(f"DEBUG: _insert_file_reference - 开始处理: {file_name}", file=sys.stderr)
+        
+        # 创建显示名 @文件名
+        display_name = f"@{file_name}"
+        
+        # 处理同名文件
+        counter = 1
+        original_display_name = display_name
+        while display_name in parent_window.dropped_file_references:
+            display_name = f"{original_display_name} ({counter})"
+            counter += 1
+        
+        # 存储映射关系
+        parent_window.dropped_file_references[display_name] = file_path
+        print(f"DEBUG: _insert_file_reference - 添加映射: {display_name} -> {file_path}", file=sys.stderr)
+        
+        try:
+            # 在光标位置插入显示名，并设置为蓝色
+            cursor = self.textCursor()
+            
+            # 保存当前格式
+            current_format = cursor.charFormat()
+            
+            # 创建蓝色文本格式 - 使用更鲜明的蓝色并加粗
+            blue_format = QTextCharFormat()
+            blue_format.setForeground(QColor("#1a73e8"))  # 更鲜艳的蓝色
+            blue_format.setFontWeight(QFont.Bold)  # 加粗
+            blue_format.setFontUnderline(True)  # 添加下划线
+            
+            # 插入前清除可能的选择
+            cursor.clearSelection()
+            
+            # 应用蓝色格式并插入文本
+            print(f"DEBUG: _insert_file_reference - 插入文本: {display_name}", file=sys.stderr)
+            cursor.setCharFormat(blue_format)
+            cursor.insertText(display_name)
+            
+            # 恢复原始格式
+            cursor.setCharFormat(current_format)
+            
+            # 插入空格，便于继续输入
+            cursor.insertText(" ")
+            
+            # 强制更新显示
+            self.update()
+            
+            print("DEBUG: _insert_file_reference - 文本插入完成", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: _insert_file_reference - 插入文本出错: {e}", file=sys.stderr)
+
+    def _handle_file_reference_deletion(self, is_backspace=True):
+        """
+        处理文件引用的特殊删除行为
+        
+        Args:
+            is_backspace (bool): 是否是退格键，True表示退格键，False表示删除键
+            
+        Returns:
+            bool: 如果处理了特殊删除行为返回True，否则返回False
+        """
+        # 查找父FeedbackUI实例，用于获取文件引用字典
+        parent_window = self.parent()
+        while parent_window and not isinstance(parent_window, FeedbackUI):
+            parent_window = parent_window.parent()
+            
+        if not parent_window or not parent_window.dropped_file_references:
+            return False
+            
+        # 获取当前光标位置
+        cursor = self.textCursor()
+        
+        # 如果有选中文本，不做特殊处理
+        if cursor.hasSelection():
+            return False
+            
+        cursor_pos = cursor.position()
+        
+        if is_backspace:  # 退格键
+            # 获取当前位置前的文本
+            cursor.setPosition(0)
+            cursor.setPosition(cursor_pos, QTextCursor.KeepAnchor)
+            text_before_cursor = cursor.selectedText()
+            
+            # 重置光标位置
+            cursor.setPosition(cursor_pos)
+            
+            # 检查是否在文件引用后面
+            for display_name in parent_window.dropped_file_references.keys():
+                if text_before_cursor.endswith(display_name):
+                    # 选中整个文件引用
+                    cursor.setPosition(cursor_pos - len(display_name))
+                    cursor.setPosition(cursor_pos, QTextCursor.KeepAnchor)
+                    # 删除选中内容
+                    cursor.removeSelectedText()
+                    return True
+        else:  # 删除键
+            # 获取当前位置后的文本
+            cursor.setPosition(cursor_pos)
+            cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+            text_after_cursor = cursor.selectedText()
+            
+            # 重置光标位置
+            cursor.setPosition(cursor_pos)
+            
+            # 检查是否在文件引用前面
+            for display_name in parent_window.dropped_file_references.keys():
+                if text_after_cursor.startswith(display_name):
+                    # 选中整个文件引用
+                    cursor.setPosition(cursor_pos + len(display_name), QTextCursor.KeepAnchor)
+                    # 删除选中内容
+                    cursor.removeSelectedText()
+                    return True
+                    
+        return False
 
 class ImagePreviewWidget(QWidget):
     """图片预览小部件，鼠标悬停时放大，支持删除功能"""
@@ -515,6 +871,10 @@ class FeedbackUI(QMainWindow):
         self.image_pixmap = None  # 存储粘贴的图片
         self.next_image_id = 0  # 用于生成唯一的图片ID
         self.image_widgets = {}  # 存储图片预览部件 {id: widget}
+        
+        # 用于存储拖拽文件引用 {显示名: 文件路径}
+        self.dropped_file_references = {}
+        print("DEBUG: FeedbackUI.__init__ - 初始化dropped_file_references字典", file=sys.stderr)
         
         # 用于控制是否自动最小化的标志
         self.disable_auto_minimize = False
@@ -1030,6 +1390,17 @@ class FeedbackUI(QMainWindow):
                 "text": combined_text
             })
 
+        # 处理拖拽的文件引用
+        if self.dropped_file_references:
+            final_text_content = self.feedback_text.toPlainText()
+            for display_name, file_path in self.dropped_file_references.items():
+                if display_name in final_text_content:
+                    content_list.append({
+                        "type": "file_reference",
+                        "display_name": display_name,
+                        "path": file_path
+                    })
+
         # The old keyboard injection logic (using cursor_direct_input) has been removed.
         # All data, including images, is now packaged for MCP transport.
         
@@ -1054,6 +1425,9 @@ class FeedbackUI(QMainWindow):
         self.settings.setValue("windowState", self.saveState())
         self.settings.setValue("windowPinned", self.window_pinned)
         self.settings.endGroup()
+
+        # 清空拖拽文件引用
+        self.dropped_file_references.clear()
 
         super().closeEvent(event)
         
