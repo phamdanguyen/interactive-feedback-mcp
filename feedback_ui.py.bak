@@ -1,4 +1,4 @@
-﻿# Interactive Feedback MCP UI
+# Interactive Feedback MCP UI
 # Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
 # Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
 # Enhanced by Pau Oliva (https://x.com/pof) with ideas from https://github.com/ttommyth/interactive-mcp
@@ -270,42 +270,33 @@ def get_dark_mode_palette(app: QApplication):
         
         /* 复选框样式 */
         QCheckBox {
-            color: #b8b8b8;  /* 选项文本颜色 */
             spacing: 8px;
-            font-size: 11pt;
-            min-height: 28px;  /* 减小高度 */
-            padding: 1px;  /* 减少内边距 */
+            color: white;
+            padding: 5px;
         }
         
         QCheckBox::indicator {
-            width: 22px;
-            height: 22px;
-            border: 1px solid #444444;  /* 更柔和的边框色 */
+            width: 18px;
+            height: 18px;
             border-radius: 4px;
-            background-color: transparent;  /* 未选中时无背景填充 */
+            border: 1px solid #555555;
+            background-color: #2D2D2D;
         }
         
         QCheckBox::indicator:checked {
-            background-color: #4D4D4D;  /* 选中后为灰黑色调填充 */
-            border: 2px solid #555555;  /* 边框变粗 */
-            border-width: 2px;
-            border-color: #555555;
-            transform: scale(1.05);  /* 轻微放大效果 */
+            background-color: #505050;
+            border: 1px solid #606060;
+        }
+        
+        QCheckBox::indicator:checked {
             image: none;  /* 移除图标引用 */
-            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='#ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path fill='white' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
             background-position: center;
             background-repeat: no-repeat;
         }
         
-        QCheckBox::indicator:hover:!checked {
-            border: 1px solid #666666;  /* 悬停时边框更明显 */
-            background-color: #333333;  /* 悬停时有轻微背景 */
-        }
-        
-        QCheckBox::indicator:checked:hover {
-            background-color: #555555;  /* 选中状态悬停时更亮 */
-            border-width: 2px;
-            border-color: #666666;
+        QCheckBox::indicator:unchecked:hover {
+            border: 1px solid #606060;
         }
         
         /* 标签样式 */
@@ -735,10 +726,7 @@ class FeedbackTextEdit(QTextEdit):
                         pixmap = QPixmap(path)
                         if not pixmap.isNull() and pixmap.width() > 0:
                             parent_window.add_image_preview(pixmap)
-                            event.acceptProposedAction()
-                            # 设置焦点到文本输入框（延迟执行以确保事件已完全处理）
-                            QTimer.singleShot(100, lambda: parent_window._set_text_focus())
-                            return True
+                            continue
                     except Exception as e:
                         print(f"ERROR: _process_text_drop - 从文本路径加载图片失败: {e}", file=sys.stderr)
                 
@@ -1387,8 +1375,8 @@ class FeedbackUI(QMainWindow):
         
         # 选项布局
         options_layout = QVBoxLayout(options_frame)
-        options_layout.setContentsMargins(2, 0, 2, 0)  # 进一步减少边距
-        options_layout.setSpacing(0)  # 将间距减为0
+        options_layout.setContentsMargins(3, 1, 3, 1)  # 进一步减少上下边距
+        options_layout.setSpacing(1)  # 减少选项间间距，从3改为1
 
         # 不添加常用语按钮，因为已经在顶部添加了
         
@@ -1412,8 +1400,8 @@ class FeedbackUI(QMainWindow):
                         background-color: transparent;  /* 完全透明背景 */
                         border-radius: 8px;
                         border: none;  /* 移除边框 */
-                        padding: 2px; /* 减少内边距 */
-                        margin: 0px;  /* 完全移除外边距 */
+                        padding: 3px; /* 减少内边距 */
+                        margin: 1px 0px;  /* 减少上下外边距 */
                     }
                     QFrame#optionContainer:hover {
                         background-color: transparent;  /* 保持透明，取消悬停时的背景变化 */
@@ -1423,8 +1411,8 @@ class FeedbackUI(QMainWindow):
                 
                 # 为容器创建水平布局
                 container_layout = QHBoxLayout(option_container)
-                container_layout.setContentsMargins(8, 2, 8, 2)  # 进一步减少内边距
-                container_layout.setSpacing(8)  # 减少水平间距
+                container_layout.setContentsMargins(10, 4, 10, 4)  # 减少垂直内边距
+                container_layout.setSpacing(10)  # 减少水平间距
                 
                 # 将复选框添加到容器布局
                 container_layout.addWidget(checkbox)
@@ -1433,7 +1421,7 @@ class FeedbackUI(QMainWindow):
                 label = ClickableLabel(option_text)
                 label.setWordWrap(True)
                 label.setStyleSheet("""
-                    color: #aaaaaa;  /* 灰色文字，不再使用透明效果 */
+                    color: white;
                     font-size: 11pt;
                     padding: 2px 0;
                 """)
@@ -1584,20 +1572,11 @@ class FeedbackUI(QMainWindow):
     def _set_text_focus(self):
         """设置焦点到文本输入框并激活光标"""
         if hasattr(self, 'feedback_text') and self.feedback_text is not None:
-            # 激活主窗口
-            self.activateWindow()
-            self.raise_()
-            
-            # 设置焦点到文本框
-            self.feedback_text.activateWindow()
-            self.feedback_text.raise_()
-            self.feedback_text.setFocus(Qt.MouseFocusReason)
-            
+            self.feedback_text.setFocus()
             # 确保光标可见并在文本末尾
             cursor = self.feedback_text.textCursor()
             cursor.movePosition(QTextCursor.End)
             self.feedback_text.setTextCursor(cursor)
-            self.feedback_text.ensureCursorVisible()
 
     def get_image_content_data(self, image_id=None) -> Optional[Dict[str, Any]]:
         """
@@ -3212,41 +3191,36 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
         /* 复选框样式 */
         QCheckBox {
             color: #b8b8b8;  /* 选项文本颜色 */
-            spacing: 8px;
+            spacing: 10px;
             font-size: 11pt;
-            min-height: 28px;  /* 减小高度 */
-            padding: 1px;  /* 减少内边距 */
+            min-height: 30px;
+            padding: 2px;
         }
         
         QCheckBox::indicator {
-            width: 22px;
-            height: 22px;
-            border: 1px solid #444444;  /* 更柔和的边框色 */
+            width: 24px;
+            height: 24px;
+            border: 1px solid #3A3A3A;
             border-radius: 4px;
-            background-color: transparent;  /* 未选中时无背景填充 */
+            background-color: #2D2D2D;
         }
         
         QCheckBox::indicator:checked {
-            background-color: #4D4D4D;  /* 选中后为灰黑色调填充 */
-            border: 2px solid #555555;  /* 边框变粗 */
+            background-color: #505050;
+            border: 1px solid #606060;
             border-width: 2px;
             border-color: #555555;
-            transform: scale(1.05);  /* 轻微放大效果 */
-            image: none;  /* 移除图标引用 */
-            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='#ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
-            background-position: center;
-            background-repeat: no-repeat;
         }
         
         QCheckBox::indicator:hover:!checked {
-            border: 1px solid #666666;  /* 悬停时边框更明显 */
-            background-color: #333333;  /* 悬停时有轻微背景 */
+            border: 1px solid #505050;
+            background-color: #353535;
         }
         
         QCheckBox::indicator:checked:hover {
-            background-color: #555555;  /* 选中状态悬停时更亮 */
+            background-color: #606060;
             border-width: 2px;
-            border-color: #666666;
+            border-color: #656565;
         }
         
         /* 添加QLabel样式来显示勾选标记 */
