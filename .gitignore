@@ -37,5 +37,6 @@ uv.lock
 # 不提交的文件
 二次开发建议.md
 todolist.md
-
+todo.md
 .cursor/rules/
+custom_http_transport_mcp.md

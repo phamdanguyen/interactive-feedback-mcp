@@ -1,7 +1,7 @@
 ﻿# Interactive Feedback MCP UI
 # Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
 # Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
-# Enhanced by Pau Oliva (https://x.com/pof) with ideas from https://github.com/ttommyth/interactive-mcp
+# Enhanced by pawa (https://github.com/pawaovo) with ideas from https://github.com/noopstudios/interactive-feedback-mcp
 import os
 import sys
 import json
@@ -330,6 +330,46 @@ class FeedbackTextEdit(QTextEdit):
         # 设置纯文本编辑模式
         self.setPlainText("")
         
+        # 设置高质量字体
+        font = QFont("Segoe UI", 13)
+        font.setStyleStrategy(QFont.PreferAntialias)
+        font.setHintingPreference(QFont.PreferFullHinting)
+        font.setWeight(QFont.Normal)
+        font.setLetterSpacing(QFont.PercentageSpacing, 101.5)  # 增加1.5%的字母间距
+        font.setWordSpacing(1.0)  # 增加词间距
+        self.setFont(font)
+        
+        # 性能优化：添加文件引用缓存
+        self._file_reference_cache = {
+            'text': '',         # 当前文本内容的缓存
+            'references': [],   # 检测到的引用列表
+            'positions': {}     # 引用位置映射 {引用名称: (起始位置, 结束位置)}
+        }
+        # 缓存是否有效的标志
+        self._cache_valid = False
+        # 记录上次光标位置
+        self._last_cursor_pos = 0
+        
+        # 增强按键响应性
+        self.setCursorWidth(2)  # 增加光标宽度使其更明显
+        self.setAcceptDrops(True)
+        
+        # 提高光标可见性和响应度
+        self.viewport().setCursor(Qt.IBeamCursor)  # 确保使用I型光标
+        
+        # 优化键盘响应
+        self.setFocusPolicy(Qt.StrongFocus)
+        
+        # 针对连续按键优化的计时器
+        self._key_repeat_timer = QTimer(self)
+        self._key_repeat_timer.setSingleShot(True)
+        self._key_repeat_timer.setInterval(10)  # 短间隔，确保快速响应
+        self._key_repeat_timer.timeout.connect(self._ensure_cursor_visible)
+        
+        # 记录重复按键状态
+        self._is_key_repeating = False
+        self._current_repeat_key = None
+        
         # 创建图片预览容器（重叠在文本编辑框上）
         self.images_container = QWidget(self)
         self.images_layout = QHBoxLayout(self.images_container)
@@ -352,8 +392,12 @@ class FeedbackTextEdit(QTextEdit):
         self.setStyleSheet("""
             QTextEdit {
                 color: #ffffff;
-                font-size: 12pt;
-                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 13pt;
+                font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+                font-weight: 400;
+                line-height: 1.4;
+                letter-spacing: 0.015em;
+                word-spacing: 0.05em;
                 background-color: #272727;  /* 比#1F1F1F更浅一些 */
                 border: 2px solid #3A3A3A;  /* 加粗边框，与顶部区域一致 */
                 border-radius: 10px;
@@ -431,12 +475,40 @@ class FeedbackTextEdit(QTextEdit):
             self.setViewportMargins(0, 0, 0, container_height)
 
     def keyPressEvent(self, event: QKeyEvent):
-        # 添加对BackSpace键的特殊处理，提高删除文字时的响应速度
-        if event.key() == Qt.Key_Backspace:
-            # 尝试处理文件引用的特殊删除行为
-            if self._handle_file_reference_deletion(is_backspace=True):
-                return
-                
+        key = event.key()
+        
+        # 记录重复按键状态
+        if event.isAutoRepeat():
+            self._is_key_repeating = True
+            self._current_repeat_key = key
+        else:
+            self._is_key_repeating = False
+            self._current_repeat_key = None
+            
+        # 首先处理特殊按键：方向键、Home和End键
+        if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End):
+            # 直接调用父类方法处理光标移动，避免任何额外处理
+            super().keyPressEvent(event)
+            # 更新最后光标位置
+            self._last_cursor_pos = self.textCursor().position()
+            # 确保光标可见，用于连续按键
+            self._schedule_ensure_cursor_visible()
+            return
+            
+        # 更新当前光标位置以优化后续处理
+        cursor_pos = self.textCursor().position()
+        self._last_cursor_pos = cursor_pos
+            
+        # 处理退格键和删除键
+        if key == Qt.Key_Backspace:
+            # 优化：仅当有拖放文件引用且当前位置可能在引用后面时才检查特殊删除
+            parent = self._find_parent()
+            if parent and parent.dropped_file_references and self._near_file_reference(cursor_pos, is_backspace=True):
+                if self._handle_file_reference_deletion(is_backspace=True):
+                    self._invalidate_cache()  # 文本改变，使缓存失效
+                    self._schedule_ensure_cursor_visible()
+                    return
+                    
             # 获取当前光标位置
             cursor = self.textCursor()
             # 直接调用标准删除操作，而不触发额外的处理
@@ -446,15 +518,20 @@ class FeedbackTextEdit(QTextEdit):
             else:
                 # 如果有选择文本，则删除选定内容
                 cursor.removeSelectedText()
-            # 不调用父类方法，避免额外处理
+            
+            self._invalidate_cache()  # 文本改变，使缓存失效
+            self._schedule_ensure_cursor_visible()
             return
             
-        # 处理Delete键，类似于BackSpace键的逻辑
-        elif event.key() == Qt.Key_Delete:
-            # 尝试处理文件引用的特殊删除行为
-            if self._handle_file_reference_deletion(is_backspace=False):
-                return
-                
+        elif key == Qt.Key_Delete:
+            # 优化：仅当有拖放文件引用且当前位置可能在引用前面时才检查特殊删除
+            parent = self._find_parent()
+            if parent and parent.dropped_file_references and self._near_file_reference(cursor_pos, is_backspace=False):
+                if self._handle_file_reference_deletion(is_backspace=False):
+                    self._invalidate_cache()  # 文本改变，使缓存失效
+                    self._schedule_ensure_cursor_visible()
+                    return
+                    
             # 获取当前光标位置
             cursor = self.textCursor()
             # 直接调用标准删除操作，而不触发额外的处理
@@ -464,36 +541,37 @@ class FeedbackTextEdit(QTextEdit):
             else:
                 # 如果有选择文本，则删除选定内容
                 cursor.removeSelectedText()
-            # 不调用父类方法，避免额外处理
+            
+            self._invalidate_cache()  # 文本改变，使缓存失效
+            self._schedule_ensure_cursor_visible()
             return
             
         # 按Enter键发送消息，按Shift+Enter换行
-        elif event.key() == Qt.Key_Return:
+        elif key == Qt.Key_Return:
             # 如果按下Shift+Enter，则执行换行操作
             if event.modifiers() == Qt.ShiftModifier:
                 super().keyPressEvent(event)
+                self._invalidate_cache()  # 文本改变，使缓存失效
+                self._schedule_ensure_cursor_visible()
             # 如果按下Ctrl+Enter或单独按Enter，则发送消息
             elif event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.NoModifier:
-                # 查找父FeedbackUI实例并调用提交方法
-                parent = self.parent()
-                while parent and not isinstance(parent, FeedbackUI):
-                    parent = parent.parent()
+                parent = self._find_parent()
                 if parent:
-                    # 调用父窗口的提交方法（已优化为使用按键序列）
+                    # 调用父窗口的提交方法
                     parent._submit_feedback()
             else:
                 super().keyPressEvent(event)
+                self._invalidate_cache()  # 文本改变，使缓存失效
+                self._schedule_ensure_cursor_visible()
         # 处理Ctrl+V粘贴图片
-        elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
+        elif key == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
             # 查找剪贴板是否有图片
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
             
             # 如果剪贴板有图片且有父FeedbackUI实例，则调用粘贴图片方法
             if mime_data.hasImage():
-                parent = self.parent()
-                while parent and not isinstance(parent, FeedbackUI):
-                    parent = parent.parent()
+                parent = self._find_parent()
                 if parent:
                     # 如果成功处理了图片粘贴，则不执行默认粘贴行为
                     if parent.handle_paste_image():
@@ -501,9 +579,190 @@ class FeedbackTextEdit(QTextEdit):
             
             # 如果没有图片或没找到父FeedbackUI实例，则执行默认粘贴行为
             super().keyPressEvent(event)
+            self._invalidate_cache()  # 文本改变，使缓存失效
+            self._schedule_ensure_cursor_visible()
         else:
+            # 其他按键直接传递给父类处理
             super().keyPressEvent(event)
+            self._invalidate_cache()  # 文本改变，使缓存失效
+            self._schedule_ensure_cursor_visible()
             
+    def keyReleaseEvent(self, event):
+        """处理按键释放事件，重置重复按键状态"""
+        self._is_key_repeating = False
+        self._current_repeat_key = None
+        super().keyReleaseEvent(event)
+        
+    def _schedule_ensure_cursor_visible(self):
+        """调度确保光标可见的函数，避免过于频繁的视图更新"""
+        # 即使计时器已经活动也重新启动，确保最后一次按键也能触发更新
+        self._key_repeat_timer.start()
+        
+    def _ensure_cursor_visible(self):
+        """确保光标可见并且UI响应"""
+        # 获取当前光标
+        cursor = self.textCursor()
+        
+        # 确保光标可见
+        self.ensureCursorVisible()
+        
+        # 强制视口更新
+        self.viewport().update()
+        
+    # 重写鼠标事件，确保与键盘事件的一致处理
+    def mousePressEvent(self, event):
+        # 停止按键重复计时器
+        self._key_repeat_timer.stop()
+        self._is_key_repeating = False
+        self._current_repeat_key = None
+        
+        # 正常处理鼠标事件
+        super().mousePressEvent(event)
+        
+        # 更新光标位置
+        self._last_cursor_pos = self.textCursor().position()
+        
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        # 确保光标可见
+        self.ensureCursorVisible()
+        
+    # 重写显示事件，优化初始光标显示
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 显示时确保光标可见
+        QTimer.singleShot(10, self.ensureCursorVisible)
+
+    def _find_parent(self):
+        """查找父FeedbackUI实例，使用缓存提高性能"""
+        parent = self.parent()
+        while parent and not isinstance(parent, FeedbackUI):
+            parent = parent.parent()
+        return parent
+        
+    def _invalidate_cache(self):
+        """使缓存失效，在文本内容变化时调用"""
+        self._cache_valid = False
+        
+    def _update_reference_cache(self):
+        """更新文件引用缓存"""
+        if self._cache_valid:
+            return
+            
+        parent = self._find_parent()
+        if not parent or not parent.dropped_file_references:
+            self._cache_valid = True
+            return
+            
+        # 获取当前文本
+        text = self.toPlainText()
+        
+        # 如果当前文本与缓存相同，不需要重新计算
+        if text == self._file_reference_cache['text']:
+            self._cache_valid = True
+            return
+            
+        # 更新缓存的文本
+        self._file_reference_cache['text'] = text
+        self._file_reference_cache['references'] = []
+        self._file_reference_cache['positions'] = {}
+        
+        # 寻找所有文件引用的位置
+        for display_name in parent.dropped_file_references:
+            start_pos = 0
+            while True:
+                pos = text.find(display_name, start_pos)
+                if pos == -1:
+                    break
+                    
+                self._file_reference_cache['references'].append(display_name)
+                self._file_reference_cache['positions'][display_name] = (pos, pos + len(display_name))
+                start_pos = pos + len(display_name)
+                
+        self._cache_valid = True
+        
+    def _near_file_reference(self, cursor_pos, is_backspace=True):
+        """快速检查光标是否在文件引用附近，避免完整扫描"""
+        self._update_reference_cache()
+        
+        for display_name, (start, end) in self._file_reference_cache['positions'].items():
+            if is_backspace and cursor_pos == end:
+                # 退格键：如果光标正好在引用后面
+                return True
+            elif not is_backspace and cursor_pos == start:
+                # 删除键：如果光标正好在引用前面
+                return True
+                
+        return False
+
+    def _handle_file_reference_deletion(self, is_backspace=True):
+        """
+        处理文件引用的特殊删除行为
+        
+        Args:
+            is_backspace (bool): 是否是退格键，True表示退格键，False表示删除键
+            
+        Returns:
+            bool: 如果处理了特殊删除行为返回True，否则返回False
+        """
+        # 使用优化过的父窗口查找
+        parent_window = self._find_parent()
+            
+        if not parent_window or not parent_window.dropped_file_references:
+            return False
+            
+        # 更新引用缓存
+        self._update_reference_cache()
+        
+        # 获取当前光标位置
+        cursor = self.textCursor()
+        
+        # 如果有选中文本，不做特殊处理
+        if cursor.hasSelection():
+            return False
+            
+        cursor_pos = cursor.position()
+        
+        if is_backspace:  # 退格键
+            # 利用缓存快速检查光标是否在引用后面
+            for display_name, (start, end) in self._file_reference_cache['positions'].items():
+                if cursor_pos == end:
+                    # 选中整个文件引用
+                    cursor.setPosition(start)
+                    cursor.setPosition(end, QTextCursor.KeepAnchor)
+                    # 删除选中内容
+                    cursor.removeSelectedText()
+                    
+                    # 从字典中移除引用
+                    if display_name in parent_window.dropped_file_references:
+                        del parent_window.dropped_file_references[display_name]
+                        print(f"DEBUG: 已删除文件引用: {display_name}", file=sys.stderr)
+                    
+                    # 使缓存失效
+                    self._invalidate_cache()
+                    
+                    return True
+        else:  # 删除键
+            # 利用缓存快速检查光标是否在引用前面
+            for display_name, (start, end) in self._file_reference_cache['positions'].items():
+                if cursor_pos == start:
+                    # 选中整个文件引用
+                    cursor.setPosition(end, QTextCursor.KeepAnchor)
+                    # 删除选中内容
+                    cursor.removeSelectedText()
+                    
+                    # 从字典中移除引用
+                    if display_name in parent_window.dropped_file_references:
+                        del parent_window.dropped_file_references[display_name]
+                        print(f"DEBUG: 已删除文件引用: {display_name}", file=sys.stderr)
+                    
+                    # 使缓存失效
+                    self._invalidate_cache()
+                    
+                    return True
+                    
+        return False
+
     def insertFromMimeData(self, source):
         # 处理粘贴内容，包括图片和文本
         handled = False
@@ -841,71 +1100,6 @@ class FeedbackTextEdit(QTextEdit):
         # 设置光标位置
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
-
-    def _handle_file_reference_deletion(self, is_backspace=True):
-        """
-        处理文件引用的特殊删除行为
-        
-        Args:
-            is_backspace (bool): 是否是退格键，True表示退格键，False表示删除键
-            
-        Returns:
-            bool: 如果处理了特殊删除行为返回True，否则返回False
-        """
-        # 查找父FeedbackUI实例，用于获取文件引用字典
-        parent_window = self.parent()
-        while parent_window and not isinstance(parent_window, FeedbackUI):
-            parent_window = parent_window.parent()
-            
-        if not parent_window or not parent_window.dropped_file_references:
-            return False
-            
-        # 获取当前光标位置
-        cursor = self.textCursor()
-        
-        # 如果有选中文本，不做特殊处理
-        if cursor.hasSelection():
-            return False
-            
-        cursor_pos = cursor.position()
-        
-        if is_backspace:  # 退格键
-            # 获取当前位置前的文本
-            cursor.setPosition(0)
-            cursor.setPosition(cursor_pos, QTextCursor.KeepAnchor)
-            text_before_cursor = cursor.selectedText()
-            
-            # 重置光标位置
-            cursor.setPosition(cursor_pos)
-            
-            # 检查是否在文件引用后面
-            for display_name in parent_window.dropped_file_references.keys():
-                if text_before_cursor.endswith(display_name):
-                    # 选中整个文件引用
-                    cursor.setPosition(cursor_pos - len(display_name))
-                    cursor.setPosition(cursor_pos, QTextCursor.KeepAnchor)
-                    # 删除选中内容
-                    cursor.removeSelectedText()
-                    return True
-        else:  # 删除键
-            # 获取当前位置后的文本
-            cursor.setPosition(cursor_pos)
-            cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
-            text_after_cursor = cursor.selectedText()
-            
-            # 重置光标位置
-            cursor.setPosition(cursor_pos)
-            
-            # 检查是否在文件引用前面
-            for display_name in parent_window.dropped_file_references.keys():
-                if text_after_cursor.startswith(display_name):
-                    # 选中整个文件引用
-                    cursor.setPosition(cursor_pos + len(display_name), QTextCursor.KeepAnchor)
-                    # 删除选中内容
-                    cursor.removeSelectedText()
-                    return True
-                    
-        return False
 
     def _focus_after_drop(self, pos):
         """在拖放操作完成后，确保输入框获得焦点并设置光标位置"""
@@ -3185,11 +3379,16 @@ def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, out
         QTextEdit {
             background-color: #282828;  /* 更浅一些的灰色 */
             color: #ffffff;  /* 纯白色文本，提高可见度 */
+            font-size: 13pt;
+            font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+            font-weight: 400;
+            line-height: 1.4;
+            letter-spacing: 0.015em;
+            word-spacing: 0.05em;
             border: 2px solid #3A3A3A; /* 加粗边框，与顶部区域一致 */
             border-radius: 10px;
             padding: 12px;
             selection-background-color: #505050;
-            font-size: 11pt;  /* 增加字体大小 */
             min-height: 250px;  /* 确保最小高度符合需求 */
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.1);  /* 添加阴影效果 */
             transition: all 0.3s ease;  /* 添加过渡效果 */

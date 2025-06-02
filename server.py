@@ -1,7 +1,7 @@
 # Interactive Feedback MCP
 # Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
 # Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
-# Enhanced by Pau Oliva (https://x.com/pof) with ideas from https://github.com/ttommyth/interactive-mcp
+# Enhanced by pawa (https://github.com/pawaovo) with ideas from hhttps://github.com/noopstudios/interactive-feedback-mcp
 import os
 import sys
 import json
