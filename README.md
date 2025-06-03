@@ -125,8 +125,10 @@
 
 1.  将以下配置添加到您的 `claude_desktop_config.json` (Claude Desktop 旧版) 或 `mcp_servers.json` (Cursor, 通常在 `.cursor-ai/mcp_servers.json` 或用户配置目录中)：
 
-    **重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
-    ```json
+    ### 添加服务配置
+打开 `mcp_servers.json` 文件，并添加以下 JSON 配置块。如果该文件已有内容，请确保将其合并到现有的 `mcpServers` 对象中。
+
+```json
 {
   "mcpServers": {
     "interactive-feedback": {
@@ -145,7 +147,7 @@
     // 如果您有其他MCP服务，可以继续在此处添加
   }
 }
-    ```
+```
     **关于 `command` 和 `args` 的说明:**
     - 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "python", "server.py"]`。
     - 如果您更倾向于直接使用系统Python（并已在全局或项目虚拟环境中安装了依赖），可以使用 `"command": "python", "args": ["server.py"]` (或python3)。
