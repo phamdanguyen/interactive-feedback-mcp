@@ -34,7 +34,10 @@ from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QPixm
 
 # 添加自定义ClickableLabel类
 class ClickableLabel(QLabel):
-    """自定义标签类，允许文本选择但禁止光标变化"""
+    """自定义标签类，允许文本选择但禁止光标变化，支持点击信号"""
+    
+    # 添加点击信号
+    clicked = Signal()
     
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
@@ -52,23 +55,23 @@ class ClickableLabel(QLabel):
             }
         """)
         
-        # 禁用光标重设 - 关键设置
-        self.setCursor(Qt.ArrowCursor)
+        # 设置光标为手型指针，表示可点击
+        self.setCursor(Qt.PointingHandCursor)
         self.setMouseTracking(True)  # 启用鼠标跟踪以便处理所有鼠标移动事件
         
         # 创建事件过滤器对象，并安装到自身
         self._cursor_filter = CursorOverrideFilter(self)
         self.installEventFilter(self._cursor_filter)
     
-    # 重写mouseMoveEvent确保光标不变
+    # 重写mouseMoveEvent确保光标保持为手型指针
     def mouseMoveEvent(self, event):
         QApplication.restoreOverrideCursor()  # 先清除可能的光标堆栈
-        QApplication.setOverrideCursor(Qt.ArrowCursor)  # 强制设置为箭头光标
+        QApplication.setOverrideCursor(Qt.PointingHandCursor)  # 强制设置为手型光标
         super().mouseMoveEvent(event)
     
-    # 重写以下事件来确保光标始终为箭头
+    # 重写以下事件来确保光标始终为手型指针
     def enterEvent(self, event):
-        QApplication.setOverrideCursor(Qt.ArrowCursor)
+        QApplication.setOverrideCursor(Qt.PointingHandCursor)
         super().enterEvent(event)
     
     def leaveEvent(self, event):
@@ -76,12 +79,18 @@ class ClickableLabel(QLabel):
         super().leaveEvent(event)
     
     def mousePressEvent(self, event):
-        QApplication.setOverrideCursor(Qt.ArrowCursor)
-        super().mousePressEvent(event)
+        if event.button() == Qt.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
     
     def mouseReleaseEvent(self, event):
-        QApplication.setOverrideCursor(Qt.ArrowCursor)
-        super().mouseReleaseEvent(event)
+        if event.button() == Qt.LeftButton:
+            # 触发点击信号
+            self.clicked.emit()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 # 添加一个专用的事件过滤器类用于光标控制
 class CursorOverrideFilter(QObject):
@@ -1060,7 +1069,7 @@ class FeedbackTextEdit(QTextEdit):
             blue_format = QTextCharFormat()
             blue_format.setForeground(QColor("#1a73e8"))  # 更鲜艳的蓝色
             blue_format.setFontWeight(QFont.Bold)  # 加粗
-            blue_format.setFontUnderline(True)  # 添加下划线
+            blue_format.setFontUnderline(False)  # 移除下划线
             
             # 插入前清除可能的选择
             cursor.clearSelection()
@@ -1350,6 +1359,9 @@ class FeedbackUI(QMainWindow):
         self.next_image_id = 0  # 用于生成唯一的图片ID
         self.image_widgets = {}  # 存储图片预览部件 {id: widget}
         
+        # 存储常用语数据
+        self.canned_responses = []
+        
         # 用于存储拖拽文件引用 {显示名: 文件路径}
         self.dropped_file_references = {}
         print("DEBUG: FeedbackUI.__init__ - 初始化dropped_file_references字典", file=sys.stderr)
@@ -1415,13 +1427,96 @@ class FeedbackUI(QMainWindow):
         self.window_pinned = self.settings.value("windowPinned", False, type=bool)
         self.settings.endGroup() # End "MainWindow_General" group
 
+        # 加载常用语数据
+        self._load_canned_responses()
+
+        # 加载快捷图标和数字图标的显示状态
+        self.show_shortcut_icons = self.settings.value("CannedResponses/showShortcutIcons", True, type=bool)
+        self.number_icons_visible = self.settings.value("CannedResponses/numberIconsVisible", True, type=bool)
+        
+        print(f"DEBUG: 初始化时的图标显示状态 - 快捷图标:{self.show_shortcut_icons}, 数字图标:{self.number_icons_visible}", file=sys.stderr)
+
         # print("开始创建UI...", file=sys.stderr) # 清理
         self._create_ui()
         # print("UI创建完成", file=sys.stderr) # 清理
         
+        # 更新数字图标显示状态
+        self._update_number_icons()
+        
+        # 应用快捷图标和数字图标的显示状态
+        if hasattr(self, 'shortcuts_container'):
+            self.shortcuts_container.setVisible(self.show_shortcut_icons)
+            if hasattr(self, 'number_icons_container'):
+                self.number_icons_container.setVisible(self.number_icons_visible and self.show_shortcut_icons)
+        
         # 如果窗口应该被固定，应用固定设置
         if self.window_pinned:
             QTimer.singleShot(100, self._apply_window_pin_state)
+
+    def _load_canned_responses(self):
+        """从设置中加载常用语数据"""
+        self.settings.beginGroup("CannedResponses")
+        responses = self.settings.value("phrases", [])
+        self.settings.endGroup()
+        
+        # 确保responses是一个列表
+        if responses is None:
+            self.canned_responses = []
+        elif isinstance(responses, str):
+            # 如果是单个字符串，转换为列表
+            self.canned_responses = [responses]
+        else:
+            try:
+                # 尝试转换为列表
+                self.canned_responses = list(responses)
+            except:
+                self.canned_responses = []
+        
+        print(f"DEBUG: 已加载 {len(self.canned_responses)} 个常用语", file=sys.stderr)
+
+    def _update_number_icons(self):
+        """更新数字图标的显示状态和工具提示"""
+        # 如果没有数字图标或未初始化，直接返回
+        if not hasattr(self, 'shortcut_number_icons') or not self.shortcut_number_icons:
+            return
+            
+        # 遍历所有数字图标
+        for i, icon in enumerate(self.shortcut_number_icons):
+            # 图标索引从0开始，但显示从1开始
+            display_index = i + 1
+            
+            # 检查是否有对应的常用语
+            if i < len(self.canned_responses):
+                # 有对应的常用语，设置工具提示为常用语内容
+                canned_response = self.canned_responses[i]
+                # 如果常用语太长，截断显示
+                tooltip_text = canned_response if len(canned_response) <= 50 else canned_response[:47] + "..."
+                icon.setToolTip(tooltip_text)
+                
+                # 设置活跃状态样式 - 更明确的样式规则
+                icon.setStyleSheet(f"""
+                    QLabel#number_icon_{display_index} {{
+                        color: #777777 !important;  /* 改为更深的灰色，添加!important提高优先级 */
+                        background-color: rgba(60, 60, 60, 0.5);  /* 半透明背景，表示可用 */
+                        border-radius: 14px;  /* 完全圆形 */
+                        font-size: 14px;
+                        font-weight: bold;
+                    }}
+                    
+                    QLabel#number_icon_{display_index}:hover {{
+                        color: #aaaaaa !important;  /* 悬停时颜色为浅灰色，添加!important */
+                        background-color: rgba(85, 85, 85, 0.6);  /* 悬停时背景变为较亮的半透明灰色 */
+                    }}
+                """)
+                
+                # 将鼠标光标设为手形，表示可点击
+                icon.setCursor(Qt.PointingHandCursor)
+                
+                # 确保图标可见
+                icon.setVisible(True)
+            else:
+                # 没有对应的常用语，隐藏图标
+                icon.setVisible(False)
 
     def _create_ui(self):
         # print("创建中央窗口部件...", file=sys.stderr) # 清理
@@ -1431,7 +1526,7 @@ class FeedbackUI(QMainWindow):
         
         # 主布局：垂直排列
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(20, 5, 20, 24)  # 将顶部边距进一步减少到5px
+        main_layout.setContentsMargins(20, 5, 20, 10)  # 将顶部边距进一步减少到5px
         main_layout.setSpacing(20)  # 增加元素间距
         
         # 创建反馈组框架，用于包含所有反馈相关的UI元素
@@ -1653,13 +1748,170 @@ class FeedbackUI(QMainWindow):
         separator.setStyleSheet("background-color: rgba(85, 85, 85, 0.2);")  # 进一步降低不透明度
         feedback_layout.addWidget(separator)
 
+        # 添加快捷图标容器 - 常用语快捷数字图标
+        # 注意：我们将通过修改现有的布局间距来利用已有的28px空间，而不是增加额外空间
+        # 原有的布局间距是18px (feedback_layout.setSpacing(18))，
+        # text_input_layout的顶部内边距是10px (text_input_layout.setContentsMargins(0, 10, 0, 10))
+        # 现在我们将调整这些值，并在它们之间插入我们的容器，总共仍保持28px的空间
+        # 将原有的feedback_layout.setSpacing(18)改为5px间距
+        feedback_layout.setSpacing(5)  # 从3px增加到5px，增加上方间距
+
+        # 创建快捷图标容器
+        self.shortcuts_container = QWidget()
+        self.shortcuts_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.shortcuts_container.setFixedHeight(30)  # 容器高度保持30px不变
+        self.shortcuts_container.setStyleSheet("""
+            background-color: transparent;  /* 透明背景，移除填充效果 */
+        """)
+        shortcuts_container_layout = QHBoxLayout(self.shortcuts_container)
+        shortcuts_container_layout.setContentsMargins(0, 0, 0, 0)
+        shortcuts_container_layout.setSpacing(0)
+        
+        # 使用绝对定位布局，这样我们可以精确控制@图标的位置
+        # 注释掉下面这行重复设置布局的代码，因为前面已经设置了布局
+        # self.shortcuts_container.setLayout(QHBoxLayout())
+
+        # 创建一个新的@图标标签，使用自定义绘制方法确保@符号居中
+        class AtIconLabel(QLabel):
+            """专用于@图标的自定义标签，确保@符号完美居中"""
+            
+            clicked = Signal()  # 继承点击信号
+            
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setCursor(Qt.PointingHandCursor)
+                self.setFixedSize(28, 28)
+                # 移除背景色和边框半径，使@符号没有圆形外框
+                self.setStyleSheet("""
+                    background-color: transparent;
+                """)
+            
+            def paintEvent(self, event):
+                # 先调用父类的绘制事件处理
+                super().paintEvent(event)
+                
+                # 创建QPainter进行自定义绘制
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setRenderHint(QPainter.TextAntialiasing)
+                
+                # 设置@符号颜色
+                # 调整颜色为更亮的灰色，使@符号在没有背景的情况下更加明显
+                painter.setPen(QColor("#cccccc"))
+                
+                # 设置字体
+                font = QFont()
+                font.setPointSize(18)  # 大幅增加字体大小，使@符号尽可能填满圆形框
+                font.setBold(True)
+                painter.setFont(font)
+                
+                # 绘制@符号 - 完全居中，并稍微上移
+                rect = self.rect()
+                # 创建一个上移2px的矩形区域用于绘制文本
+                adjusted_rect = QRect(rect.x(), rect.y() - 2, rect.width(), rect.height())
+                painter.drawText(adjusted_rect, Qt.AlignCenter, "@")
+                
+                painter.end()
+            
+            def mousePressEvent(self, event):
+                if event.button() == Qt.LeftButton:
+                    event.accept()
+                else:
+                    super().mousePressEvent(event)
+            
+            def mouseReleaseEvent(self, event):
+                if event.button() == Qt.LeftButton:
+                    # 触发点击信号
+                    self.clicked.emit()
+                    event.accept()
+                else:
+                    super().mouseReleaseEvent(event)
+
+        # 使用新的专用AtIconLabel
+        at_icon = AtIconLabel(self.shortcuts_container)
+        at_icon.move(12, 1)  # 向右移动，从8px调整为12px，使其与选项框对齐
+        at_icon.clicked.connect(self._toggle_number_icons_visibility)  # 连接点击信号到处理函数
+        self.at_icon = at_icon  # 保存为实例变量以便后续访问
+
+        # 创建数字图标容器
+        number_icons_container = QWidget(self.shortcuts_container)
+        number_icons_container.setGeometry(38, 0, 902, 30)  # 调整左边距，确保与@图标有合适的间距
+        number_icons_layout = QHBoxLayout(number_icons_container)
+        number_icons_layout.setContentsMargins(0, 1, 0, 1)  # 上下各留1px的间隙
+        number_icons_layout.setSpacing(1)  # 图标之间的间距为1px
+        
+        # 保存为实例变量，以便在其他方法中访问
+        self.number_icons_container = number_icons_container
+
+        # 初始化存储数字图标的列表
+        self.shortcut_number_icons = []
+
+        # 创建10个数字图标
+        for i in range(1, 11):  # 数字1到10
+            # 创建一个包含分隔线的容器
+            icon_container = QWidget()
+            icon_container.setFixedSize(28, 28)  # 与@图标相同大小
+            
+            # 使用QLabel作为数字图标
+            number_label = QLabel(str(i), icon_container)
+            number_label.setGeometry(0, 0, 28, 28)  # 占据整个容器
+            number_label.setAlignment(Qt.AlignCenter)
+            number_label.setObjectName(f"number_icon_{i}")  # 设置对象名称用于CSS样式表选择器
+            
+            # 基本样式和悬停效果 - 使用更明确的样式规则，确保字体颜色正确设置
+            number_label.setStyleSheet(f"""
+                QLabel#number_icon_{i} {{
+                    color: #999999 !important;  /* 更灰的数字颜色，添加!important确保优先级 */
+                    background-color: rgba(49, 49, 49, 0.4);  /* 更透明的背景 */
+                    border-radius: 14px;  /* 完全圆形 */
+                    font-size: 14px;
+                    font-weight: bold;
+                }}
+                
+                QLabel#number_icon_{i}:hover {{
+                    color: #dddddd !important;  /* 悬停时数字变为浅灰，而非纯白，添加!important */
+                    background-color: rgba(85, 85, 85, 0.55);  /* 悬停时背景更透明 */
+                }}
+            """)
+            
+            # 光标变为手型，提示可点击
+            number_label.setCursor(Qt.PointingHandCursor)
+            
+            # 设置工具提示 (Tooltip) - 当前为示例文本，将在后续任务中动态更新
+            number_label.setToolTip(f"常用语 {i}")
+            
+            # 为标签添加事件过滤器，以处理鼠标点击事件
+            number_label.installEventFilter(self)
+            
+            # 为标签存储索引信息，用于点击时识别
+            number_label.setProperty("shortcut_index", i - 1)  # 存储0-based索引
+            
+            # 移除添加分隔线的代码块
+            
+            # 添加到布局
+            number_icons_layout.addWidget(icon_container)
+            
+            # 保存到图标列表中
+            self.shortcut_number_icons.append(number_label)
+        
+        # 将快捷图标容器添加到主布局
+        feedback_layout.addWidget(self.shortcuts_container)
+
+        # 应用之前保存的数字图标可见性设置
+        number_icons_visible = self.settings.value("CannedResponses/numberIconsVisible", True, type=bool)
+        if hasattr(self, 'number_icons_container'):
+            self.number_icons_container.setVisible(number_icons_visible)
+            
+            # 移除@图标样式变化
+            # 不根据数字图标可见性设置@图标颜色
+
         # 自由文本反馈区
         # 创建文本编辑区和提交按钮的容器
         text_input_container = QWidget()
         text_input_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         text_input_container.setMinimumWidth(950)  # 确保文本输入区域足够宽
         text_input_layout = QVBoxLayout(text_input_container)
-        text_input_layout.setContentsMargins(0, 10, 0, 10)  # 增加上下边距
+        text_input_layout.setContentsMargins(0, 1, 0, 10)  # 将顶部内边距从3px减少到1px
         text_input_layout.setSpacing(15)  # 保持合理间距
         
         # 文本编辑框
@@ -1774,7 +2026,7 @@ class FeedbackUI(QMainWindow):
         # 创建GitHub链接容器 - 移至主布局底部
         github_container = QWidget()
         github_layout = QHBoxLayout(github_container)
-        github_layout.setContentsMargins(0, 5, 0, 10)  # 设置上下边距
+        github_layout.setContentsMargins(0, 0, 0, 0)  # 彻底移除边距，使GitHub标签完全贴近窗口底部
         github_layout.setAlignment(Qt.AlignCenter)  # 居中对齐
         
         # 创建GitHub链接标签
@@ -1790,8 +2042,8 @@ class FeedbackUI(QMainWindow):
             QLabel {
                 font-size: 11pt;
                 color: #aaaaaa;
-                padding: 4px;
-                margin-top: 5px;
+                padding: 0px;
+                margin: 0px;
             }
             QLabel:hover {
                 color: #ffffff;
@@ -2343,9 +2595,29 @@ class FeedbackUI(QMainWindow):
                     responses = []
             
             # 显示常用语对话框
-            dialog = SelectCannedResponseDialog(responses, self) # Corrected indentation for line 1459
+            dialog = SelectCannedResponseDialog(responses, self)
             dialog.setWindowModality(Qt.ApplicationModal)
-            dialog.exec()
+            result = dialog.exec()
+            
+            # 对话框关闭后，重新加载常用语并更新图标状态
+            self._load_canned_responses()
+            
+            # 读取用户在对话框中设置的常用语图标显示状态
+            show_icons_enabled = settings.value("CannedResponses/showShortcutIcons", True, type=bool)
+            
+            # 更新快捷图标容器显示状态
+            self._update_shortcut_icons_visibility(show_icons_enabled)
+            
+            # 强制更新数字图标
+            self._update_number_icons()
+            
+            # 确保在启用时显示数字图标
+            if show_icons_enabled and hasattr(self, 'number_icons_container'):
+                # 读取并应用数字图标的显示状态
+                number_icons_visible = settings.value("CannedResponses/numberIconsVisible", True, type=bool)
+                if hasattr(self, 'number_icons_container'):
+                    self.number_icons_container.setVisible(number_icons_visible)
+                    print(f"DEBUG: 设置数字图标可见性为: {number_icons_visible}", file=sys.stderr)
             
         finally:
             self.disable_auto_minimize = False
@@ -2479,6 +2751,102 @@ class FeedbackUI(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    def eventFilter(self, watched, event):
+        """事件过滤器，处理数字图标的点击事件"""
+        # 检查是否是鼠标按下事件
+        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            # 检查是否是数字图标
+            if hasattr(watched, 'property') and watched.property("shortcut_index") is not None:
+                shortcut_index = watched.property("shortcut_index")
+                # 处理数字图标点击事件
+                self._handle_number_icon_click(shortcut_index)
+                return True  # 事件已处理
+        
+        # 对于其他事件，交给父类处理
+        return super().eventFilter(watched, event)
+    
+    def _handle_number_icon_click(self, index):
+        """处理数字图标点击事件，插入对应常用语到文本编辑框"""
+        # 检查是否有对应的常用语
+        if 0 <= index < len(self.canned_responses):
+            # 获取对应的常用语
+            text = self.canned_responses[index]
+            
+            # 如果文本为空或不是字符串，不执行插入
+            if not text or not isinstance(text, str):
+                return
+            
+            # 获取对应的图标
+            icon = self.shortcut_number_icons[index]
+            display_index = index + 1
+            
+            # 移除点击高亮效果的相关代码
+            # 不再保存原始样式
+            # 不再设置高亮样式
+            
+            # 插入到文本编辑框
+            if hasattr(self, 'feedback_text'):
+                # 获取当前光标
+                cursor = self.feedback_text.textCursor()
+                
+                # 插入文本
+                cursor.insertText(text)
+                
+                # 设置新的光标位置
+                self.feedback_text.setTextCursor(cursor)
+                
+                # 确保文本编辑框获得焦点
+                self.feedback_text.setFocus()
+                
+                print(f"DEBUG: 点击图标 {index+1}，插入常用语: {text[:20]}...", file=sys.stderr)
+            
+            # 移除使用定时器恢复原样式的代码
+
+    def _update_shortcut_icons_visibility(self, visible=None):
+        """更新快捷图标容器的可见性
+        
+        Args:
+            visible (bool, optional): 是否可见，如果不提供则使用当前设置值
+        """
+        if visible is None:
+            # 如果未提供可见性参数，从设置中读取当前状态
+            visible = self.settings.value("CannedResponses/showShortcutIcons", True, type=bool)
+        
+        # 更新实例变量
+        self.show_shortcut_icons = visible
+        
+        # 更新UI显示
+        if hasattr(self, 'shortcuts_container'):
+            self.shortcuts_container.setVisible(visible)
+            
+            # 如果设置为隐藏整个容器，先保存数字图标的可见性状态
+            number_icons_visible = False
+            if hasattr(self, 'number_icons_container'):
+                number_icons_visible = self.number_icons_container.isVisible()
+            
+            # 当快捷图标区域被重新显示时，恢复之前保存的数字图标可见性设置
+            if visible and hasattr(self, 'number_icons_container'):
+                saved_number_icons_visible = self.settings.value("CannedResponses/numberIconsVisible", True, type=bool)
+                self.number_icons_container.setVisible(saved_number_icons_visible)
+                
+            # 强制更新数字图标
+            self._update_number_icons()
+
+    def _toggle_number_icons_visibility(self):
+        """切换数字图标的显示/隐藏状态，但保持@图标始终可见"""
+        # 获取数字图标容器的引用，需要确保该容器已经被创建并作为实例变量存在
+        if hasattr(self, 'number_icons_container') and self.number_icons_container:
+            # 切换显示/隐藏状态
+            current_visibility = self.number_icons_container.isVisible()
+            self.number_icons_container.setVisible(not current_visibility)
+            
+            # 保存当前状态以便下次使用
+            self.settings.setValue("CannedResponses/numberIconsVisible", not current_visibility)
+            print(f"DEBUG: 切换数字图标可见性为: {not current_visibility}", file=sys.stderr)
+            
+            # 确保在显示时更新图标状态
+            if not current_visibility:  # 如果之前是隐藏的，现在要显示
+                self._update_number_icons()  # 更新数字图标状态
 
 class ManageCannedResponsesDialog(QDialog):
     """常用语管理对话框"""
@@ -2817,15 +3185,52 @@ class SelectCannedResponseDialog(QDialog):
         layout.setSpacing(16)  # 增加间距
         layout.setContentsMargins(18, 18, 18, 18)  # 增加边距
         
+        # 创建顶部布局，包含标题和复选框
+        top_layout = QHBoxLayout()
+        
         # 标题标签
         title = QLabel("常用语列表")
         title.setStyleSheet("font-size: 14pt; font-weight: bold; color: white;")
-        layout.addWidget(title)
+        top_layout.addWidget(title)
+        
+        # 添加弹性空间，将复选框推到右边
+        top_layout.addStretch(1)
+        
+        # 添加快捷图标显示控制复选框
+        self.show_shortcut_icons_checkbox = QCheckBox("常用语图标")
+        self.show_shortcut_icons_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 11pt;
+                color: #ffffff;
+                spacing: 8px;  /* 复选框与文本之间的间距 */
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #333333;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #555555;
+                border: 1px solid #666666;
+            }
+        """)
+        top_layout.addWidget(self.show_shortcut_icons_checkbox)
+        
+        # 添加顶部布局到主布局
+        layout.addLayout(top_layout)
         
         # 提示标签
         hint = QLabel("双击插入文本，点击删除按钮移除项目")
         hint.setStyleSheet("font-size: 9pt; color: #aaaaaa;")
         layout.addWidget(hint)
+        
+        # 从设置中读取当前状态
+        show_icons_enabled = self.settings.value("CannedResponses/showShortcutIcons", True, type=bool)
+        self.show_shortcut_icons_checkbox.setChecked(show_icons_enabled)
+        
+        layout.addSpacing(5)  # 添加一点额外的间距
         
         # 常用语列表 - 使用DraggableListWidget以支持拖拽排序
         self.list_widget = DraggableListWidget()
@@ -3115,9 +3520,18 @@ class SelectCannedResponseDialog(QDialog):
         # print(f"DEBUG: 已保存 {len(self.responses)} 个常用语", file=sys.stderr)
     
     def closeEvent(self, event):
-        """关闭对话框时保存常用语顺序"""
+        """处理关闭事件，保存常用语状态"""
+        # print(f"DEBUG: SelectCannedResponseDialog.closeEvent - START", file=sys.stderr)
+        # 保存常用语
         self._save_responses()
+        
+        # 保存快捷图标的显示状态
+        show_icons_enabled = self.show_shortcut_icons_checkbox.isChecked()
+        self.settings.setValue("CannedResponses/showShortcutIcons", show_icons_enabled)
+        
+        # 调用父类方法
         super().closeEvent(event)
+        # print("DEBUG: SelectCannedResponseDialog.closeEvent - END", file=sys.stderr)
     
     def get_selected_response(self):
         """获取选择的常用语"""
