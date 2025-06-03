@@ -126,7 +126,6 @@
 1.  将以下配置添加到您的 `claude_desktop_config.json` (Claude Desktop 旧版) 或 `mcp_servers.json` (Cursor, 通常在 `.cursor-ai/mcp_servers.json` 或用户配置目录中)：
 
     **重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
-
     ```json
 {
   "mcpServers": {
