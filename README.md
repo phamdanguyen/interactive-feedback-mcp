@@ -127,6 +127,7 @@
 
     **重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
     ```json
+
 {
   "mcpServers": {
     "interactive-feedback": {
