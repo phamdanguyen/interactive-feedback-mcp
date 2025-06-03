@@ -128,23 +128,24 @@
     **重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
 
     ```json
-    {
-      "mcpServers": {
-        "interactive-feedback": {
-          "command": "uv",
-          "args": [
-            "run",
-            "python", // 确保明确使用python来运行
-            "server.py"
-          ],
-          "cwd": "/path/to/interactive-feedback-mcp", // 指定工作目录
-          "timeout": 600,
-          "autoApprove": [ // 自动批准此工具的调用，避免每次都需手动确认
-            "interactive_feedback"
-          ]
-        }
-      }
+ {
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "path/to/interactive-feedback-mcp",//需替换为您下载本项目的所在路径如`path/to/interactive-feedback-mcp` 
+        "run",
+        "server.py"
+      ],
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
     }
+    // 如果您有其他MCP服务，可以继续在此处添加
+  }
+ }
     ```
     **关于 `command` 和 `args` 的说明:**
     - 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "python", "server.py"]`。
