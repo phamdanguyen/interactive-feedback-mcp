@@ -40,3 +40,5 @@ todolist.md
 todo.md
 .cursor/rules/
 custom_http_transport_mcp.md
+# Private individual user cursor rules
+.cursor/rules/_*.mdc
