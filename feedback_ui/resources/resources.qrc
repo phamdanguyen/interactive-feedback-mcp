@@ -1,0 +1,9 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/">
+    <file alias="styles/dark.qss">../styles/dark_theme.qss</file>
+    <file alias="styles/light.qss">../styles/light_theme.qss</file>
+    <file alias="translations/en_US.qm">translations/en_US.qm</file>
+    <!-- 预留位置，用于未来添加图标和翻译文件 -->
+  </qresource>
+</RCC> 

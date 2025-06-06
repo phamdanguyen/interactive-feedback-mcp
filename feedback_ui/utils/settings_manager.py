@@ -1,11 +1,13 @@
 # feedback_ui/utils/settings_manager.py
 from PySide6.QtCore import QSettings, QByteArray, QObject
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from .constants import (
-    APP_NAME, SETTINGS_GROUP_MAIN, SETTINGS_GROUP_CANNED_RESPONSES,
+    APP_NAME, SETTINGS_GROUP_MAIN, SETTINGS_GROUP_CANNED_RESPONSES, SETTINGS_GROUP_FONTS,
     SETTINGS_KEY_GEOMETRY, SETTINGS_KEY_WINDOW_STATE, SETTINGS_KEY_WINDOW_PINNED,
-    SETTINGS_KEY_PHRASES, SETTINGS_KEY_SHOW_SHORTCUT_ICONS, SETTINGS_KEY_NUMBER_ICONS_VISIBLE
+    SETTINGS_KEY_PHRASES, SETTINGS_KEY_SHOW_SHORTCUT_ICONS, SETTINGS_KEY_NUMBER_ICONS_VISIBLE,
+    SETTINGS_KEY_PROMPT_FONT_SIZE, SETTINGS_KEY_OPTIONS_FONT_SIZE, SETTINGS_KEY_INPUT_FONT_SIZE,
+    DEFAULT_PROMPT_FONT_SIZE, DEFAULT_OPTIONS_FONT_SIZE, DEFAULT_INPUT_FONT_SIZE
 )
 
 class SettingsManager(QObject):
@@ -45,6 +47,44 @@ class SettingsManager(QObject):
     def set_main_window_state(self, state: QByteArray):
         self.settings.beginGroup(SETTINGS_GROUP_MAIN)
         self.settings.setValue(SETTINGS_KEY_WINDOW_STATE, state)
+        self.settings.endGroup()
+        self.settings.sync()
+        
+    def get_main_window_size(self) -> Optional[tuple]:
+        """获取保存的窗口大小 (宽, 高)"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        width = self.settings.value("window_width", defaultValue=None, type=int)
+        height = self.settings.value("window_height", defaultValue=None, type=int)
+        self.settings.endGroup()
+        
+        if width is not None and height is not None:
+            return (width, height)
+        return None
+        
+    def set_main_window_size(self, width: int, height: int):
+        """单独保存窗口大小 (宽, 高)"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        self.settings.setValue("window_width", width)
+        self.settings.setValue("window_height", height)
+        self.settings.endGroup()
+        self.settings.sync()
+        
+    def get_main_window_position(self) -> Optional[Tuple[int, int]]:
+        """获取保存的窗口位置 (x, y)"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        x = self.settings.value("window_x", defaultValue=None, type=int)
+        y = self.settings.value("window_y", defaultValue=None, type=int)
+        self.settings.endGroup()
+        
+        if x is not None and y is not None:
+            return (x, y)
+        return None
+        
+    def set_main_window_position(self, x: int, y: int):
+        """保存窗口位置 (x, y)"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        self.settings.setValue("window_x", x)
+        self.settings.setValue("window_y", y)
         self.settings.endGroup()
         self.settings.sync()
 
@@ -100,5 +140,64 @@ class SettingsManager(QObject):
     def set_number_icons_visible(self, visible: bool):
         self.settings.beginGroup(SETTINGS_GROUP_CANNED_RESPONSES)
         self.settings.setValue(SETTINGS_KEY_NUMBER_ICONS_VISIBLE, visible)
+        self.settings.endGroup()
+        self.settings.sync()
+
+    def get_current_theme(self) -> str:
+        # 从配置中读取主题设置，若无则默认为 'dark'
+        return self.settings.value("ui/theme", "dark")
+
+    def set_current_theme(self, theme_name: str):
+        self.settings.setValue("ui/theme", theme_name)
+        self.settings.sync()
+        
+    def get_current_language(self) -> str:
+        # 默认为 'zh_CN' (中文)
+        return self.settings.value("ui/language", "zh_CN")
+
+    def set_current_language(self, lang_code: str):
+        self.settings.setValue("ui/language", lang_code)
+        self.settings.sync()
+        
+    # --- 字体大小设置 (Font Size Settings) ---
+    def get_prompt_font_size(self) -> int:
+        """获取提示区域字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        size = self.settings.value(SETTINGS_KEY_PROMPT_FONT_SIZE, DEFAULT_PROMPT_FONT_SIZE, type=int)
+        self.settings.endGroup()
+        return size
+        
+    def set_prompt_font_size(self, size: int):
+        """设置提示区域字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        self.settings.setValue(SETTINGS_KEY_PROMPT_FONT_SIZE, size)
+        self.settings.endGroup()
+        self.settings.sync()
+        
+    def get_options_font_size(self) -> int:
+        """获取选项区域字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        size = self.settings.value(SETTINGS_KEY_OPTIONS_FONT_SIZE, DEFAULT_OPTIONS_FONT_SIZE, type=int)
+        self.settings.endGroup()
+        return size
+        
+    def set_options_font_size(self, size: int):
+        """设置选项区域字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        self.settings.setValue(SETTINGS_KEY_OPTIONS_FONT_SIZE, size)
+        self.settings.endGroup()
+        self.settings.sync()
+
+    def get_input_font_size(self) -> int:
+        """获取输入框字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        size = self.settings.value(SETTINGS_KEY_INPUT_FONT_SIZE, DEFAULT_INPUT_FONT_SIZE, type=int)
+        self.settings.endGroup()
+        return size
+
+    def set_input_font_size(self, size: int):
+        """设置输入框字体大小"""
+        self.settings.beginGroup(SETTINGS_GROUP_FONTS)
+        self.settings.setValue(SETTINGS_KEY_INPUT_FONT_SIZE, size)
         self.settings.endGroup()
         self.settings.sync()

@@ -4,11 +4,11 @@ import sys
 import re
 from typing import Optional, Any # For type hinting parent
 
-from PySide6.QtWidgets import QTextEdit, QWidget, QHBoxLayout, QApplication
+from PySide6.QtWidgets import QPlainTextEdit, QWidget, QHBoxLayout, QApplication
 from PySide6.QtCore import Qt, QTimer, QEvent, QMimeData, QPoint
 from PySide6.QtGui import (
     QFont, QKeyEvent, QTextCursor, QPalette, QColor, QPixmap, QImage,
-    QTextCharFormat
+    QTextCharFormat, QTextDocument
 )
 
 # Forward declaration for type hinting to avoid circular import
@@ -19,12 +19,12 @@ from PySide6.QtGui import (
 FeedbackUI = "FeedbackUI"
 
 
-class FeedbackTextEdit(QTextEdit):
+class FeedbackTextEdit(QPlainTextEdit):
     """
-    Custom QTextEdit for feedback input, handling text, image pasting/dropping,
+    Custom QPlainTextEdit for feedback input, handling text, image pasting/dropping,
     and file reference management.
 
-    用于反馈输入的自定义 QTextEdit，处理文本、图像粘贴/拖放以及文件引用管理。
+    用于反馈输入的自定义 QPlainTextEdit，处理文本、图像粘贴/拖放以及文件引用管理。
     """
     # Define signals if you want to decouple further, e.g.:
     # image_pasted = Signal(QPixmap)
@@ -33,10 +33,11 @@ class FeedbackTextEdit(QTextEdit):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setAcceptRichText(False)
-        document = self.document()
-        document.setDefaultStyleSheet("") # Ensure no default rich text styles
-        self.setAutoFormatting(QTextEdit.AutoFormattingFlag.AutoNone)
+        # QPlainTextEdit 默认就是纯文本编辑器，不需要设置以下属性
+        # self.setAcceptRichText(False)
+        # document = self.document()
+        # document.setDefaultStyleSheet("") # Ensure no default rich text styles
+        # self.setAutoFormatting(QTextEdit.AutoFormattingFlag.AutoNone)
         self.setPlainText("") # Start with empty plain text
         
         font = QFont("Segoe UI", 13)
@@ -112,7 +113,6 @@ class FeedbackTextEdit(QTextEdit):
         if key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Home, Qt.Key.Key_End):
             super().keyPressEvent(event)
             self._last_cursor_pos = self.textCursor().position()
-            self._schedule_ensure_cursor_visible()
             return
             
         cursor_pos = self.textCursor().position()
@@ -133,7 +133,6 @@ class FeedbackTextEdit(QTextEdit):
             else:
                 cursor.removeSelectedText()
             self._invalidate_reference_cache()
-            self._schedule_ensure_cursor_visible()
             return
             
         elif key == Qt.Key.Key_Delete:
@@ -149,22 +148,19 @@ class FeedbackTextEdit(QTextEdit):
             else:
                 cursor.removeSelectedText()
             self._invalidate_reference_cache()
-            self._schedule_ensure_cursor_visible()
             return
             
         elif key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
             if event.modifiers() == Qt.KeyboardModifier.ShiftModifier: # Shift + Enter for newline
                 super().keyPressEvent(event)
                 self._invalidate_reference_cache()
-                self._schedule_ensure_cursor_visible()
             elif event.modifiers() == Qt.KeyboardModifier.ControlModifier or event.modifiers() == Qt.KeyboardModifier.NoModifier:
                 # Ctrl + Enter or Enter to submit
-                if parent_feedback_ui and hasattr(parent_feedback_ui, '_submit_feedback'):
-                    parent_feedback_ui._submit_feedback() # Consider emitting a signal instead
+                if parent_feedback_ui and hasattr(parent_feedback_ui, '_prepare_and_submit_feedback'):
+                    parent_feedback_ui._prepare_and_submit_feedback() # 调用正确的方法名称
             else: # Other modifiers + Enter (e.g., Alt+Enter), treat as newline
                 super().keyPressEvent(event)
                 self._invalidate_reference_cache()
-                self._schedule_ensure_cursor_visible()
             return # Event handled
 
         elif key == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.ControlModifier: # Ctrl + V for paste
@@ -184,7 +180,6 @@ class FeedbackTextEdit(QTextEdit):
         else: # Default key press handling
             super().keyPressEvent(event)
             self._invalidate_reference_cache()
-            self._schedule_ensure_cursor_visible()
             
     def keyReleaseEvent(self, event: QKeyEvent):
         self._is_key_repeating = False
@@ -197,7 +192,6 @@ class FeedbackTextEdit(QTextEdit):
     def _ensure_cursor_visible_slot(self):
         """Slot connected to the timer to make the cursor visible."""
         self.ensureCursorVisible()
-        self.viewport().update() # Force viewport update
         
     def mousePressEvent(self, event: QEvent): # QMouseEvent
         self._key_repeat_timer.stop() # Stop timer on mouse press
@@ -315,21 +309,26 @@ class FeedbackTextEdit(QTextEdit):
         return False
 
     def insertFromMimeData(self, source: QMimeData):
-        """Handles insertion of content from MIME data (e.g., paste)."""
-        parent_feedback_ui = self._find_feedback_ui_parent()
+        """
+        处理从剪贴板粘贴内容（图像、文本）到文本编辑小部件。
+        Handles pasting content (images, text) from clipboard into the text edit widget.
+        """
         handled = False
-
-        if source.hasImage() and parent_feedback_ui:
-            image = QImage(source.imageData()) # source.imageData() returns QVariant -> QImage
-            if not image.isNull():
-                pixmap = QPixmap.fromImage(image)
-                if not pixmap.isNull() and hasattr(parent_feedback_ui, 'add_image_preview'):
+        parent_feedback_ui = self._find_feedback_ui_parent()
+        
+        # Handle images
+        if source.hasImage() and parent_feedback_ui and hasattr(parent_feedback_ui, 'add_image_preview'):
+            try:
+                pixmap = QPixmap(source.imageData())
+                if not pixmap.isNull() and pixmap.width() > 0:
                     parent_feedback_ui.add_image_preview(pixmap)
                     handled = True
+            except Exception as e:
+                print(f"ERROR: FeedbackTextEdit insertFromMimeData - Image handling failed: {e}", file=sys.stderr)
         
-        # Always try to paste text if available, even if image was handled (or not)
-        if source.hasText():
-            text_to_insert = source.text().strip() # Strip to avoid pasting only newlines
+        # Handle plain text (should be standard, but added for completeness)
+        if source.hasText() and not handled:
+            text_to_insert = source.text().strip()
             if text_to_insert: # Only insert if there's actual text
                  self.insertPlainText(text_to_insert)
             # Mark as handled if text was present, even if empty after strip
@@ -340,6 +339,11 @@ class FeedbackTextEdit(QTextEdit):
             super().insertFromMimeData(source)
         
         self._invalidate_reference_cache()
+        
+        # 确保在粘贴内容后设置焦点，但避免过度更新视口
+        QTimer.singleShot(10, lambda: self.setFocus(Qt.FocusReason.OtherFocusReason))
+        QTimer.singleShot(50, self.ensureCursorVisible)
+        QTimer.singleShot(100, lambda: self._force_cursor_activation())
 
     def show_images_container(self, visible: bool):
         """Shows or hides the image preview container at the bottom."""
@@ -357,80 +361,75 @@ class FeedbackTextEdit(QTextEdit):
             
     def dragMoveEvent(self, event: QEvent): # QDragMoveEvent
         # Same conditions as dragEnterEvent generally
-        if event.mimeData().hasUrls() or event.mimeData().hasText() or event.mimeData.hasImage():
+        if event.mimeData().hasUrls() or event.mimeData().hasText() or event.mimeData().hasImage():
             event.acceptProposedAction()
         else:
             event.ignore()
     
     def dropEvent(self, event: QEvent): # QDropEvent
+        """
+        处理将内容（图像、文件、文本）拖放到文本编辑小部件上的操作。
+        确保在拖放后激活光标，使用户可以直接输入文字。
+        Handles dropping content (images, files, text) onto the text edit widget.
+        Ensures cursor is activated after dropping, allowing users to type directly.
+        """
+        # 保存拖放位置数据，供后续使用
+        drop_position = event.position().toPoint()
         mime_data = event.mimeData()
         parent_feedback_ui = self._find_feedback_ui_parent()
-            
-        if not parent_feedback_ui:
-            event.ignore()
-            return
-            
-        # Ensure dropped_file_references exists on parent
-        if not hasattr(parent_feedback_ui, 'dropped_file_references'):
-            parent_feedback_ui.dropped_file_references = {} # Initialize if missing
-            
-        dropped_content = False
+
+        # 1. Handle image drop
+        if mime_data.hasImage():
+            if parent_feedback_ui and hasattr(parent_feedback_ui, 'add_image_preview'):
+                pixmap = QPixmap(mime_data.imageData())
+                parent_feedback_ui.add_image_preview(pixmap)
+                event.acceptProposedAction()
+                self._invalidate_reference_cache()
+                
+                # 使用计时器设置焦点，确保UI更新后触发
+                QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
+                return
+
+        # 2. Handle file drop from local system
         if mime_data.hasUrls():
             urls = mime_data.urls()
-            if not urls and mime_data.hasText(): # Some OS might wrap file paths in text for drag
-                dropped_content = self._process_text_drop_as_file(event, mime_data, parent_feedback_ui)
-            else:
-                for url in urls:
-                    if url.isLocalFile():
-                        file_path = url.toLocalFile()
-                        file_name = os.path.basename(file_path)
-                        
-                        # Try to add as image first
-                        if os.path.isfile(file_path) and \
-                           os.path.splitext(file_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
-                            try:
-                                pixmap = QPixmap(file_path)
-                                if not pixmap.isNull() and pixmap.width() > 0:
-                                    if hasattr(parent_feedback_ui, 'add_image_preview'):
-                                        parent_feedback_ui.add_image_preview(pixmap)
-                                    dropped_content = True
-                                    continue # Next URL if this was an image
-                            except Exception as e:
-                                print(f"ERROR: FeedbackTextEdit dropEvent - Loading image failed: {file_path}, {e}", file=sys.stderr)
-                        
-                        # If not an image or image loading failed, add as file reference
-                        if not dropped_content or not os.path.splitext(file_path)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']:
-                             self._insert_file_reference_text(parent_feedback_ui, file_path, file_name)
-                             dropped_content = True
-                if dropped_content:
+            if urls and parent_feedback_ui:
+                # Assuming one file drop at a time for simplicity
+                file_path = urls[0].toLocalFile()
+                if os.path.isfile(file_path):
+                    file_name = os.path.basename(file_path)
+                    # Use a custom function to insert text and manage references
+                    self._insert_file_reference_text(parent_feedback_ui, file_path, file_name)
                     event.acceptProposedAction()
-        
-        elif mime_data.hasImage() and not dropped_content: # If not already handled by URL processing
-             image = QImage(mime_data.imageData())
-             if not image.isNull():
-                pixmap = QPixmap.fromImage(image)
-                if not pixmap.isNull() and hasattr(parent_feedback_ui, 'add_image_preview'):
-                    parent_feedback_ui.add_image_preview(pixmap)
-                    dropped_content = True
-                    event.acceptProposedAction()
+                    self._invalidate_reference_cache()
 
-        elif mime_data.hasText() and not dropped_content:
+                    # 使用计时器设置焦点，确保UI更新后触发
+                    QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
+                    return
+
+        # 3. Handle text drop (could be from another app or internally)
+        if mime_data.hasText():
+            # Check if text is a potential file path
             if self._process_text_drop_as_file(event, mime_data, parent_feedback_ui):
-                dropped_content = True
-            else: # Fallback to inserting plain text if not a file path
-                self.insertPlainText(mime_data.text())
-                dropped_content = True
-                event.acceptProposedAction()
-        
-        if not dropped_content:
-            super().dropEvent(event) # Default handling if no custom logic applied
-            return
-            
-        # If any content was dropped and action accepted
-        if event.isAccepted():
-            self._invalidate_reference_cache()
-            QTimer.singleShot(100, lambda: self._focus_after_content_drop(event.position().toPoint()))
+                self._invalidate_reference_cache()
+                 
+                # 使用计时器设置焦点，确保UI更新后触发
+                QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
+                return
+            else:
+                # Standard text drop
+                super().dropEvent(event)
+                self._invalidate_reference_cache()
+                
+                # 使用计时器设置焦点，确保UI更新后触发
+                QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
+                return
 
+        # Fallback for unhandled drop types
+        super().dropEvent(event)
+        
+        # 即使是未处理的拖放类型，也尝试激活光标
+        QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
 
     def _process_text_drop_as_file(self, event: QEvent, mime_data: QMimeData, parent_feedback_ui: Any) -> bool:
         """
@@ -497,7 +496,7 @@ class FeedbackTextEdit(QTextEdit):
         return False
     
     def _insert_file_reference_text(self, parent_feedback_ui: Any, file_path: str, file_name: str):
-        """Inserts a styled file reference placeholder into the text edit."""
+        """Inserts a file reference placeholder into the text edit."""
         display_name = f"@{file_name}"
         counter = 1
         original_display_name = display_name
@@ -510,59 +509,69 @@ class FeedbackTextEdit(QTextEdit):
         
         try:
             cursor = self.textCursor()
-            current_format = cursor.charFormat() # Save current format to restore later
             
-            # Style for the file reference
-            ref_format = QTextCharFormat()
-            ref_format.setForeground(QColor("#1a73e8")) # Blue color
-            ref_format.setFontWeight(QFont.Weight.Bold)
-            # ref_format.setAnchor(True) # Could make it an anchor if handling clicks
-            # ref_format.setAnchorHref(f"file:///{file_path}")
-
+            # QPlainTextEdit不支持直接的富文本格式，简单插入文本
             cursor.clearSelection() # Ensure no text is replaced
-            cursor.insertText(" ", current_format) # Add a space before if cursor is not at start or after newline
-            cursor.insertText(display_name, ref_format)
-            cursor.insertText(" ", current_format) # Add a space after
+            cursor.insertText(" ") # Add a space before if cursor is not at start or after newline
+            cursor.insertText(display_name) # 简单插入文本引用，没有格式
+            cursor.insertText(" ") # Add a space after
             
             self.setTextCursor(cursor) # Move cursor to end of inserted text
-            self.update() # Ensure UI update
             self._invalidate_reference_cache()
-            # QTimer.singleShot(100, lambda: self._ensure_focus_after_insert(cursor)) # Not strictly needed if _focus_after_content_drop is called
+            # 不再需要强制更新
         except Exception as e:
             print(f"ERROR: FeedbackTextEdit _insert_file_reference - Text insertion failed: {e}", file=sys.stderr)
             
     def _ensure_focus_after_insert(self, cursor: QTextCursor): # Keep for specific focus needs
-        """Ensures the text edit has focus and the cursor is visible after insertion."""
-        window = self.window()
-        if window:
-            window.activateWindow()
-            window.raise_()
-            
-        self.activateWindow()
-        self.raise_()
-        self.setFocus(Qt.FocusPolicy.MouseFocusReason) # Or OtherFocusReason
+        """Helper to ensure focus and cursor visibility after content insertion."""
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
-
+        
     def _focus_after_content_drop(self, drop_pos: QPoint):
-        """Sets focus and attempts to position cursor near the drop position."""
-        window = self.window()
-        if window:
-            window.activateWindow()
-            window.raise_()
+        """
+        设置拖放事件后的焦点和光标位置。
+        确保光标处于激活状态，用户可以直接输入文字。
+        Sets focus and cursor position after a drop event.
+        Ensures the cursor is active so the user can directly type text.
+        """
+        # 确保窗口获得焦点
+        if parent_widget := self.window():
+            parent_widget.activateWindow()
+            parent_widget.raise_()
         
+        # 强制使文本编辑器获得焦点
         self.activateWindow()
-        self.raise_()
-        self.setFocus(Qt.FocusPolicy.MouseFocusReason)
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
         
-        try:
-            # Attempt to set cursor position based on where the drop occurred
-            # QDropEvent.position() returns QPointF, cursorForPosition expects QPoint
-            cursor_at_drop = self.cursorForPosition(drop_pos)
-            self.setTextCursor(cursor_at_drop)
-        except Exception: # Fallback if cursorForPosition fails
-            cursor = self.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            self.setTextCursor(cursor)
+        # 设置光标位置到拖放位置
+        cursor = self.cursorForPosition(drop_pos)
+        self.setTextCursor(cursor)
         
+        # 确保光标可见并闪烁
+        self.ensureCursorVisible()
+        
+        # 使用多个延迟计时器尝试不同时间点激活焦点，增加成功率
+        QTimer.singleShot(10, lambda: self.setFocus(Qt.FocusReason.MouseFocusReason))
+        QTimer.singleShot(50, lambda: self.setFocus(Qt.FocusReason.OtherFocusReason))
+        QTimer.singleShot(100, lambda: self._force_cursor_activation())
+        
+    def _force_cursor_activation(self):
+        """强制激活光标，确保其可见并处于输入状态"""
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        
+        # 保存当前光标位置
+        cursor = self.textCursor()
+        pos = cursor.position()
+        
+        # 执行一个空操作来触发光标闪烁
+        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 0)
+        self.setTextCursor(cursor)
+        
+        # 恢复原始位置
+        cursor.setPosition(pos)
+        self.setTextCursor(cursor)
+        
+        # 确保光标可见
         self.ensureCursorVisible()

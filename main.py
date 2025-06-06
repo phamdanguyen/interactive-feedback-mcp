@@ -6,11 +6,16 @@ import argparse
 from typing import Optional, List
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTranslator, QLocale
 
 # --- 从 feedback_ui 包导入 (Imports from the feedback_ui package) ---
 from feedback_ui.main_window import FeedbackUI
-from feedback_ui.utils.style_manager import apply_global_style # For applying theme
+from feedback_ui.utils.style_manager import apply_theme # For applying theme
+from feedback_ui.utils.settings_manager import SettingsManager
 from feedback_ui.utils.constants import FeedbackResult # For type hinting
+
+# Import the compiled resources
+import feedback_ui.resources_rc
 
 # (可选) 设置高DPI缩放，如果需要 (Optional: Set High DPI scaling if needed)
 # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
@@ -41,8 +46,15 @@ def start_feedback_tool(prompt: str,
         app = QApplication(sys.argv)
     
     # 应用全局样式和调色板 (Apply global styles and palette)
-    apply_global_style(app)
+    settings = SettingsManager()
+    initial_theme = settings.get_current_theme()
+    apply_theme(app, initial_theme)
     app.setQuitOnLastWindowClosed(True) # Ensure app exits when main window closes
+
+    # 创建并设置全局翻译器
+    translator = setup_translator(settings.get_current_language())
+    if translator:
+        app.installTranslator(translator)
 
     if predefined_options is None:
         predefined_options = []
@@ -76,6 +88,43 @@ def start_feedback_tool(prompt: str,
             # Fall through to return result if saving failed, so it's not lost
     
     return collected_result
+
+
+def setup_translator(lang_code: str) -> Optional[QTranslator]:
+    """
+    设置应用程序的翻译器
+    Setup the application translator based on language code
+    """
+    if not lang_code or lang_code == "zh_CN":  # 默认中文不需要翻译
+        print("应用程序使用默认中文语言")
+        return None
+        
+    translator = QTranslator()
+    translation_success = False
+    
+    # 尝试加载翻译文件
+    if translator.load(f":/translations/{lang_code}.qm"):
+        translation_success = True
+        print(f"应用程序成功加载 {lang_code} 语言翻译")
+    else:
+        print(f"警告：应用程序无法加载 {lang_code} 翻译文件")
+        # 尝试从其他可能的路径加载
+        possible_paths = [
+            f"./feedback_ui/resources/translations/{lang_code}.qm",
+            f"./translations/{lang_code}.qm"
+        ]
+        for path in possible_paths:
+            if os.path.exists(path) and translator.load(path):
+                translation_success = True
+                print(f"应用程序从替代路径加载了 {lang_code} 翻译")
+                break
+    
+    # 如果成功加载翻译文件，返回翻译器
+    if translation_success:
+        return translator
+        
+    # 加载失败则返回None，应用程序将使用默认语言
+    return None
 
 
 if __name__ == "__main__":

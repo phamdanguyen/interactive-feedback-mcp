@@ -1,0 +1,275 @@
+/* feedback_ui/styles/light_theme.qss */
+
+/* 全局字体和基础窗口样式 (Global Font and Base Window Styles) */
+* {
+    font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+    outline: none; /* 移除焦点时的虚线框 (Remove dotted focus outline) */
+    font-size: 13pt;
+    font-weight: 400;
+}
+
+QMainWindow, QDialog {
+    background-color: #f0f0f0;
+}
+
+QWidget {
+    background-color: #f0f0f0;
+    color: #111111;
+}
+
+QGroupBox {
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    background-color: transparent;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 8px;
+    color: #777777;
+    font-weight: bold;
+}
+
+/* 提示文字区域标签 - 描述区域 (颜色和内边距) */
+SelectableLabel[class="prompt-label"] { 
+    color: #111111; 
+    padding: 2px;
+    /* font-size is now set dynamically */
+}
+
+/* 提示文字区域标签 - SelectableLabel 类 (只应用于描述区域) */
+QScrollArea SelectableLabel {
+    color: #111111; /* 深黑色，与输入框文字一致 */
+    font-size: 16pt; /* 比输入框的13pt更大一些 */
+}
+
+/* 选项区域的标签样式 (颜色) */
+SelectableLabel[class="option-label"] {
+    color: #666666; /* 更明显的灰色，适合亮色主题 */
+    /* font-size is now set dynamically */
+}
+
+/* ClickableLabel from clickable_label.py */
+ClickableLabel {
+    color: #111111;
+    selection-background-color: #d0e4f8;
+    selection-color: #111111;
+}
+AtIconLabel {
+    background-color: transparent;
+}
+
+QPushButton {
+    background-color: #e1e1e1; 
+    color: #111111; 
+    border: 1px solid #adadad;
+    border-radius: 6px; 
+    padding: 8px 16px; 
+    font-weight: bold;
+    min-width: 120px; 
+    min-height: 36px;
+}
+QPushButton:hover { background-color: #cccccc; }
+QPushButton:pressed { background-color: #bbbbbb; }
+QPushButton:disabled { background-color: #dcdcdc; color: #999999; }
+
+QPushButton#submit_button {
+    background-color: #ffffff; /* Match the text edit background */
+    color: #212121; /* Dark text for contrast */
+    border: 1px solid #c0c0c0; /* A subtle border to define the button */
+    padding: 12px 20px; 
+    font-weight: bold;
+    border-radius: 15px; 
+    min-height: 60px;
+}
+QPushButton#submit_button:hover { 
+    background-color: #fafafa; /* Very slight change on hover */
+    border-color: #b0b0b0;
+}
+QPushButton#submit_button:pressed { 
+    background-color: #f5f5f5; /* A bit darker when pressed */
+    border-color: #a0a0a0;
+}
+
+QPushButton#secondary_button, QPushButton#delete_canned_item_button {
+    background-color: #f9f9f9; 
+    color: #333333; 
+    border: 1px solid #cccccc;
+    padding: 5px 10px; 
+    min-height: 32px;
+    min-width: 100px; 
+    max-height: 32px;
+}
+QPushButton#secondary_button:hover, QPushButton#delete_canned_item_button:hover {
+    background-color: #eeeeee; border: 1px solid #bbbbbb;
+}
+QPushButton#secondary_button:pressed, QPushButton#delete_canned_item_button:pressed {
+    background-color: #dddddd;
+}
+QPushButton#delete_canned_item_button { 
+    background-color: #fce8e6; color: #a50e0e; border: 1px solid #f5c6cb;
+    min-width: 40px; 
+}
+QPushButton#delete_canned_item_button:hover { background-color: #f8d7da; border-color: #f1b0b7; }
+QPushButton#delete_canned_item_button:pressed { background-color: #f4c2c7; }
+
+QPushButton#pin_window_active {
+    background-color: #d0d0d0; /* A noticeable but harmonious grey */
+    color: #000000; /* Black text for strong contrast on grey */
+    border: 1px solid #a0a0a0; /* A darker grey border */
+    padding: 5px 10px; 
+    min-height: 32px;
+    min-width: 100px; 
+    max-height: 32px;
+}
+QPushButton#pin_window_active:hover { background-color: #c8c8c8; }
+QPushButton#pin_window_active:pressed { background-color: #b8b8b8; }
+
+QTextEdit, FeedbackTextEdit {
+    background-color: #ffffff; 
+    color: #111111;
+    border: 1px solid #cccccc; 
+    border-radius: 10px; 
+    padding: 12px;
+    selection-background-color: #d0e4f8; 
+    selection-color: #111111;
+    min-height: 250px;
+    /* font-size is now set dynamically */
+}
+
+/* 为输入框中的文字添加光圈效果 */
+QTextEdit::edit, FeedbackTextEdit::edit {
+    text-shadow: 0 0 2px rgba(0, 120, 215, 0.4);  /* 浅蓝色光晕效果 */
+    color: #000000;
+}
+
+QTextEdit:hover, FeedbackTextEdit:hover { border: 1px solid #bbbbbb; }
+QTextEdit:focus, FeedbackTextEdit:focus { 
+    border: 2px solid #c0c0c0; /* Use a soft, silver-grey for focus */
+    padding: 11px; 
+}
+
+/* 选项区域的标签样式 */
+QCheckBox { 
+    color: #666666; /* 灰色 */
+    spacing: 8px;
+    min-height: 28px; 
+    padding: 1px; 
+}
+QCheckBox::indicator {
+    width: 22px; height: 22px; border: 1px solid #adadad;
+    border-radius: 4px; background-color: #fdfdfd;
+}
+QCheckBox::indicator:checked {
+    background-color: #0078d4; border: 1px solid #006cbf;
+    image: none;
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='%23ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+    background-position: center; background-repeat: no-repeat;
+}
+QCheckBox::indicator:hover:!checked { border: 1px solid #777777; background-color: #fafafa; }
+QCheckBox::indicator:checked:hover { background-color: #006cbf; }
+
+QFrame[frameShape="4"] /* HLine */ {
+    color: #dcdcdc; max-height: 1px; margin: 10px 0;
+    background-color: #dcdcdc; border: none;
+}
+QScrollArea { background-color: transparent; border: none; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0px; }
+QScrollBar::handle:vertical { background: rgba(0,0,0,0.15); min-height: 20px; border-radius: 4px; }
+QScrollBar::handle:vertical:hover { background: rgba(0,0,0,0.25); }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+
+FeedbackTextEdit > QWidget {
+    background-color: #e9ecef;
+    border-top: 1px solid #dcdcdc;
+    border-radius: 0 0 10px 10px;
+    padding: 8px;
+}
+
+ImagePreviewWidget {
+    background-color: #e9ecef;
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+    margin: 2px;
+}
+ImagePreviewWidget:hover {
+    border: 1px solid #0078d4;
+}
+
+/* Dialog specific styles */
+ManageCannedResponsesDialog QListWidget, 
+SelectCannedResponseDialog QListWidget, 
+DraggableListWidget {
+    padding: 5px; 
+    background-color: #ffffff;
+    border: 1px solid #dcdcdc; 
+    border-radius: 4px; 
+    color: #111111;
+}
+ManageCannedResponsesDialog QListWidget::item, 
+SelectCannedResponseDialog QListWidget::item, 
+DraggableListWidget::item {
+    border-bottom: 1px solid #eeeeee; padding: 6px; margin: 1px;
+}
+ManageCannedResponsesDialog QListWidget::item:hover, 
+SelectCannedResponseDialog QListWidget::item:hover, 
+DraggableListWidget::item:hover {
+    background-color: #f5f5f5;
+}
+ManageCannedResponsesDialog QListWidget::item:selected, 
+SelectCannedResponseDialog QListWidget::item:selected, 
+DraggableListWidget::item:selected {
+    background-color: #e8f0fe; border: none;
+}
+ManageCannedResponsesDialog QListWidget::item:focus, 
+SelectCannedResponseDialog QListWidget::item:focus, 
+DraggableListWidget::item:focus {
+    background-color: #e8f0fe; border: none;
+}
+
+ManageCannedResponsesDialog QLineEdit, 
+SelectCannedResponseDialog QLineEdit {
+    padding: 8px;
+    background-color: #ffffff; 
+    color: #111111; 
+    border: 1px solid #cccccc; 
+    border-radius: 4px;
+}
+
+/* Labels within dialogs */
+ManageCannedResponsesDialog QLabel, 
+SelectCannedResponseDialog QLabel {
+    color: #555555;
+}
+SelectCannedResponseDialog QLabel#DialogTitleLabel {
+    font-weight: bold; 
+    color: #111111;
+    font-size: 14pt;
+}
+SelectCannedResponseDialog QLabel#DialogHintLabel {
+    color: #777777;
+    font-size: 11pt;
+}
+
+/* CheckBox within SelectCannedResponseDialog */
+SelectCannedResponseDialog QCheckBox {
+    color: #111111; 
+    spacing: 8px;
+}
+SelectCannedResponseDialog QCheckBox::indicator {
+    width: 18px; height: 18px; border: 1px solid #adadad;
+    border-radius: 3px; background-color: #fdfdfd;
+}
+SelectCannedResponseDialog QCheckBox::indicator:checked {
+    background-color: #0078d4; border: 1px solid #006cbf;
+     background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path fill='%23ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+    background-position: center; background-repeat: no-repeat;
+}
+ 
+/* QLabel within DraggableListWidget items (for text display) */
+DraggableListWidget QLabel {
+    color: #111111;
+} 

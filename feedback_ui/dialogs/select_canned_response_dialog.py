@@ -4,8 +4,9 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidgetItem, QWidget, QCheckBox, QMessageBox
 )
-from PySide6.QtCore import Qt, QSize, QObject
+from PySide6.QtCore import Qt, QSize, QObject, QEvent
 from PySide6.QtGui import QFontMetrics, QTextCursor
+from shiboken6 import isValid  # 替换sip
 
 from ..utils.settings_manager import SettingsManager # Relative import
 from .draggable_list_widget import DraggableListWidget # Import the custom list widget
@@ -23,7 +24,7 @@ class SelectCannedResponseDialog(QDialog):
     """
     def __init__(self, responses: list[str], parent_window: QObject): # parent_window is FeedbackUI
         super().__init__(parent_window) # Set parent for modality and context
-        self.setWindowTitle("常用语管理 (Manage Canned Responses)")
+        self.setWindowTitle(self.tr("常用语管理"))
         self.resize(500, 450)
         self.setMinimumSize(450, 400)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -32,8 +33,67 @@ class SelectCannedResponseDialog(QDialog):
         self.initial_responses = responses[:] # Store a copy of initial responses
         self.settings_manager = SettingsManager(self)
         
+        # 双语文本映射
+        self.texts = {
+            "title": {
+                "zh_CN": "常用语管理",
+                "en_US": "Manage Canned Responses"
+            },
+            "list_title": {
+                "zh_CN": "常用语列表",
+                "en_US": "Canned Responses List"
+            },
+            "show_icons": {
+                "zh_CN": "显示快捷图标",
+                "en_US": "Show Shortcut Icons"
+            },
+            "hint": {
+                "zh_CN": "双击插入文本，点击删除按钮移除，拖拽调整顺序。",
+                "en_US": "Double-click to insert, click delete button, drag to reorder."
+            },
+            "input_placeholder": {
+                "zh_CN": "输入新的常用语",
+                "en_US": "Enter new canned response"
+            },
+            "save_button": {
+                "zh_CN": "保存",
+                "en_US": "Save"
+            },
+            "close_button": {
+                "zh_CN": "关闭",
+                "en_US": "Close"
+            },
+            "delete_button": {
+                "zh_CN": "删除",
+                "en_US": "Delete"
+            },
+            "delete_tooltip": {
+                "zh_CN": "删除此常用语",
+                "en_US": "Delete this canned response"
+            },
+            "invalid_input": {
+                "zh_CN": "输入无效",
+                "en_US": "Invalid Input"
+            },
+            "empty_input_message": {
+                "zh_CN": "常用语不能为空。",
+                "en_US": "Canned response cannot be empty."
+            },
+            "duplicate_title": {
+                "zh_CN": "重复项",
+                "en_US": "Duplicate Item"
+            },
+            "duplicate_message": {
+                "zh_CN": "此常用语已存在。",
+                "en_US": "This canned response already exists."
+            }
+        }
+        
         self._create_ui()
         self._load_responses_to_list_widget(self.initial_responses)
+        
+        # 初始更新文本
+        self._update_texts()
 
     def _create_ui(self):
         """Creates the UI elements for the dialog."""
@@ -42,25 +102,25 @@ class SelectCannedResponseDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         
         top_layout = QHBoxLayout()
-        title_label = QLabel("常用语列表 (Canned Responses List)")
+        title_label = QLabel("")  # 稍后设置文本
         title_label.setObjectName("DialogTitleLabel") # For QSS styling
-        # title_label.setStyleSheet("font-size: 14pt; font-weight: bold;") # Style via QSS
         top_layout.addWidget(title_label)
         top_layout.addStretch(1)
         
-        self.show_shortcut_icons_checkbox = QCheckBox("显示快捷图标 (Show Shortcut Icons)")
-        # self.show_shortcut_icons_checkbox.setStyleSheet(...) # Style via QSS
+        self.show_shortcut_icons_checkbox = QCheckBox("")  # 稍后设置文本
         current_show_icons_pref = self.settings_manager.get_show_shortcut_icons()
         self.show_shortcut_icons_checkbox.setChecked(current_show_icons_pref)
         self.show_shortcut_icons_checkbox.toggled.connect(self._save_show_icons_preference)
         top_layout.addWidget(self.show_shortcut_icons_checkbox)
         layout.addLayout(top_layout)
         
-        hint_label = QLabel("双击插入文本，点击删除按钮移除，拖拽调整顺序。\n(Double-click to insert, click delete button, drag to reorder.)")
+        hint_label = QLabel("")  # 稍后设置文本
         hint_label.setObjectName("DialogHintLabel")
-        # hint_label.setStyleSheet("font-size: 9pt; color: #aaaaaa;") # Style via QSS
         layout.addWidget(hint_label)
         layout.addSpacing(5)
+        
+        self.title_label = title_label
+        self.hint_label = hint_label
         
         self.responses_list_widget = DraggableListWidget(self)
         self.responses_list_widget.item_double_clicked.connect(self._on_list_item_double_clicked)
@@ -69,21 +129,23 @@ class SelectCannedResponseDialog(QDialog):
         
         input_layout = QHBoxLayout()
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("输入新的常用语 (Enter new canned response)")
+        # 稍后设置占位符文本
         self.input_field.returnPressed.connect(self._add_new_response_from_input)
         input_layout.addWidget(self.input_field)
         
-        self.add_button = QPushButton("保存 (Save)") # Or "Add"
+        self.add_button = QPushButton("")  # 稍后设置文本
         self.add_button.clicked.connect(self._add_new_response_from_input)
         self.add_button.setObjectName("secondary_button")
         input_layout.addWidget(self.add_button)
         layout.addLayout(input_layout)
 
         # OK/Close button (optional, as double-click also closes)
-        close_button = QPushButton("关闭 (Close)")
+        close_button = QPushButton("")  # 稍后设置文本
         close_button.setObjectName("secondary_button")
         close_button.clicked.connect(self.accept) # Accept will save and close
         layout.addWidget(close_button, 0, Qt.AlignmentFlag.AlignRight)
+        
+        self.close_button = close_button
 
     def _load_responses_to_list_widget(self, responses: List[str]):
         """Populates the list widget with given responses."""
@@ -104,16 +166,15 @@ class SelectCannedResponseDialog(QDialog):
         item_layout.setSpacing(8)
 
         text_label = QLabel(text)
-        # text_label.setStyleSheet("color: white; font-size: 11pt;") # Style via global QSS
         text_label.setWordWrap(False) # Ensure it doesn't wrap to keep item height consistent
         text_label.setMaximumWidth(350) # Prevent very long text from expanding too much
-        # text_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction) # Non-selectable
         item_layout.addWidget(text_label, 1) # Label takes available space
 
-        delete_button = QPushButton("删 (Del)") # Short text for delete
+        current_language = self.settings_manager.get_current_language()
+        delete_button = QPushButton(self.texts["delete_button"][current_language])
         delete_button.setFixedSize(40, 25) # Make delete button compact
         delete_button.setObjectName("delete_canned_item_button") # For specific styling via QSS
-        delete_button.setToolTip("删除此常用语 (Delete this canned response)")
+        delete_button.setToolTip(self.texts["delete_tooltip"][current_language])
         # Use lambda to pass the item (or its text) to the delete function
         delete_button.clicked.connect(lambda checked=False, item_to_delete=item: self._delete_response_item(item_to_delete))
         item_layout.addWidget(delete_button)
@@ -130,12 +191,23 @@ class SelectCannedResponseDialog(QDialog):
 
         self.responses_list_widget.addItem(item) # Add the QListWidgetItem
         self.responses_list_widget.setItemWidget(item, item_widget) # Set custom widget for the item
-    
+        
+        # 保存按钮引用以便语言切换时更新
+        if not hasattr(self, 'delete_buttons'):
+            self.delete_buttons = []
+        self.delete_buttons.append(delete_button)
+
     def _add_new_response_from_input(self):
         """Adds a new response from the input field to the list and settings."""
         text_to_add = self.input_field.text().strip()
+        current_language = self.settings_manager.get_current_language()
+        
         if not text_to_add:
-            QMessageBox.warning(self, "输入无效 (Invalid Input)", "常用语不能为空。(Canned response cannot be empty.)")
+            QMessageBox.warning(
+                self, 
+                self.texts["invalid_input"][current_language],
+                self.texts["empty_input_message"][current_language]
+            )
             return
             
         # Check for duplicates in the current list items
@@ -145,7 +217,11 @@ class SelectCannedResponseDialog(QDialog):
             if widget:
                 label = widget.findChild(QLabel)
                 if label and label.text() == text_to_add:
-                    QMessageBox.warning(self, "重复项 (Duplicate Item)", "此常用语已存在。(This canned response already exists.)")
+                    QMessageBox.warning(
+                        self,
+                        self.texts["duplicate_title"][current_language],
+                        self.texts["duplicate_message"][current_language]
+                    )
                     return
         
         self._add_item_to_gui_list(text_to_add)
@@ -203,4 +279,45 @@ class SelectCannedResponseDialog(QDialog):
     def reject(self):
         self._save_responses_from_list_widget() # Also save if rejected (e.g., Esc pressed)
         super().reject()
+        
+    def changeEvent(self, event: QEvent):
+        """处理语言变化事件"""
+        if event.type() == QEvent.Type.LanguageChange:
+            self._update_texts()
+        super().changeEvent(event)
+        
+    def _update_texts(self):
+        """根据当前语言设置更新所有文本"""
+        current_language = self.settings_manager.get_current_language()
+        
+        # 更新窗口标题
+        self.setWindowTitle(self.texts["title"][current_language])
+        
+        # 更新标题和提示标签
+        if hasattr(self, 'title_label'):
+            self.title_label.setText(self.texts["list_title"][current_language])
+            
+        if hasattr(self, 'hint_label'):
+            self.hint_label.setText(self.texts["hint"][current_language])
+            
+        if hasattr(self, 'show_shortcut_icons_checkbox'):
+            self.show_shortcut_icons_checkbox.setText(self.texts["show_icons"][current_language])
+            
+        # 更新输入框占位符
+        if hasattr(self, 'input_field'):
+            self.input_field.setPlaceholderText(self.texts["input_placeholder"][current_language])
+            
+        # 更新按钮文本
+        if hasattr(self, 'add_button'):
+            self.add_button.setText(self.texts["save_button"][current_language])
+            
+        if hasattr(self, 'close_button'):
+            self.close_button.setText(self.texts["close_button"][current_language])
+            
+        # 更新删除按钮
+        if hasattr(self, 'delete_buttons'):
+            for button in self.delete_buttons:
+                if button and isValid(button):
+                    button.setText(self.texts["delete_button"][current_language])
+                    button.setToolTip(self.texts["delete_tooltip"][current_language])
 
