@@ -1,7 +1,7 @@
-# main.py (Application Entry Point / 应用程序入口点)
+# cli.py (Application Entry Point / 应用程序入口点)
 import sys
-import os # For path manipulation if needed for resources
-import json # For printing result if not saving to file
+import os
+import json
 import argparse
 from typing import Optional, List
 
@@ -9,13 +9,15 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTranslator, QLocale
 
 # --- 从 feedback_ui 包导入 (Imports from the feedback_ui package) ---
-from feedback_ui.main_window import FeedbackUI
-from feedback_ui.utils.style_manager import apply_theme # For applying theme
-from feedback_ui.utils.settings_manager import SettingsManager
-from feedback_ui.utils.constants import FeedbackResult # For type hinting
+# Note: Changed to relative imports as this is now part of the package
+from .main_window import FeedbackUI
+from .utils.style_manager import apply_theme
+from .utils.settings_manager import SettingsManager
+from .utils.constants import FeedbackResult
 
 # Import the compiled resources
-import feedback_ui.resources_rc
+# This should work as long as it's in the same package directory
+from . import resources_rc
 
 # (可选) 设置高DPI缩放，如果需要 (Optional: Set High DPI scaling if needed)
 # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
@@ -100,34 +102,20 @@ def setup_translator(lang_code: str) -> Optional[QTranslator]:
         return None
         
     translator = QTranslator()
-    translation_success = False
     
-    # 尝试加载翻译文件
+    # 尝试从Qt资源系统加载翻译文件
+    # Try to load translation file from Qt resource system
     if translator.load(f":/translations/{lang_code}.qm"):
-        translation_success = True
         print(f"应用程序成功加载 {lang_code} 语言翻译")
-    else:
-        print(f"警告：应用程序无法加载 {lang_code} 翻译文件")
-        # 尝试从其他可能的路径加载
-        possible_paths = [
-            f"./feedback_ui/resources/translations/{lang_code}.qm",
-            f"./translations/{lang_code}.qm"
-        ]
-        for path in possible_paths:
-            if os.path.exists(path) and translator.load(path):
-                translation_success = True
-                print(f"应用程序从替代路径加载了 {lang_code} 翻译")
-                break
-    
-    # 如果成功加载翻译文件，返回翻译器
-    if translation_success:
         return translator
-        
-    # 加载失败则返回None，应用程序将使用默认语言
-    return None
+    else:
+        print(f"警告：无法从资源系统加载 {lang_code} 翻译文件。将使用默认语言。")
+        print(f"Warning: Could not load {lang_code} translation from resource system. Using default language.")
+        return None
 
 
-if __name__ == "__main__":
+def main():
+    """Main function to run the command-line interface."""
     parser = argparse.ArgumentParser(description="运行交互式反馈UI (Run Interactive Feedback UI)")
     parser.add_argument(
         "--prompt", 
@@ -184,3 +172,6 @@ if __name__ == "__main__":
         print("--- 结束结果 (End Result) ---\n")
         
     sys.exit(0) # Successful exit
+
+if __name__ == "__main__":
+    main()

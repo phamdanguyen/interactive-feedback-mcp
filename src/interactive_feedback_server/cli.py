@@ -25,92 +25,61 @@ mcp = FastMCP("Interactive Feedback MCP", log_level="ERROR")
 
 def launch_feedback_ui(summary: str, predefined_options_list: Optional[List[str]] = None) -> Dict[str, Any]:
     """ 
-    Launches the main.py script (which runs the Feedback UI) as a separate process.
-    Collects user input (text and/or images) and returns it as a structured dictionary.
+    Launches the feedback UI as a separate process using its command-line entry point.
+    Collects user input and returns it as a structured dictionary.
 
-    启动 main.py 脚本（运行反馈UI）作为一个独立的进程。
-    收集用户输入（文本和/或图像）并将其作为结构化字典返回。
+    通过命令行入口点将反馈UI作为独立进程启动。
+    收集用户输入并将其作为结构化字典返回。
     """
-    tmp_file_path = None # 初始化临时文件路径 (Initialize temp file path)
+    tmp_file_path = None
     try:
-        # 创建一个临时文件用于接收UI的输出结果
-        # Create a temporary file for the feedback UI result
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w", encoding="utf-8") as tmp:
             tmp_file_path = tmp.name
         
-        # 获取当前 server.py 脚本所在的目录
-        # Get the directory where the current server.py script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        # 假设 main.py 与 server.py 在同一目录下 (Assume main.py is in the same directory as server.py)
-        main_script_path = os.path.join(script_dir, "main.py")
-
-        if not os.path.exists(main_script_path):
-            # 如果 main.py 不在同一目录，尝试上一级目录（如果 server.py 在子目录中）
-            # If main.py is not in the same directory, try one level up (if server.py is in a subdir)
-            # This depends on your project structure.
-            # For example, if server.py is in project_root/scripts/ and main.py is in project_root/
-            # project_root_dir = os.path.dirname(script_dir)
-            # main_script_path = os.path.join(project_root_dir, "main.py")
-            # For now, let's assume they are in the same directory or main.py is easily findable.
-            # A more robust solution might involve configuration or searching known paths.
-            print(f"警告: main.py 未在预期路径找到: {main_script_path}", file=sys.stderr)
-            print(f"(Warning: main.py not found at expected path: {main_script_path})", file=sys.stderr)
-            # As a fallback, try looking for main.py in the current working directory if different
-            if os.path.abspath(script_dir) != os.path.abspath(os.getcwd()):
-                alt_main_script_path = os.path.join(os.getcwd(), "main.py")
-                if os.path.exists(alt_main_script_path):
-                    main_script_path = alt_main_script_path
-                    print(f"信息: 在当前工作目录找到 main.py: {main_script_path}", file=sys.stderr)
-                    print(f"(Info: Found main.py in current working directory: {main_script_path})", file=sys.stderr)
-                else:
-                     raise FileNotFoundError(f"无法定位 UI 入口脚本 main.py (Could not locate UI entry script main.py)")
-            else:
-                 raise FileNotFoundError(f"无法定位 UI 入口脚本 main.py (Could not locate UI entry script main.py)")
-
-
         options_str = "|||".join(predefined_options_list) if predefined_options_list else ""
 
-        # 构建传递给 main.py 的参数列表
-        # Build the list of arguments to pass to main.py
+        # Build the argument list for the 'feedback-ui' command
+        # This command is available after installing the package in editable mode.
         args_list = [
-            sys.executable,    # Python解释器路径 (Path to Python interpreter)
-            "-u",              # 无缓冲标准输出/错误流 (Unbuffered stdout/stderr)
-            main_script_path,  # 指向 main.py (Path to main.py)
+            "feedback-ui",
             "--prompt", summary,
             "--output-file", tmp_file_path,
             "--predefined-options", options_str
         ]
         
-        # 运行 main.py 脚本
-        # Run the main.py script
+        # Run the feedback-ui command
         process_result = subprocess.run(
             args_list,
-            check=False,        # 手动检查返回码 (Manually check return code)
-            shell=False,        # 出于安全原因，不使用shell (Do not use shell for security reasons)
-            stdout=subprocess.PIPE, # 捕获标准输出 (Capture stdout)
-            stderr=subprocess.PIPE, # 捕获标准错误 (Capture stderr)
-            stdin=subprocess.DEVNULL, # 禁止从 stdin 读取 (Prevent reading from stdin)
-            close_fds=True,     # 在 POSIX 系统上推荐 (Recommended on POSIX systems)
-            text=True,          # 将 stdout 和 stderr 解码为文本 (Decode stdout and stderr as text)
-            errors='ignore'     # 解码时忽略错误 (Ignore errors during decoding)
+            check=False,
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            close_fds=(os.name != 'nt'), # close_fds is not supported on Windows when shell=False
+            text=True,
+            errors='ignore'
         )
 
         if process_result.returncode != 0:
-            print(f"错误: 启动反馈UI (main.py) 失败。返回码: {process_result.returncode}", file=sys.stderr)
-            print(f"(Error: Failed to launch feedback UI (main.py). Return code: {process_result.returncode})", file=sys.stderr)
-            if process_result.stdout: # 打印来自UI的stdout（如果有）
+            print(f"错误: 启动反馈UI (feedback-ui) 失败。返回码: {process_result.returncode}", file=sys.stderr)
+            print(f"(Error: Failed to launch feedback UI (feedback-ui). Return code: {process_result.returncode})", file=sys.stderr)
+            if process_result.stdout:
                 print(f"UI STDOUT:\n{process_result.stdout}", file=sys.stderr)
-            if process_result.stderr: # 打印来自UI的stderr（如果有）
+            if process_result.stderr:
                 print(f"UI STDERR:\n{process_result.stderr}", file=sys.stderr)
             raise Exception(f"启动反馈UI失败 (Failed to launch feedback UI): {process_result.returncode}. 详细信息请查看服务器日志 (Check server logs for details).")
         
-        # 从临时文件中读取UI的JSON输出
-        # Read the JSON output from the UI from the temporary file
         with open(tmp_file_path, 'r', encoding='utf-8') as f:
             ui_result_data = json.load(f)
         
         return ui_result_data
     
+    except FileNotFoundError:
+        print("错误: 'feedback-ui' 命令未找到。", file=sys.stderr)
+        print("请确保项目已在可编辑模式下安装 (pip install -e .)", file=sys.stderr)
+        print("(Error: 'feedback-ui' command not found.)", file=sys.stderr)
+        print("(Please ensure the project is installed in editable mode: pip install -e .)", file=sys.stderr)
+        raise
     except Exception as e:
         print(f"错误: 在 launch_feedback_ui 中发生异常: {e}", file=sys.stderr)
         print(f"(Error: Exception in launch_feedback_ui: {e})", file=sys.stderr)
@@ -203,7 +172,11 @@ def interactive_feedback(
     # Return a tuple of all processed content items (text and images)
     return tuple(processed_mcp_content)
 
-if __name__ == "__main__":
+def main():
+    """Main function to run the MCP server."""
     # 确保在主执行块中运行 MCP
     # Ensure MCP runs in the main execution block
     mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()

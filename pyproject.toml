@@ -1,6 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "interactive-feedback"
 version = "0.1.1"
+authors = [
+  { name="Fábio Ferreira" },
+  { name="Pau Oliva" },
+]
 description = "MCP server for interactive user feedback and command execution in AI-assisted development, by Fábio Ferreira and Pau Oliva."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,4 +16,20 @@ dependencies = [
     "fastmcp>=2.0.0",
     "psutil>=7.0.0",
     "pyside6>=6.8.2.1",
+    "pyperclip>=1.8.2",
+    "pyautogui>=0.9.53",
+    "Pillow>=9.0.0",
+    'pywin32>=228; sys_platform == "win32"',
 ]
+
+[project.scripts]
+feedback-ui = "feedback_ui.cli:main"
+feedback-server = "interactive_feedback_server.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
