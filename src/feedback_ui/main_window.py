@@ -3,7 +3,7 @@ import os
 import re  # 正则表达式 (Regular expressions)
 import sys
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,22 +39,14 @@ class FeedbackUI(QMainWindow):
     交互式反馈MCP应用程序的主窗口。
     """
 
-    # 为适配新架构而增加的信号
-    closed = Signal(str)
-    feedback_provided = Signal(str, dict)
-
     def __init__(
         self,
-        task_id: str,  # 新增 task_id
         prompt: str,
         predefined_options: list[str] | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
-        self.task_id = task_id  # 保存 task_id
-        # 修正: 确保 prompt 始终是字符串，以处理来自命令行的列表输入
-        # Fix: Ensure prompt is always a string to handle list input from CLI
-        self.prompt = " ".join(prompt) if isinstance(prompt, list) else prompt
+        self.prompt = prompt
         self.predefined_options = predefined_options or []
         self.output_result = FeedbackResult(
             content=[]
@@ -108,12 +100,6 @@ class FeedbackUI(QMainWindow):
 
         # 为主窗口安装事件过滤器，以实现点击背景聚焦输入框的功能
         self.installEventFilter(self)
-
-        # 确保窗口立即显示
-        print(f"FeedbackUI (task_id: {self.task_id}): 正在执行show()以确保窗口可见")
-        self.show()
-        self.raise_()
-        self.activateWindow()
 
     def _setup_window(self):
         """Sets up basic window properties like title, icon, size."""
@@ -226,39 +212,37 @@ class FeedbackUI(QMainWindow):
 
         self._update_submit_button_text_status()
 
-    def _create_description_area(self, layout: QVBoxLayout):
-        """创建并配置描述文本区域。"""
-        # 确保 prompt 是字符串
-        prompt_text = (
-            " ".join(self.prompt) if isinstance(self.prompt, list) else self.prompt
-        )
+    def _create_description_area(self, parent_layout: QVBoxLayout):
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setMaximumHeight(200)
 
-        # 创建一个容器 Widget 和布局
-        description_container = QWidget()
-        container_layout = QVBoxLayout(description_container)
-        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除布局边距
+        desc_widget_container = QWidget()
+        desc_layout = QVBoxLayout(desc_widget_container)
+        desc_layout.setContentsMargins(15, 5, 15, 15)
 
-        # 使用处理过的字符串创建 SelectableLabel
-        self.description_label = SelectableLabel(prompt_text, self)
+        self.description_label = SelectableLabel(self.prompt, self)
+        self.description_label.setProperty("class", "prompt-label")
         self.description_label.setWordWrap(True)
-        self.description_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.description_label.setStyleSheet("font-size: 14px; padding: 5px;")
-        container_layout.addWidget(self.description_label)
+        desc_layout.addWidget(self.description_label)
 
         self.image_usage_label = SelectableLabel(
             "如果图片反馈异常，建议切换Claude 3.5 Sonnet模型。", self
         )
         self.image_usage_label.setWordWrap(True)
         self.image_usage_label.setVisible(False)
-        container_layout.addWidget(self.image_usage_label)
+        desc_layout.addWidget(self.image_usage_label)
 
         self.status_label = SelectableLabel("", self)
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.status_label.setVisible(False)
-        container_layout.addWidget(self.status_label)
+        desc_layout.addWidget(self.status_label)
 
-        layout.addWidget(description_container)
+        scroll_area.setWidget(desc_widget_container)
+        parent_layout.addWidget(scroll_area)
 
     def _create_options_checkboxes(self, parent_layout: QVBoxLayout):
         self.option_checkboxes: list[QCheckBox] = []
@@ -418,16 +402,24 @@ class FeedbackUI(QMainWindow):
         return super().event(event)
 
     def closeEvent(self, event: QEvent):
-        """Override close event to save state and emit signal."""
-        self.save_window_state()
-        self.closed.emit(self.task_id)
+        # 保存窗口几何和状态
+        self.settings_manager.set_main_window_geometry(self.saveGeometry())
+        self.settings_manager.set_main_window_state(self.saveState())
+        self.settings_manager.set_main_window_pinned(self.window_pinned)
+
+        # 单独保存窗口大小
+        self.settings_manager.set_main_window_size(self.width(), self.height())
+
+        # 保存窗口位置
+        self.settings_manager.set_main_window_position(self.x(), self.y())
+
+        # 确保在用户直接关闭窗口时也返回空结果
+        # 此处不需要检查 self.output_result 是否已设置，因为在 __init__ 中已初始化为空结果
+        # 如果没有显式通过 _prepare_and_submit_feedback 设置结果，则保持初始的空结果
+
         super().closeEvent(event)
 
     def _load_canned_responses_from_settings(self):
-        """
-        Loads canned responses from settings.
-        This method is now clean and only performs its intended function.
-        """
         self.canned_responses = self.settings_manager.get_canned_responses()
 
     def _update_number_icons_display(self):
@@ -507,9 +499,6 @@ class FeedbackUI(QMainWindow):
         self.pin_window_button.style().polish(self.pin_window_button)
         self.pin_window_button.update()
 
-        # 重新显示窗口（因为改变了窗口标志）
-        self.show()
-
     def _toggle_pin_window_action(self):
         # 获取按钮当前的勾选状态
         self.window_pinned = self.pin_window_button.isChecked()
@@ -538,8 +527,6 @@ class FeedbackUI(QMainWindow):
 
         # 重新显示窗口（因为改变了窗口标志）
         self.show()
-
-        self.save_window_state()  # 切换固定状态后保存
 
     def add_image_preview(self, pixmap: QPixmap) -> int | None:
         if pixmap and not pixmap.isNull():
@@ -572,58 +559,74 @@ class FeedbackUI(QMainWindow):
             self._update_submit_button_text_status()
 
     def _prepare_and_submit_feedback(self):
-        """
-        Correctly prepares the feedback data from all sources and emits a signal.
-        """
-        # Clear previous results to ensure a clean slate for each submission
-        self.output_result["content"].clear()
+        final_content_list: list[ContentItem] = []
+        feedback_plain_text = self.text_input.toPlainText().strip()
 
-        # Get text input
-        text_content = self.text_input.toPlainText().strip()
-        if text_content:
-            text_item = ContentItem(type="text", text=text_content)
-            self.output_result["content"].append(text_item)
+        # 获取选中的选项
+        selected_options = []
+        for i, checkbox in enumerate(self.option_checkboxes):
+            if checkbox.isChecked() and i < len(self.predefined_options):
+                # 使用预定义选项列表中的文本
+                selected_options.append(self.predefined_options[i])
 
-        # Get selected options
-        selected_options_texts = [
-            cb.text() for cb in self.option_checkboxes if cb.isChecked()
-        ]
-        if selected_options_texts:
-            # Combine selected options into a single text item as per original logic
-            options_text = " ".join(selected_options_texts)
-            options_item = ContentItem(type="text", text=options_text)
-            self.output_result["content"].append(options_item)
+        combined_text_parts = []
+        if selected_options:
+            combined_text_parts.append("; ".join(selected_options))
+        if feedback_plain_text:
+            combined_text_parts.append(feedback_plain_text)
 
-        # Get images
+        final_text = "\n".join(combined_text_parts).strip()
+        # 允许提交空内容，即使 final_text 为空
+        if final_text:
+            final_content_list.append({"type": "text", "text": final_text})
+
         image_items = get_image_items_from_widgets(self.image_widgets)
-        if image_items:
-            self.output_result["content"].extend(image_items)
+        final_content_list.extend(image_items)
 
-        # Get file references
-        file_items: list[ContentItem] = [
-            ContentItem(type="file_reference", display_name=name, path=path)
-            for name, path in self.dropped_file_references.items()
-        ]
-        if file_items:
-            self.output_result["content"].extend(file_items)
+        # 处理文件引用（恢复之前移除的代码）
+        current_text_content_for_refs = self.text_input.toPlainText()
+        file_references = {
+            k: v
+            for k, v in self.dropped_file_references.items()
+            if k in current_text_content_for_refs
+        }
 
-        # Emit the signal with the result dictionary and then close the window.
-        # No .model_dump() is needed as FeedbackResult is a TypedDict.
-        self.feedback_provided.emit(self.task_id, self.output_result)
+        # 不管 final_content_list 是否为空，都设置结果并关闭窗口
+        self.output_result = FeedbackResult(content=final_content_list)
+
+        # 保存窗口几何和状态信息，确保即使通过提交反馈关闭窗口时也能保存这些信息
+        self.settings_manager.set_main_window_geometry(self.saveGeometry())
+        self.settings_manager.set_main_window_state(self.saveState())
+
+        # 单独保存窗口大小
+        self.settings_manager.set_main_window_size(self.width(), self.height())
+
+        # 保存窗口位置
+        self.settings_manager.set_main_window_position(self.x(), self.y())
+
         self.close()
 
+    def run_ui_and_get_result(self) -> FeedbackResult:
+        self.show()
+        self.activateWindow()
+        self.text_input.setFocus()
+
+        app_instance = QApplication.instance()
+        if app_instance:
+            app_instance.exec()
+
+        # 直接返回 self.output_result，它在 __init__ 中已初始化为空结果
+        # 如果用户有提交内容，它已在 _prepare_and_submit_feedback 中被更新
+        return self.output_result
+
     def _set_initial_focus(self):
-        """Sets initial focus on the text edit area for better UX."""
+        """Sets initial focus to the feedback text edit."""
         if hasattr(self, "text_input") and self.text_input:
             self.text_input.setFocus(Qt.FocusReason.OtherFocusReason)
             cursor = self.text_input.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.text_input.setTextCursor(cursor)
             self.text_input.ensureCursorVisible()
-
-            # 延迟执行以确保窗口已完全显示
-            # Delay execution to ensure the window is fully displayed
-            QTimer.singleShot(100, lambda: self.text_input.setFocus())
 
     def _enforce_min_window_size(self):
         pass
@@ -800,11 +803,3 @@ class FeedbackUI(QMainWindow):
 
             current_theme = self.settings_manager.get_current_theme()
             apply_theme(app, current_theme)
-
-    def save_window_state(self):
-        """Saves the window's geometry and state."""
-        self.settings_manager.set_main_window_state(self.saveState())
-        self.settings_manager.set_main_window_size(
-            self.size().width(), self.size().height()
-        )
-        self.settings_manager.set_main_window_position(self.pos().x(), self.pos().y())

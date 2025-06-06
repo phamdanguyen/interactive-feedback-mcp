@@ -3,7 +3,7 @@ import sys
 import os
 import json
 import argparse
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTranslator, QLocale
@@ -23,87 +23,83 @@ from . import resources_rc
 # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
 # QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
-# 确保我们能从 src/ 目录导入模块
-# 这对于直接从命令行运行此脚本至关重要
-try:
-    import src
-except ImportError:
-    # 如果失败，则手动将项目根目录添加到 sys.path
-    # This is crucial for running the script directly from the command line
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-
-# 再次尝试导入，现在应该可以了
-# Now the imports should work
-from src.feedback_ui.main_window import FeedbackUI
-from src.feedback_ui.utils.constants import FeedbackResult
-
 
 def start_feedback_tool(
     prompt: str,
     predefined_options: Optional[List[str]] = None,
-    output_file: Optional[str] = None,
-) -> Dict[str, Any]:
+    output_file_path: Optional[str] = None,
+) -> Optional[FeedbackResult]:
     """
-    使用新的事件驱动模型启动反馈UI。
-    Launches the feedback UI using the new event-driven model.
+    Initializes and runs the Feedback UI application.
+    初始化并运行反馈UI应用程序。
+
+    Args:
+        prompt (str): The main question or prompt for the user.
+                      (用户的主要问题或提示。)
+        predefined_options (Optional[List[str]]): A list of predefined choices for the user.
+                                                   (为用户预定义选项的列表。)
+        output_file_path (Optional[str]): Path to save the feedback result as JSON. If None, result is returned.
+                                          (将反馈结果保存为JSON的路径。如果为None，则返回结果。)
+
+    Returns:
+        Optional[FeedbackResult]: The feedback collected from the user, or None if UI was quit unexpectedly.
+                                   (从用户收集的反馈，如果UI意外退出则为None。)
     """
-    app = QApplication.instance()
-    if not app:
+    app = QApplication.instance()  # Check if an instance already exists
+    if not app:  # Create one if not
         app = QApplication(sys.argv)
-        is_new_app = True
-    else:
-        is_new_app = False
 
-    result_data = {}
+    # 应用全局样式和调色板 (Apply global styles and palette)
+    settings = SettingsManager()
+    initial_theme = settings.get_current_theme()
+    apply_theme(app, initial_theme)
+    app.setQuitOnLastWindowClosed(True)  # Ensure app exits when main window closes
 
-    # 创建一个虚拟的 task_id，因为这个UI是独立运行的
-    # Create a dummy task_id as this UI is running standalone
-    task_id = "standalone_task"
+    # 创建并设置全局翻译器
+    translator = setup_translator(settings.get_current_language())
+    if translator:
+        app.installTranslator(translator)
 
-    ui_window = FeedbackUI(
-        task_id=task_id, prompt=prompt, predefined_options=predefined_options
-    )
+    if predefined_options is None:
+        predefined_options = []
 
-    def on_feedback(received_task_id, data):
-        nonlocal result_data
-        if received_task_id == task_id:
-            result_data = data
-            app.quit()  # 收到反馈后退出应用
+    ui_window = FeedbackUI(prompt, predefined_options)
+    collected_result = (
+        ui_window.run_ui_and_get_result()
+    )  # This will block until UI closes
 
-    def on_close(received_task_id):
-        # 如果窗口被用户关闭而没有提交反馈
-        if not result_data:
-            app.quit()
+    if output_file_path and collected_result:
+        # 确保输出目录存在 (Ensure output directory exists)
+        output_dir = os.path.dirname(output_file_path)
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except OSError as e:
+                print(f"错误: 无法创建输出目录 '{output_dir}': {e}", file=sys.stderr)
+                print(
+                    f"(Error: Could not create output directory '{output_dir}': {e})",
+                    file=sys.stderr,
+                )
+                # Decide if to proceed without saving or raise error
 
-    # 连接信号
-    ui_window.feedback_provided.connect(on_feedback)
-    ui_window.closed.connect(on_close)
-
-    ui_window.show()
-    ui_window.activateWindow()
-    ui_window.raise_()
-
-    if is_new_app:
-        app.exec()
-
-    # 将结果写入文件或打印到stdout
-    if output_file:
         try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                json.dump(result_data, f, ensure_ascii=False, indent=4)
+            with open(output_file_path, "w", encoding="utf-8") as f:
+                # ensure_ascii=False for proper non-ASCII char handling (like Chinese)
+                # indent=2 for pretty printing
+                json.dump(collected_result, f, ensure_ascii=False, indent=2)
+            print(f"反馈结果已保存到: {output_file_path}")
+            print(f"(Feedback result saved to: {output_file_path})")
+            # If saving to file, the server script usually doesn't need the direct result back
+            # return None
         except IOError as e:
-            print(f"错误: 无法写入输出文件 '{output_file}': {e}", file=sys.stderr)
-            # 即使写入失败，也尝试将结果打印到stdout
-            print("\n--- UI 结果 ---")
-            print(json.dumps(result_data, ensure_ascii=False, indent=4))
-    else:
-        # 如果没有指定输出文件，则打印到标准输出
-        print(json.dumps(result_data, ensure_ascii=False, indent=4))
+            print(f"错误: 无法写入输出文件 '{output_file_path}': {e}", file=sys.stderr)
+            print(
+                f"(Error: Could not write to output file '{output_file_path}': {e})",
+                file=sys.stderr,
+            )
+            # Fall through to return result if saving failed, so it's not lost
 
-    return result_data
+    return collected_result
 
 
 def setup_translator(lang_code: str) -> Optional[QTranslator]:
