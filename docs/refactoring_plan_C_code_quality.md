@@ -18,14 +18,6 @@
     - 运行 `black .` 后，所有 Python 代码文件都符合其风格规范。
     - 项目文档中说明新代码贡献者需要使用 `black`。
 
-### 任务 3.2: 引入 Ruff 进行静态代码检查 (Linting)
-
-- **描述**: 引入 `ruff` 作为项目的 linter。`Ruff` 是一个用 Rust 编写的高性能 linter，集成了 `flake8`、`isort` 等多种工具的功能，可以快速发现代码中的错误、坏味道和不规范的导入顺序。
-- **验收标准**:
-    - `ruff` 被添加到开发依赖中。
-    - 在项目根目录创建 `ruff.toml` 或在 `pyproject.toml` 中配置 `[tool.ruff]`，定义项目的规则集。
-    - 运行 `ruff check . --fix` 可以自动修复大部分问题，剩余问题需要手动解决。
-    - 代码库达到"零 linter 错误"状态。
 
 ### 任务 3.3: 集成 pre-commit 钩子
 

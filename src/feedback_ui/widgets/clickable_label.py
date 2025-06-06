@@ -1,16 +1,18 @@
 # feedback_ui/widgets/clickable_label.py
-from PySide6.QtWidgets import QLabel, QApplication
-from PySide6.QtCore import Qt, Signal, QObject, QEvent, QRect
-from PySide6.QtGui import QPainter, QColor, QFont, QCursor
+from PySide6.QtCore import QEvent, QObject, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtWidgets import QLabel
+
 
 class CursorOverrideFilter(QObject):
     """
     An event filter to override the cursor shape for a widget.
     一个事件过滤器，用于覆盖小部件的光标形状。
     """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-    
+
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         # This filter seems to intend to force ArrowCursor on certain interactions.
         # However, ClickableLabel sets PointingHandCursor. This might create conflicts
@@ -21,22 +23,27 @@ class CursorOverrideFilter(QObject):
         # 或具有特定的期望交互顺序。
         # 目前，保留原始逻辑。
         if event.type() in (
-            QEvent.Type.Enter, QEvent.Type.HoverEnter, QEvent.Type.HoverMove, 
-            QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, 
-            QEvent.Type.MouseButtonRelease
+            QEvent.Type.Enter,
+            QEvent.Type.HoverEnter,
+            QEvent.Type.HoverMove,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
         ):
-            if hasattr(obj, 'setCursor'): # Check if object has setCursor method
-                 obj.setCursor(Qt.CursorShape.ArrowCursor) # Use enum member
-            return False # Event not handled here, just cursor override
+            if hasattr(obj, "setCursor"):  # Check if object has setCursor method
+                obj.setCursor(Qt.CursorShape.ArrowCursor)  # Use enum member
+            return False  # Event not handled here, just cursor override
         return super().eventFilter(obj, event)
+
 
 class ClickableLabel(QLabel):
     """
     A QLabel that emits a 'clicked' signal when pressed.
     一个在按下时发出 'clicked' 信号的 QLabel。
     """
+
     clicked = Signal()
-    
+
     def __init__(self, text: str = "", parent: QObject = None):
         super().__init__(text, parent)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -46,49 +53,53 @@ class ClickableLabel(QLabel):
         # Consider if this filter is truly needed for ClickableLabel or if PointingHandCursor is sufficient.
         # self._cursor_filter = CursorOverrideFilter(self) # Temporarily commented for review
         # self.installEventFilter(self._cursor_filter)      # Temporarily commented for review
-    
-    def mouseMoveEvent(self, event: QEvent): # Parameter type QMouseEvent expected
+
+    def mouseMoveEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
         # QApplication.restoreOverrideCursor() # Overriding global cursor can be problematic
         # QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
         super().mouseMoveEvent(event)
-    
-    def enterEvent(self, event: QEvent): # Parameter type QEnterEvent expected
+
+    def enterEvent(self, event: QEvent):  # Parameter type QEnterEvent expected
         # QApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
         super().enterEvent(event)
-    
+
     def leaveEvent(self, event: QEvent):
         # QApplication.restoreOverrideCursor()
         super().leaveEvent(event)
-    
-    def mousePressEvent(self, event: QEvent): # Parameter type QMouseEvent expected
+
+    def mousePressEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
         if event.button() == Qt.MouseButton.LeftButton:
             event.accept()
         else:
             super().mousePressEvent(event)
-    
-    def mouseReleaseEvent(self, event: QEvent): # Parameter type QMouseEvent expected
+
+    def mouseReleaseEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
         if event.button() == Qt.MouseButton.LeftButton:
             # Check if the mouse release is within the label's bounds
-            if self.rect().contains(event.position().toPoint()): # event.pos() in PySide6 is QPointF
+            if self.rect().contains(
+                event.position().toPoint()
+            ):  # event.pos() in PySide6 is QPointF
                 self.clicked.emit()
             event.accept()
         else:
             super().mouseReleaseEvent(event)
+
 
 class AtIconLabel(QLabel):
     """
     A QLabel that displays an '@' symbol and emits a 'clicked' signal.
     一个显示 '@' 符号并发出 'clicked' 信号的 QLabel。
     """
+
     clicked = Signal()
-    
+
     def __init__(self, parent: QObject = None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(28, 28)
         # self.setStyleSheet("background-color: transparent;") # Better to set in global QSS
 
-    def paintEvent(self, event: QEvent): # Parameter type QPaintEvent expected
+    def paintEvent(self, event: QEvent):  # Parameter type QPaintEvent expected
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -103,14 +114,14 @@ class AtIconLabel(QLabel):
         adjusted_rect = QRect(rect.x(), rect.y() - 1, rect.width(), rect.height())
         painter.drawText(adjusted_rect, Qt.AlignmentFlag.AlignCenter, "@")
         painter.end()
-    
-    def mousePressEvent(self, event: QEvent): # Parameter type QMouseEvent expected
+
+    def mousePressEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
         if event.button() == Qt.MouseButton.LeftButton:
             event.accept()
         else:
             super().mousePressEvent(event)
-    
-    def mouseReleaseEvent(self, event: QEvent): # Parameter type QMouseEvent expected
+
+    def mouseReleaseEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
         if event.button() == Qt.MouseButton.LeftButton:
             if self.rect().contains(event.position().toPoint()):
                 self.clicked.emit()

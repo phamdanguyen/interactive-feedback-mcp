@@ -26,10 +26,11 @@ dependencies = [
 feedback-ui = "feedback_ui.cli:main"
 feedback-server = "interactive_feedback_server.cli:main"
 
-[project.optional-dependencies]
-dev = [
-    "black>=24.0.0",
-]
-
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "pre-commit",
+]

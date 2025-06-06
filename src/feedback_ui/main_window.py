@@ -1,102 +1,119 @@
 # feedback_ui/main_window.py
 import os
+import re  # 正则表达式 (Regular expressions)
 import sys
-import json
-import re # 正则表达式 (Regular expressions)
-import webbrowser # 打开网页链接 (For opening web links)
-from typing import Optional, List, Dict, Any
 
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QCheckBox, QGroupBox, QFrame, QSizePolicy,
-    QScrollArea, QMessageBox, QAbstractSlider, QLineEdit
+    QApplication,
+    QCheckBox,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QTimer, QEvent, QObject, QEventLoop
-from PySide6.QtGui import QIcon, QTextCursor, QPixmap, QPalette, QColor
-
-# --- 从子模块导入 (Imports from submodules) ---
-from .utils.constants import FeedbackResult, ContentItem
-from .utils.settings_manager import SettingsManager
-from .utils.image_processor import get_image_items_from_widgets
-from .utils.ui_helpers import set_selection_colors
-
-from .widgets.clickable_label import ClickableLabel, AtIconLabel
-from .widgets.selectable_label import SelectableLabel
-from .widgets.feedback_text_edit import FeedbackTextEdit
-from .widgets.image_preview import ImagePreviewWidget
 
 from .dialogs.select_canned_response_dialog import SelectCannedResponseDialog
 from .dialogs.settings_dialog import SettingsDialog
+
+# --- 从子模块导入 (Imports from submodules) ---
+from .utils.constants import ContentItem, FeedbackResult
+from .utils.image_processor import get_image_items_from_widgets
+from .utils.settings_manager import SettingsManager
+from .utils.ui_helpers import set_selection_colors
+from .widgets.clickable_label import AtIconLabel, ClickableLabel
+from .widgets.feedback_text_edit import FeedbackTextEdit
+from .widgets.image_preview import ImagePreviewWidget
+from .widgets.selectable_label import SelectableLabel
+
 
 class FeedbackUI(QMainWindow):
     """
     Main window for the Interactive Feedback MCP application.
     交互式反馈MCP应用程序的主窗口。
     """
-    def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None, parent: Optional[QWidget] = None):
+
+    # 为适配新架构而增加的信号
+    closed = Signal(str)
+    feedback_provided = Signal(str, dict)
+
+    def __init__(
+        self,
+        task_id: str,  # 新增 task_id
+        prompt: str,
+        predefined_options: list[str] | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
-        self.prompt = prompt
+        self.task_id = task_id  # 保存 task_id
+        # 修正: 确保 prompt 始终是字符串，以处理来自命令行的列表输入
+        # Fix: Ensure prompt is always a string to handle list input from CLI
+        self.prompt = " ".join(prompt) if isinstance(prompt, list) else prompt
         self.predefined_options = predefined_options or []
-        self.output_result = FeedbackResult(content=[])  # 初始化为空结果 (Initialize with empty result)
+        self.output_result = FeedbackResult(
+            content=[]
+        )  # 初始化为空结果 (Initialize with empty result)
 
         # --- 内部状态 (Internal State) ---
-        self.image_widgets: Dict[int, ImagePreviewWidget] = {} # image_id: widget
-        self.option_checkboxes: List[QCheckBox] = [] # Initialize here to prevent AttributeError
+        self.image_widgets: dict[int, ImagePreviewWidget] = {}  # image_id: widget
+        self.option_checkboxes: list[QCheckBox] = (
+            []
+        )  # Initialize here to prevent AttributeError
         self.next_image_id = 0
-        self.canned_responses: List[str] = []
-        self.dropped_file_references: Dict[str, str] = {} # display_name: file_path
+        self.canned_responses: list[str] = []
+        self.dropped_file_references: dict[str, str] = {}  # display_name: file_path
         self.disable_auto_minimize = False
         self.window_pinned = False
 
         # 按钮文本的双语映射
         self.button_texts = {
-            "submit_button": {
-                "zh_CN": "提交",
-                "en_US": "Submit"
-            },
-            "canned_responses_button": {
-                "zh_CN": "常用语",
-                "en_US": "Canned Responses"
-            },
-            "pin_window_button": {
-                "zh_CN": "固定窗口",
-                "en_US": "Pin Window"
-            },
-            "settings_button": {
-                "zh_CN": "设置",
-                "en_US": "Settings"
-            }
+            "submit_button": {"zh_CN": "提交", "en_US": "Submit"},
+            "canned_responses_button": {"zh_CN": "常用语", "en_US": "Canned Responses"},
+            "pin_window_button": {"zh_CN": "固定窗口", "en_US": "Pin Window"},
+            "settings_button": {"zh_CN": "设置", "en_US": "Settings"},
         }
-        
+
         # 工具提示的双语映射
         self.tooltip_texts = {
             "canned_responses_button": {
                 "zh_CN": "选择或管理常用语",
-                "en_US": "Select or manage canned responses"
+                "en_US": "Select or manage canned responses",
             },
             "settings_button": {
                 "zh_CN": "打开设置面板",
-                "en_US": "Open settings panel"
-            }
+                "en_US": "Open settings panel",
+            },
         }
 
         self.settings_manager = SettingsManager(self)
 
         self._setup_window()
         self._load_settings()
-        
+
         self._create_ui_layout()
         self._connect_signals()
 
         self._update_number_icons_display()
         self._update_shortcut_icons_visibility_state(self.show_shortcut_icons)
         self._apply_pin_state_on_load()
-        
+
         # 初始化时更新界面文本显示
         self._update_displayed_texts()
-        
+
         # 为主窗口安装事件过滤器，以实现点击背景聚焦输入框的功能
         self.installEventFilter(self)
+
+        # 确保窗口立即显示
+        print(f"FeedbackUI (task_id: {self.task_id}): 正在执行show()以确保窗口可见")
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _setup_window(self):
         """Sets up basic window properties like title, icon, size."""
@@ -107,7 +124,9 @@ class FeedbackUI(QMainWindow):
 
         icon_path = os.path.join(os.path.dirname(__file__), "images", "feedback.png")
         if not os.path.exists(icon_path):
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "feedback.png")
+            icon_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "images", "feedback.png"
+            )
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         else:
@@ -115,11 +134,11 @@ class FeedbackUI(QMainWindow):
 
     def _load_settings(self):
         """从设置中加载保存的窗口状态和几何形状"""
-        
+
         # 加载窗口几何形状（位置和大小）
         # 设置默认大小和位置
         default_width, default_height = 1000, 750
-        
+
         # 尝试获取保存的窗口大小
         saved_size = self.settings_manager.get_main_window_size()
         if saved_size:
@@ -127,17 +146,17 @@ class FeedbackUI(QMainWindow):
             self.resize(width, height)
         else:
             self.resize(default_width, default_height)
-        
+
         # 获取屏幕大小
         screen = QApplication.primaryScreen().geometry()
         screen_width, screen_height = screen.width(), screen.height()
-        
+
         # 尝试获取保存的窗口位置
         saved_position = self.settings_manager.get_main_window_position()
         if saved_position:
             x, y = saved_position
             # 检查位置是否有效（在屏幕范围内）
-            if (0 <= x < screen_width - 100 and 0 <= y < screen_height - 100):
+            if 0 <= x < screen_width - 100 and 0 <= y < screen_height - 100:
                 self.move(x, y)
             else:
                 # 位置无效，使用默认居中位置
@@ -149,11 +168,12 @@ class FeedbackUI(QMainWindow):
             default_x = (screen_width - self.width()) // 2
             default_y = (screen_height - self.height()) // 2
             self.move(default_x, default_y)
-        
+
         # 恢复窗口状态
         state = self.settings_manager.get_main_window_state()
-        if state: self.restoreState(state)
-            
+        if state:
+            self.restoreState(state)
+
         self.window_pinned = self.settings_manager.get_main_window_pinned()
         self._load_canned_responses_from_settings()
         self.show_shortcut_icons = self.settings_manager.get_show_shortcut_icons()
@@ -166,7 +186,7 @@ class FeedbackUI(QMainWindow):
         """Creates the main UI layout and populates it with widgets."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(20, 5, 20, 10)
         main_layout.setSpacing(15)
@@ -180,7 +200,7 @@ class FeedbackUI(QMainWindow):
 
         if self.predefined_options:
             self._create_options_checkboxes(feedback_layout)
-            
+
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
@@ -188,57 +208,63 @@ class FeedbackUI(QMainWindow):
 
         self._create_shortcut_icons_panel(feedback_layout)
         self._create_input_submission_area(feedback_layout)
-        
+
         main_layout.addWidget(self.feedback_group)
-        
+
         self._setup_bottom_bar(main_layout)
 
         # The submit button now lives here, spanning the full width
         current_language = self.settings_manager.get_current_language()
-        self.submit_button = QPushButton(self.button_texts["submit_button"][current_language])
+        self.submit_button = QPushButton(
+            self.button_texts["submit_button"][current_language]
+        )
         self.submit_button.setObjectName("submit_button")
         self.submit_button.setMinimumHeight(50)
         main_layout.addWidget(self.submit_button)
-        
+
         self._create_github_link_area(main_layout)
-        
+
         self._update_submit_button_text_status()
 
-    def _create_description_area(self, parent_layout: QVBoxLayout):
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setMaximumHeight(200)
+    def _create_description_area(self, layout: QVBoxLayout):
+        """创建并配置描述文本区域。"""
+        # 确保 prompt 是字符串
+        prompt_text = (
+            " ".join(self.prompt) if isinstance(self.prompt, list) else self.prompt
+        )
 
-        desc_widget_container = QWidget()
-        desc_layout = QVBoxLayout(desc_widget_container)
-        desc_layout.setContentsMargins(15, 5, 15, 15)
-        
-        self.description_label = SelectableLabel(self.prompt, self)
-        self.description_label.setProperty("class", "prompt-label")
+        # 创建一个容器 Widget 和布局
+        description_container = QWidget()
+        container_layout = QVBoxLayout(description_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 移除布局边距
+
+        # 使用处理过的字符串创建 SelectableLabel
+        self.description_label = SelectableLabel(prompt_text, self)
         self.description_label.setWordWrap(True)
-        desc_layout.addWidget(self.description_label)
-        
-        self.image_usage_label = SelectableLabel("如果图片反馈异常，建议切换Claude 3.5 Sonnet模型。", self)
+        self.description_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.description_label.setStyleSheet("font-size: 14px; padding: 5px;")
+        container_layout.addWidget(self.description_label)
+
+        self.image_usage_label = SelectableLabel(
+            "如果图片反馈异常，建议切换Claude 3.5 Sonnet模型。", self
+        )
         self.image_usage_label.setWordWrap(True)
         self.image_usage_label.setVisible(False)
-        desc_layout.addWidget(self.image_usage_label)
-        
+        container_layout.addWidget(self.image_usage_label)
+
         self.status_label = SelectableLabel("", self)
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.status_label.setVisible(False)
-        desc_layout.addWidget(self.status_label)
+        container_layout.addWidget(self.status_label)
 
-        scroll_area.setWidget(desc_widget_container)
-        parent_layout.addWidget(scroll_area)
+        layout.addWidget(description_container)
 
     def _create_options_checkboxes(self, parent_layout: QVBoxLayout):
-        self.option_checkboxes: List[QCheckBox] = []
+        self.option_checkboxes: list[QCheckBox] = []
         options_frame = QFrame()
         options_layout = QVBoxLayout(options_frame)
-        options_layout.setContentsMargins(0,0,0,0)
+        options_layout.setContentsMargins(0, 0, 0, 0)
         options_layout.setSpacing(2)
 
         for i, option_text in enumerate(self.predefined_options):
@@ -247,29 +273,29 @@ class FeedbackUI(QMainWindow):
             option_container_layout = QHBoxLayout(option_container)
             option_container_layout.setContentsMargins(0, 0, 0, 0)
             option_container_layout.setSpacing(5)
-            
+
             # 创建无文本的复选框
             checkbox = QCheckBox("", self)
             checkbox.setObjectName(f"optionCheckbox_{i}")
-            
+
             # 创建可选择文本的标签
             label = SelectableLabel(option_text, self)
             label.setProperty("class", "option-label")
             label.setWordWrap(True)
-            
+
             # 连接标签的点击信号到复选框的切换方法
             label.clicked.connect(checkbox.toggle)
-            
+
             # 将复选框和标签添加到水平容器
             option_container_layout.addWidget(checkbox)
             option_container_layout.addWidget(label, 1)  # 标签使用剩余的空间
-            
+
             # 将复选框添加到列表，保持与原有逻辑兼容
             self.option_checkboxes.append(checkbox)
-            
+
             # 将整个容器添加到选项布局
             options_layout.addWidget(option_container)
-        
+
         parent_layout.addWidget(options_frame)
 
     def _create_shortcut_icons_panel(self, parent_layout: QVBoxLayout):
@@ -280,21 +306,21 @@ class FeedbackUI(QMainWindow):
 
         self.at_icon = AtIconLabel(self.shortcuts_container)
         shortcuts_container_layout.addWidget(self.at_icon)
-        
+
         self.number_icons_container = QWidget(self.shortcuts_container)
         number_icons_layout = QHBoxLayout(self.number_icons_container)
-        number_icons_layout.setContentsMargins(0,0,0,0)
+        number_icons_layout.setContentsMargins(0, 0, 0, 0)
         number_icons_layout.setSpacing(5)
-        
-        self.shortcut_number_icons: List[ClickableLabel] = []
+
+        self.shortcut_number_icons: list[ClickableLabel] = []
         for i in range(10):
-            number_label = ClickableLabel(str(i+1), self.number_icons_container)
+            number_label = ClickableLabel(str(i + 1), self.number_icons_container)
             number_label.setFixedSize(22, 22)
             number_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             number_label.setObjectName("shortcut_number_icon")
             number_icons_layout.addWidget(number_label)
             self.shortcut_number_icons.append(number_label)
-            
+
         number_icons_layout.addStretch(1)
         shortcuts_container_layout.addWidget(self.number_icons_container, 1)
         parent_layout.addWidget(self.shortcuts_container)
@@ -315,23 +341,33 @@ class FeedbackUI(QMainWindow):
         current_language = self.settings_manager.get_current_language()
 
         # 使用语言相关的文本
-        self.canned_responses_button = QPushButton(self.button_texts["canned_responses_button"][current_language])
+        self.canned_responses_button = QPushButton(
+            self.button_texts["canned_responses_button"][current_language]
+        )
         self.canned_responses_button.setObjectName("secondary_button")
-        self.canned_responses_button.setToolTip(self.tooltip_texts["canned_responses_button"][current_language])
+        self.canned_responses_button.setToolTip(
+            self.tooltip_texts["canned_responses_button"][current_language]
+        )
         bottom_layout.addWidget(self.canned_responses_button)
 
-        self.pin_window_button = QPushButton(self.button_texts["pin_window_button"][current_language])
+        self.pin_window_button = QPushButton(
+            self.button_texts["pin_window_button"][current_language]
+        )
         self.pin_window_button.setCheckable(True)
         self.pin_window_button.setObjectName("secondary_button")
         bottom_layout.addWidget(self.pin_window_button)
 
         # --- Settings Button (设置按钮) ---
-        self.settings_button = QPushButton(self.button_texts["settings_button"][current_language])
+        self.settings_button = QPushButton(
+            self.button_texts["settings_button"][current_language]
+        )
         self.settings_button.setObjectName("secondary_button")
-        self.settings_button.setToolTip(self.tooltip_texts["settings_button"][current_language])
+        self.settings_button.setToolTip(
+            self.tooltip_texts["settings_button"][current_language]
+        )
         bottom_layout.addWidget(self.settings_button)
 
-        bottom_layout.addStretch() # Pushes buttons to the left
+        bottom_layout.addStretch()  # Pushes buttons to the left
 
         parent_layout.addWidget(bottom_bar_widget)
 
@@ -340,18 +376,20 @@ class FeedbackUI(QMainWindow):
         github_container = QWidget()
         github_layout = QHBoxLayout(github_container)
         github_layout.setContentsMargins(0, 10, 0, 0)
-        
-        github_label = QLabel("<a href='https://github.com/lucas-710/interactive-feedback-mcp'>Project GitHub</a>")
+
+        github_label = QLabel(
+            "<a href='https://github.com/lucas-710/interactive-feedback-mcp'>Project GitHub</a>"
+        )
         github_label.setOpenExternalLinks(True)
         # 启用文本选择功能
         github_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse | 
-            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
-        
+
         # 设置选择文本时的高亮颜色为灰色
         set_selection_colors(github_label)
-        
+
         github_layout.addStretch()
         github_layout.addWidget(github_label)
         github_layout.addStretch()
@@ -364,35 +402,32 @@ class FeedbackUI(QMainWindow):
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
         self.submit_button.clicked.connect(self._prepare_and_submit_feedback)
-        
+
         for i, icon in enumerate(self.shortcut_number_icons):
             icon.clicked.connect(lambda i=i: self._handle_number_icon_click_action(i))
 
     def event(self, event: QEvent) -> bool:
         if event.type() == QEvent.Type.WindowDeactivate:
-            if not self.window_pinned and self.isVisible() and not self.isMinimized() and not self.disable_auto_minimize:
+            if (
+                not self.window_pinned
+                and self.isVisible()
+                and not self.isMinimized()
+                and not self.disable_auto_minimize
+            ):
                 QTimer.singleShot(100, self.showMinimized)
         return super().event(event)
 
     def closeEvent(self, event: QEvent):
-        # 保存窗口几何和状态
-        self.settings_manager.set_main_window_geometry(self.saveGeometry())
-        self.settings_manager.set_main_window_state(self.saveState())
-        self.settings_manager.set_main_window_pinned(self.window_pinned)
-        
-        # 单独保存窗口大小
-        self.settings_manager.set_main_window_size(self.width(), self.height())
-        
-        # 保存窗口位置
-        self.settings_manager.set_main_window_position(self.x(), self.y())
-        
-        # 确保在用户直接关闭窗口时也返回空结果
-        # 此处不需要检查 self.output_result 是否已设置，因为在 __init__ 中已初始化为空结果
-        # 如果没有显式通过 _prepare_and_submit_feedback 设置结果，则保持初始的空结果
-        
+        """Override close event to save state and emit signal."""
+        self.save_window_state()
+        self.closed.emit(self.task_id)
         super().closeEvent(event)
 
     def _load_canned_responses_from_settings(self):
+        """
+        Loads canned responses from settings.
+        This method is now clean and only performs its intended function.
+        """
         self.canned_responses = self.settings_manager.get_canned_responses()
 
     def _update_number_icons_display(self):
@@ -403,7 +438,7 @@ class FeedbackUI(QMainWindow):
             else:
                 icon.setVisible(False)
 
-    def _update_shortcut_icons_visibility_state(self, visible: Optional[bool] = None):
+    def _update_shortcut_icons_visibility_state(self, visible: bool | None = None):
         if visible is None:
             visible = self.settings_manager.get_show_shortcut_icons()
         self.number_icons_container.setVisible(visible)
@@ -423,9 +458,9 @@ class FeedbackUI(QMainWindow):
     def _update_submit_button_text_status(self):
         has_text = bool(self.text_input.toPlainText().strip())
         has_images = bool(self.image_widgets)
-        
+
         has_options_selected = any(cb.isChecked() for cb in self.option_checkboxes)
-        
+
         # 修改：按钮应始终可点击，即使没有内容，以支持提交空反馈
         # self.submit_button.setEnabled(has_text or has_images or has_options_selected)
         self.submit_button.setEnabled(True)
@@ -439,7 +474,7 @@ class FeedbackUI(QMainWindow):
         # We just need to reload them here.
         self._load_canned_responses_from_settings()
         self._update_number_icons_display()
-    
+
     def open_settings_dialog(self):
         """Opens the settings dialog."""
         self.disable_auto_minimize = True
@@ -450,140 +485,145 @@ class FeedbackUI(QMainWindow):
     def _apply_pin_state_on_load(self):
         # 从设置中加载固定窗口状态，但不改变按钮样式
         self.pin_window_button.setChecked(self.window_pinned)
-        
+
         # 只应用窗口标志，不改变按钮样式
         if self.window_pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
             # 设置提示文本
-            self.pin_window_button.setToolTip("固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)")
+            self.pin_window_button.setToolTip(
+                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
+            )
             self.pin_window_button.setObjectName("pin_window_active")
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            self.setWindowFlags(
+                self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint
+            )
             self.pin_window_button.setToolTip("")
             # 确保按钮初始状态样式与其他按钮一致
             self.pin_window_button.setObjectName("secondary_button")
-            
+
         # 只应用样式到固定窗口按钮，避免影响其他按钮
         self.pin_window_button.style().unpolish(self.pin_window_button)
         self.pin_window_button.style().polish(self.pin_window_button)
         self.pin_window_button.update()
 
+        # 重新显示窗口（因为改变了窗口标志）
+        self.show()
+
     def _toggle_pin_window_action(self):
         # 获取按钮当前的勾选状态
         self.window_pinned = self.pin_window_button.isChecked()
         self.settings_manager.set_main_window_pinned(self.window_pinned)
-        
+
         # 设置窗口标志
         if self.window_pinned:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
             # 只有当按钮被激活时才改变样式
             self.pin_window_button.setObjectName("pin_window_active")
-            self.pin_window_button.setToolTip("固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)")
+            self.pin_window_button.setToolTip(
+                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
+            )
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            self.setWindowFlags(
+                self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint
+            )
             # 恢复为普通按钮样式
             self.pin_window_button.setObjectName("secondary_button")
             self.pin_window_button.setToolTip("")
-            
+
         # 只应用样式变化到固定窗口按钮，避免影响其他按钮
         self.pin_window_button.style().unpolish(self.pin_window_button)
         self.pin_window_button.style().polish(self.pin_window_button)
         self.pin_window_button.update()
-        
+
         # 重新显示窗口（因为改变了窗口标志）
         self.show()
 
-    def add_image_preview(self, pixmap: QPixmap) -> Optional[int]:
+        self.save_window_state()  # 切换固定状态后保存
+
+    def add_image_preview(self, pixmap: QPixmap) -> int | None:
         if pixmap and not pixmap.isNull():
             image_id = self.next_image_id
             self.next_image_id += 1
-            
-            image_widget = ImagePreviewWidget(pixmap, image_id, self.text_input.images_container)
+
+            image_widget = ImagePreviewWidget(
+                pixmap, image_id, self.text_input.images_container
+            )
             image_widget.image_deleted.connect(self._remove_image_widget)
-            
+
             self.text_input.images_layout.addWidget(image_widget)
             self.image_widgets[image_id] = image_widget
-            
+
             self.text_input.show_images_container(True)
             self.image_usage_label.setVisible(True)
             self._update_submit_button_text_status()
             return image_id
         return None
-    
+
     def _remove_image_widget(self, image_id: int):
         if image_id in self.image_widgets:
             widget_to_remove = self.image_widgets.pop(image_id)
             self.text_input.images_layout.removeWidget(widget_to_remove)
             widget_to_remove.deleteLater()
-            
+
             if not self.image_widgets:
                 self.text_input.show_images_container(False)
                 self.image_usage_label.setVisible(False)
             self._update_submit_button_text_status()
 
     def _prepare_and_submit_feedback(self):
-        final_content_list: List[ContentItem] = []
-        feedback_plain_text = self.text_input.toPlainText().strip()
-        
-        # 获取选中的选项
-        selected_options = []
-        for i, checkbox in enumerate(self.option_checkboxes):
-            if checkbox.isChecked() and i < len(self.predefined_options):
-                # 使用预定义选项列表中的文本
-                selected_options.append(self.predefined_options[i])
-        
-        combined_text_parts = []
-        if selected_options: combined_text_parts.append("; ".join(selected_options))
-        if feedback_plain_text: combined_text_parts.append(feedback_plain_text)
-        
-        final_text = "\n".join(combined_text_parts).strip()
-        # 允许提交空内容，即使 final_text 为空
-        if final_text:
-            final_content_list.append({"type": "text", "text": final_text})
+        """
+        Correctly prepares the feedback data from all sources and emits a signal.
+        """
+        # Clear previous results to ensure a clean slate for each submission
+        self.output_result["content"].clear()
 
+        # Get text input
+        text_content = self.text_input.toPlainText().strip()
+        if text_content:
+            text_item = ContentItem(type="text", text=text_content)
+            self.output_result["content"].append(text_item)
+
+        # Get selected options
+        selected_options_texts = [
+            cb.text() for cb in self.option_checkboxes if cb.isChecked()
+        ]
+        if selected_options_texts:
+            # Combine selected options into a single text item as per original logic
+            options_text = " ".join(selected_options_texts)
+            options_item = ContentItem(type="text", text=options_text)
+            self.output_result["content"].append(options_item)
+
+        # Get images
         image_items = get_image_items_from_widgets(self.image_widgets)
-        final_content_list.extend(image_items)
-        
-        # 处理文件引用（恢复之前移除的代码）
-        current_text_content_for_refs = self.text_input.toPlainText()
-        file_references = {k: v for k, v in self.dropped_file_references.items() if k in current_text_content_for_refs}
-        
-        # 不管 final_content_list 是否为空，都设置结果并关闭窗口
-        self.output_result = FeedbackResult(content=final_content_list)
-        
-        # 保存窗口几何和状态信息，确保即使通过提交反馈关闭窗口时也能保存这些信息
-        self.settings_manager.set_main_window_geometry(self.saveGeometry())
-        self.settings_manager.set_main_window_state(self.saveState())
-        
-        # 单独保存窗口大小
-        self.settings_manager.set_main_window_size(self.width(), self.height())
-        
-        # 保存窗口位置
-        self.settings_manager.set_main_window_position(self.x(), self.y())
-        
+        if image_items:
+            self.output_result["content"].extend(image_items)
+
+        # Get file references
+        file_items: list[ContentItem] = [
+            ContentItem(type="file_reference", display_name=name, path=path)
+            for name, path in self.dropped_file_references.items()
+        ]
+        if file_items:
+            self.output_result["content"].extend(file_items)
+
+        # Emit the signal with the result dictionary and then close the window.
+        # No .model_dump() is needed as FeedbackResult is a TypedDict.
+        self.feedback_provided.emit(self.task_id, self.output_result)
         self.close()
 
-    def run_ui_and_get_result(self) -> FeedbackResult:
-        self.show()
-        self.activateWindow()
-        self.text_input.setFocus()
-        
-        app_instance = QApplication.instance()
-        if app_instance:
-            app_instance.exec()
-            
-        # 直接返回 self.output_result，它在 __init__ 中已初始化为空结果
-        # 如果用户有提交内容，它已在 _prepare_and_submit_feedback 中被更新
-        return self.output_result
-
     def _set_initial_focus(self):
-        """Sets initial focus to the feedback text edit."""
-        if hasattr(self, 'text_input') and self.text_input:
+        """Sets initial focus on the text edit area for better UX."""
+        if hasattr(self, "text_input") and self.text_input:
             self.text_input.setFocus(Qt.FocusReason.OtherFocusReason)
             cursor = self.text_input.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.text_input.setTextCursor(cursor)
             self.text_input.ensureCursorVisible()
+
+            # 延迟执行以确保窗口已完全显示
+            # Delay execution to ensure the window is fully displayed
+            QTimer.singleShot(100, lambda: self.text_input.setFocus())
 
     def _enforce_min_window_size(self):
         pass
@@ -602,11 +642,13 @@ class FeedbackUI(QMainWindow):
     def _update_displayed_texts(self):
         """根据当前语言设置更新显示的文本内容"""
         current_lang = self.settings_manager.get_current_language()
-        
+
         # 更新提示文字
         if self.description_label:
-            self.description_label.setText(self._filter_text_by_language(self.prompt, current_lang))
-        
+            self.description_label.setText(
+                self._filter_text_by_language(self.prompt, current_lang)
+            )
+
         # 更新选项复选框的关联标签
         for i, checkbox in enumerate(self.option_checkboxes):
             if i < len(self.predefined_options):
@@ -617,43 +659,67 @@ class FeedbackUI(QMainWindow):
                     for child in option_container.children():
                         if isinstance(child, SelectableLabel):
                             # 更新标签文本
-                            child.setText(self._filter_text_by_language(self.predefined_options[i], current_lang))
+                            child.setText(
+                                self._filter_text_by_language(
+                                    self.predefined_options[i], current_lang
+                                )
+                            )
                             break
-                
+
         # 更新按钮文本
         self._update_button_texts(current_lang)
-    
+
     def _update_button_texts(self, language_code):
         """根据当前语言更新所有按钮的文本"""
         # 更新提交按钮
-        if hasattr(self, 'submit_button') and self.submit_button:
-            self.submit_button.setText(self.button_texts["submit_button"].get(language_code, "提交"))
-            
+        if hasattr(self, "submit_button") and self.submit_button:
+            self.submit_button.setText(
+                self.button_texts["submit_button"].get(language_code, "提交")
+            )
+
         # 更新底部按钮
-        if hasattr(self, 'canned_responses_button') and self.canned_responses_button:
-            self.canned_responses_button.setText(self.button_texts["canned_responses_button"].get(language_code, "常用语"))
-            self.canned_responses_button.setToolTip(self.tooltip_texts["canned_responses_button"].get(language_code, "选择或管理常用语"))
-            
-        if hasattr(self, 'pin_window_button') and self.pin_window_button:
+        if hasattr(self, "canned_responses_button") and self.canned_responses_button:
+            self.canned_responses_button.setText(
+                self.button_texts["canned_responses_button"].get(
+                    language_code, "常用语"
+                )
+            )
+            self.canned_responses_button.setToolTip(
+                self.tooltip_texts["canned_responses_button"].get(
+                    language_code, "选择或管理常用语"
+                )
+            )
+
+        if hasattr(self, "pin_window_button") and self.pin_window_button:
             # 保存当前按钮的样式类名
             current_object_name = self.pin_window_button.objectName()
-            self.pin_window_button.setText(self.button_texts["pin_window_button"].get(language_code, "固定窗口"))
+            self.pin_window_button.setText(
+                self.button_texts["pin_window_button"].get(language_code, "固定窗口")
+            )
             # 单独刷新固定窗口按钮的样式，避免影响其他按钮
             self.pin_window_button.style().unpolish(self.pin_window_button)
             self.pin_window_button.style().polish(self.pin_window_button)
             self.pin_window_button.update()
-            
-        if hasattr(self, 'settings_button') and self.settings_button:
-            self.settings_button.setText(self.button_texts["settings_button"].get(language_code, "设置"))
-            self.settings_button.setToolTip(self.tooltip_texts["settings_button"].get(language_code, "打开设置面板"))
-            
+
+        if hasattr(self, "settings_button") and self.settings_button:
+            self.settings_button.setText(
+                self.button_texts["settings_button"].get(language_code, "设置")
+            )
+            self.settings_button.setToolTip(
+                self.tooltip_texts["settings_button"].get(language_code, "打开设置面板")
+            )
+
         # 单独为提交按钮、常用语按钮和设置按钮刷新样式
-        for btn in [self.submit_button, self.canned_responses_button, self.settings_button]:
+        for btn in [
+            self.submit_button,
+            self.canned_responses_button,
+            self.settings_button,
+        ]:
             if btn:
                 btn.style().unpolish(btn)
                 btn.style().polish(btn)
                 btn.update()
-                
+
     def _filter_text_by_language(self, text: str, lang_code: str) -> str:
         """
         从双语文本中提取指定语言的部分
@@ -663,41 +729,41 @@ class FeedbackUI(QMainWindow):
         """
         if not text or not isinstance(text, str):
             return text
-        
+
         # 如果是中文模式
         if lang_code == "zh_CN":
             # 格式1：标准括号格式 "中文 (English)" 或 "中文（English）"
-            match = re.match(r'^(.*?)[\s]*[\(（].*?[\)）](\s*|$)', text)
+            match = re.match(r"^(.*?)[\s]*[\(（].*?[\)）](\s*|$)", text)
             if match:
                 return match.group(1).strip()
-                
+
             # 格式2：中英文之间有破折号或其他分隔符 "中文 - English"
-            match = re.match(r'^(.*?)[\s]*[-—–][\s]*[A-Za-z].*?$', text)
+            match = re.match(r"^(.*?)[\s]*[-—–][\s]*[A-Za-z].*?$", text)
             if match:
                 return match.group(1).strip()
-                
+
             # 如果都不匹配，可能是纯中文，直接返回
             return text
-        
+
         # 如果是英文模式
         elif lang_code == "en_US":
             # 格式1：标准括号格式，提取括号内的英文
-            match = re.search(r'[\(（](.*?)[\)）]', text)
+            match = re.search(r"[\(（](.*?)[\)）]", text)
             if match:
                 return match.group(1).strip()
-                
+
             # 格式2：中英文之间有破折号或其他分隔符 "中文 - English"
-            match = re.search(r'[-—–][\s]*(.*?)$', text)
-            if match and re.search(r'[A-Za-z]', match.group(1)):
+            match = re.search(r"[-—–][\s]*(.*?)$", text)
+            if match and re.search(r"[A-Za-z]", match.group(1)):
                 return match.group(1).strip()
-                
+
             # 如果上述格式都不匹配，检查是否包含英文单词
-            if re.search(r'[A-Za-z]{2,}', text):  # 至少包含2个连续英文字母
+            if re.search(r"[A-Za-z]{2,}", text):  # 至少包含2个连续英文字母
                 return text
-                
+
             # 可能是纯中文，那就返回原文本
             return text
-        
+
         # 默认返回原文本
         return text
 
@@ -709,17 +775,17 @@ class FeedbackUI(QMainWindow):
         if event.type() == QEvent.Type.MouseButtonPress:
             # 对于任何鼠标点击，都激活输入框
             # For any mouse click, activate the text input
-            
+
             # 如果文本输入框当前没有焦点，则设置焦点并移动光标到末尾
             if not self.text_input.hasFocus():
                 self.text_input.setFocus()
                 cursor = self.text_input.textCursor()
                 cursor.movePosition(QTextCursor.MoveOperation.End)
                 self.text_input.setTextCursor(cursor)
-            
+
             # 重要：不消耗事件，让它继续传递，确保被点击的控件（如按钮）能正常响应
             # Important: Don't consume the event, let it pass through to ensure clicked controls (like buttons) respond normally
-        
+
         # 将事件传递给父类处理，保持所有控件的原有功能
         return super().eventFilter(obj, event)
 
@@ -731,6 +797,14 @@ class FeedbackUI(QMainWindow):
         app = QApplication.instance()
         if app:
             from .utils.style_manager import apply_theme
+
             current_theme = self.settings_manager.get_current_theme()
             apply_theme(app, current_theme)
 
+    def save_window_state(self):
+        """Saves the window's geometry and state."""
+        self.settings_manager.set_main_window_state(self.saveState())
+        self.settings_manager.set_main_window_size(
+            self.size().width(), self.size().height()
+        )
+        self.settings_manager.set_main_window_position(self.pos().x(), self.pos().y())

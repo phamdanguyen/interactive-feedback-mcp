@@ -1,0 +1,5 @@
+项目根目录: D:\ai\interactive-feedback-mcp
+Python 版本: 3.11.4 (tags/v3.11.4:d2340ef, Jun  7 2023, 05:45:37) [MSC v.1934 64 bit (AMD64)]
+sys.path: ['D:\\ai\\interactive-feedback-mcp', 'D:\\ai\\interactive-feedback-mcp\\tests', 'D:\\python\\python311.zip', 'D:\\python\\DLLs', 'D:\\python\\Lib', 'D:\\python', 'D:\\ai\\interactive-feedback-mcp\\.venv', 'D:\\ai\\interactive-feedback-mcp\\.venv\\Lib\\site-packages', 'D:\\ai\\interactive-feedback-mcp\\src', 'D:\\ai\\interactive-feedback-mcp\\.venv\\Lib\\site-packages\\win32', 'D:\\ai\\interactive-feedback-mcp\\.venv\\Lib\\site-packages\\win32\\lib', 'D:\\ai\\interactive-feedback-mcp\\.venv\\Lib\\site-packages\\Pythonwin']
+
+尝试导入 interactive_feedback_server.cli 模块...

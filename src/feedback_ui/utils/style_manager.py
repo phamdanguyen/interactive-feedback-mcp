@@ -1,6 +1,6 @@
 # feedback_ui/utils/style_manager.py
+from PySide6.QtCore import QFile, QIODevice
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QFile, QIODevice, QSettings
 
 from .settings_manager import SettingsManager
 
@@ -11,17 +11,19 @@ try:
 except ImportError:
     # 在某些情况下，直接运行此模块可能无法找到 `resources_rc`。
     # 确保在应用程序启动前已生成此文件。
-    print("Warning: Could not import resources_rc.py. Make sure it has been generated from resources.qrc.")
+    print(
+        "Warning: Could not import resources_rc.py. Make sure it has been generated from resources.qrc."
+    )
 
 
-def apply_theme(app: QApplication, theme_name: str = 'dark'):
+def apply_theme(app: QApplication, theme_name: str = "dark"):
     """根据主题名称加载并应用QSS样式，并附加动态字体大小。"""
     qss_path = f":/styles/{theme_name}.qss"
     qss_file = QFile(qss_path)
-    
+
     base_stylesheet = ""
     if qss_file.open(QIODevice.ReadOnly | QIODevice.Text):
-        base_stylesheet = qss_file.readAll().data().decode('utf-8')
+        base_stylesheet = qss_file.readAll().data().decode("utf-8")
         qss_file.close()
     else:
         print(f"错误：无法打开主题文件 {qss_path}")
