@@ -51,6 +51,15 @@ class FeedbackTextEdit(QTextEdit):
         font.setWordSpacing(1.0)
         self.setFont(font)
 
+        # 创建并保存默认字符格式，用于重置格式
+        self._default_char_format = QTextCharFormat()
+        self._default_char_format.setFont(font)
+        # 不设置前景色，让系统根据主题自动调整
+        # 这样文字颜色会根据深色/浅色主题自动变化
+
+        # 设置当前字符格式为默认格式
+        self.setCurrentCharFormat(self._default_char_format)
+
         self._file_reference_cache = {
             "text": "",
             "references": [],  # List of display_name strings
@@ -219,6 +228,11 @@ class FeedbackTextEdit(QTextEdit):
             return  # Event handled
 
         else:  # Default key press handling
+            # 在处理普通按键前，确保使用默认格式
+            cursor = self.textCursor()
+            cursor.setCharFormat(self._default_char_format)
+            self.setTextCursor(cursor)
+
             super().keyPressEvent(event)
             self._invalidate_reference_cache()
 
@@ -645,7 +659,10 @@ class FeedbackTextEdit(QTextEdit):
             # 插入带格式的文件引用
             cursor.insertText(display_name, blue_format)
 
-            # 添加后续空格
+            # 重置格式为默认格式，确保后续文字不会继承蓝色
+            cursor.setCharFormat(self._default_char_format)
+
+            # 添加后续空格（使用默认格式）
             cursor.insertText(" ")
 
             # 确保光标位置在文件引用末尾（包括后续空格）
@@ -691,6 +708,10 @@ class FeedbackTextEdit(QTextEdit):
         # 这样可以确保光标在插入的文件引用之后，而不是在文件名中间
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
+
+        # 确保光标位置使用默认格式，避免继承之前的格式
+        cursor.setCharFormat(self._default_char_format)
+
         self.setTextCursor(cursor)
 
         # 确保光标可见并闪烁
@@ -716,8 +737,9 @@ class FeedbackTextEdit(QTextEdit):
         )
         self.setTextCursor(cursor)
 
-        # 恢复原始位置
+        # 恢复原始位置并确保使用默认格式
         cursor.setPosition(pos)
+        cursor.setCharFormat(self._default_char_format)
         self.setTextCursor(cursor)
 
         # 确保光标可见
