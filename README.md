@@ -10,7 +10,8 @@
 
 ## 🖼️ 示例
 
-![Interactive Feedback Example](https://i.postimg.cc/dt7qgFfW/image.png)
+![Interactive Feedback Example](https://i.postimg.cc/x1Zr3Lrf/111.png)
+![Interactive Feedback Example](https://i.postimg.cc/G20ZZrh6/1221.png)
 *(请注意，示例图片可能未反映最新的UI调整，但核心交互流程保持不变)*
 
 ## 💡 为何使用此工具？

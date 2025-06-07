@@ -42,3 +42,10 @@ todo.md
 custom_http_transport_mcp.md
 # Private individual user cursor rules
 .cursor/rules/_*.mdc
+.cursor/
+docs/
+issues/
+xnote/
+todo.md
+
+
