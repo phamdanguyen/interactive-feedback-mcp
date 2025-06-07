@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -27,7 +28,11 @@ from .dialogs.settings_dialog import SettingsDialog
 from .utils.constants import (
     ContentItem,
     FeedbackResult,
+    LAYOUT_HORIZONTAL,
+    LAYOUT_VERTICAL,
+    MIN_LEFT_AREA_WIDTH,
     MIN_LOWER_AREA_HEIGHT,
+    MIN_RIGHT_AREA_WIDTH,
     MIN_UPPER_AREA_HEIGHT,
 )
 from .utils.image_processor import get_image_items_from_widgets
@@ -174,49 +179,166 @@ class FeedbackUI(QMainWindow):
         self.update_font_sizes()
 
     def _create_ui_layout(self):
-        """Creates the main UI layout with splitter for resizable areas."""
+        """根据设置创建对应的UI布局"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
+        # 获取布局方向设置
+        layout_direction = self.settings_manager.get_layout_direction()
+
+        if layout_direction == LAYOUT_HORIZONTAL:
+            self._create_horizontal_layout(central_widget)
+        else:
+            self._create_vertical_layout(central_widget)
+
+    def _create_vertical_layout(self, central_widget: QWidget):
+        """创建上下布局（当前布局）"""
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(20, 5, 20, 10)
         main_layout.setSpacing(15)
 
-        # 创建主分割器
+        # 创建垂直分割器
         self.main_splitter = QSplitter(Qt.Orientation.Vertical)
         self.main_splitter.setObjectName("mainSplitter")
-        self.main_splitter.setChildrenCollapsible(False)  # 防止区域被完全折叠
+        self.main_splitter.setChildrenCollapsible(False)
 
-        # 创建上部区域（提示文字 + 选项）
+        # 上部区域和下部区域
         self.upper_area = self._create_upper_area()
-        self.main_splitter.addWidget(self.upper_area)
-
-        # 创建下部区域（输入框）
         self.lower_area = self._create_lower_area()
+
+        self.main_splitter.addWidget(self.upper_area)
         self.main_splitter.addWidget(self.lower_area)
 
-        # 配置分割器属性
-        self._setup_splitter_properties()
-
+        self._setup_vertical_splitter_properties()
         main_layout.addWidget(self.main_splitter)
 
         # 强制设置分割器样式
         self._force_splitter_style()
 
+        # 底部按钮和GitHub链接
         self._setup_bottom_bar(main_layout)
+        self._create_submit_button(main_layout)
+        self._create_github_link_area(main_layout)
 
-        # The submit button now lives here, spanning the full width
+        self._update_submit_button_text_status()
+
+    def _create_horizontal_layout(self, central_widget: QWidget):
+        """创建左右布局（混合布局）"""
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 5, 20, 10)
+        main_layout.setSpacing(15)
+
+        # 创建上部分割区域
+        upper_splitter_area = self._create_upper_splitter_area()
+        main_layout.addWidget(upper_splitter_area, 1)  # 占据主要空间
+
+        # 创建底部按钮区域（横跨全宽）
+        self._setup_bottom_bar(main_layout)
+        self._create_submit_button(main_layout)
+        self._create_github_link_area(main_layout)
+
+        self._update_submit_button_text_status()
+
+    def _create_submit_button(self, parent_layout: QVBoxLayout):
+        """创建提交按钮"""
         current_language = self.settings_manager.get_current_language()
         self.submit_button = QPushButton(
             self.button_texts["submit_button"][current_language]
         )
         self.submit_button.setObjectName("submit_button")
-        self.submit_button.setMinimumHeight(50)
-        main_layout.addWidget(self.submit_button)
+        self.submit_button.setMinimumHeight(42)
+        parent_layout.addWidget(self.submit_button)
 
-        self._create_github_link_area(main_layout)
+    def _recreate_layout(self):
+        """重新创建布局（用于布局方向切换）"""
+        # 保存当前的文本内容和选项状态
+        current_text = ""
+        selected_options = []
 
-        self._update_submit_button_text_status()
+        if hasattr(self, "text_input") and self.text_input:
+            current_text = self.text_input.toPlainText()
+
+        if hasattr(self, "option_checkboxes"):
+            for i, checkbox in enumerate(self.option_checkboxes):
+                if checkbox.isChecked() and i < len(self.predefined_options):
+                    selected_options.append(i)
+
+        # 重新创建UI布局
+        self._create_ui_layout()
+
+        # 恢复文本内容和选项状态
+        if current_text and hasattr(self, "text_input"):
+            self.text_input.setPlainText(current_text)
+
+        if selected_options and hasattr(self, "option_checkboxes"):
+            for i in selected_options:
+                if i < len(self.option_checkboxes):
+                    self.option_checkboxes[i].setChecked(True)
+
+        # 重新连接信号
+        self._connect_signals()
+
+        # 应用主题和字体设置
+        self.update_font_sizes()
+
+        # 设置焦点
+        self._set_initial_focus()
+
+    def _create_upper_splitter_area(self) -> QWidget:
+        """创建上部分割区域（左右布局专用）"""
+        splitter_container = QWidget()
+        splitter_layout = QVBoxLayout(splitter_container)
+        splitter_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 创建水平分割器
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setObjectName("mainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)
+
+        # 左侧：提示文字区域
+        self.left_area = self._create_left_area()
+        self.main_splitter.addWidget(self.left_area)
+
+        # 右侧：选项+输入框区域
+        self.right_area = self._create_right_area()
+        self.main_splitter.addWidget(self.right_area)
+
+        self._setup_horizontal_splitter_properties()
+        splitter_layout.addWidget(self.main_splitter)
+
+        # 强制设置分割器样式
+        self._force_splitter_style()
+
+        return splitter_container
+
+    def _create_left_area(self) -> QWidget:
+        """创建左侧区域（提示文字 + 选项）"""
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(15, 15, 15, 15)
+        left_layout.setSpacing(10)
+
+        # 添加提示文字区域，在左右布局中给予更多空间
+        self._create_description_area(left_layout)
+
+        # 在左右布局中，将选项区域添加到左侧
+        if self.predefined_options:
+            self._create_options_checkboxes(left_layout)
+
+        return left_widget
+
+    def _create_right_area(self) -> QWidget:
+        """创建右侧区域（仅输入框）"""
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(15, 15, 15, 15)
+        right_layout.setSpacing(10)
+
+        # 在左右布局中，右侧只包含输入框区域
+        # 选项区域已移动到左侧
+        self._create_input_submission_area(right_layout)
+
+        return right_widget
 
     def _create_upper_area(self) -> QWidget:
         """创建上部区域容器（提示文字 + 选项）"""
@@ -246,28 +368,28 @@ class FeedbackUI(QMainWindow):
 
         return lower_widget
 
-    def _setup_splitter_properties(self):
-        """配置分割器属性"""
-        # 设置分割器手柄宽度，使其更明显
-        self.main_splitter.setHandleWidth(12)
-
-        # 设置最小尺寸
+    def _setup_vertical_splitter_properties(self):
+        """配置垂直分割器属性"""
+        self.main_splitter.setHandleWidth(6)
         self.upper_area.setMinimumHeight(MIN_UPPER_AREA_HEIGHT)
         self.lower_area.setMinimumHeight(MIN_LOWER_AREA_HEIGHT)
 
-        # 设置初始尺寸
         saved_sizes = self.settings_manager.get_splitter_sizes()
         self.main_splitter.setSizes(saved_sizes)
 
-        # 连接信号以保存状态
-        self.main_splitter.splitterMoved.connect(self._on_splitter_moved)
+        self.main_splitter.splitterMoved.connect(self._on_vertical_splitter_moved)
+        self._setup_splitter_double_click()
 
-        # 恢复分割器状态
-        saved_state = self.settings_manager.get_splitter_state()
-        if saved_state:
-            self.main_splitter.restoreState(saved_state)
+    def _setup_horizontal_splitter_properties(self):
+        """配置水平分割器属性"""
+        self.main_splitter.setHandleWidth(6)
+        self.left_area.setMinimumWidth(MIN_LEFT_AREA_WIDTH)
+        self.right_area.setMinimumWidth(MIN_RIGHT_AREA_WIDTH)
 
-        # 双击重置功能
+        saved_sizes = self.settings_manager.get_horizontal_splitter_sizes()
+        self.main_splitter.setSizes(saved_sizes)
+
+        self.main_splitter.splitterMoved.connect(self._on_horizontal_splitter_moved)
         self._setup_splitter_double_click()
 
     def _force_splitter_style(self):
@@ -304,6 +426,21 @@ class FeedbackUI(QMainWindow):
         QSplitter::handle:vertical:pressed {{
             background-color: {pressed_color} !important;
         }}
+        QSplitter::handle:horizontal {{
+            width: 6px !important;
+            min-width: 6px !important;
+            max-width: 6px !important;
+            background-color: {base_color} !important;
+            border: none !important;
+            border-radius: 2px;
+            margin: 4px 2px;
+        }}
+        QSplitter::handle:horizontal:hover {{
+            background-color: {hover_color} !important;
+        }}
+        QSplitter::handle:horizontal:pressed {{
+            background-color: {pressed_color} !important;
+        }}
         """
         self.main_splitter.setStyleSheet(splitter_style)
 
@@ -311,16 +448,29 @@ class FeedbackUI(QMainWindow):
         self.main_splitter.setHandleWidth(6)
 
         # 确保分割器手柄可见
+        layout_direction = self.settings_manager.get_layout_direction()
         for i in range(self.main_splitter.count() - 1):
             handle = self.main_splitter.handle(i + 1)
             if handle:
                 handle.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-                handle.setMinimumHeight(6)
-                handle.setMaximumHeight(6)
-                # 设置与主题一致的背景色
-                handle.setStyleSheet(
-                    f"background-color: {base_color}; border: none; border-radius: 2px; margin: 2px 4px;"
-                )
+
+                # 根据布局方向设置不同的尺寸属性
+                if layout_direction == LAYOUT_HORIZONTAL:
+                    # 水平分割器（左右布局）：设置宽度
+                    handle.setMinimumWidth(6)
+                    handle.setMaximumWidth(6)
+                    # 设置与主题一致的背景色，保持与横向分割线相同的margin比例
+                    handle.setStyleSheet(
+                        f"background-color: {base_color}; border: none; border-radius: 2px; margin: 2px 0px;"
+                    )
+                else:
+                    # 垂直分割器（上下布局）：设置高度
+                    handle.setMinimumHeight(6)
+                    handle.setMaximumHeight(6)
+                    # 设置与主题一致的背景色
+                    handle.setStyleSheet(
+                        f"background-color: {base_color}; border: none; border-radius: 2px; margin: 2px 4px;"
+                    )
 
     def _ensure_splitter_visibility(self):
         """确保分割器在窗口显示后可见"""
@@ -340,23 +490,49 @@ class FeedbackUI(QMainWindow):
 
     def _reset_splitter_to_default(self, event):
         """双击分割器手柄时重置为默认比例"""
-        from .utils.constants import DEFAULT_SPLITTER_RATIO
+        layout_direction = self.settings_manager.get_layout_direction()
 
-        self.main_splitter.setSizes(DEFAULT_SPLITTER_RATIO)
-        self._on_splitter_moved(0, 0)  # 保存新的状态
+        if layout_direction == LAYOUT_HORIZONTAL:
+            from .utils.constants import DEFAULT_HORIZONTAL_SPLITTER_RATIO
 
-    def _on_splitter_moved(self, pos: int, index: int):
-        """分割器移动时保存状态"""
+            self.main_splitter.setSizes(DEFAULT_HORIZONTAL_SPLITTER_RATIO)
+            self._on_horizontal_splitter_moved(0, 0)
+        else:
+            from .utils.constants import DEFAULT_SPLITTER_RATIO
+
+            self.main_splitter.setSizes(DEFAULT_SPLITTER_RATIO)
+            self._on_vertical_splitter_moved(0, 0)
+
+    def _on_vertical_splitter_moved(self, pos: int, index: int):
+        """垂直分割器移动时保存状态"""
         sizes = self.main_splitter.sizes()
         self.settings_manager.set_splitter_sizes(sizes)
         self.settings_manager.set_splitter_state(self.main_splitter.saveState())
+
+    def _on_horizontal_splitter_moved(self, pos: int, index: int):
+        """水平分割器移动时保存状态"""
+        sizes = self.main_splitter.sizes()
+        self.settings_manager.set_horizontal_splitter_sizes(sizes)
+        self.settings_manager.set_horizontal_splitter_state(
+            self.main_splitter.saveState()
+        )
 
     def _create_description_area(self, parent_layout: QVBoxLayout):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setMaximumHeight(200)
+
+        # 在左右布局模式下不限制高度，让其充分利用可用空间
+        # 修复：在上下布局中也移除高度限制，允许描述区域随分割器拖拽正常扩展
+        layout_direction = self.settings_manager.get_layout_direction()
+        if layout_direction == LAYOUT_HORIZONTAL:
+            # 左右布局：不限制高度，让其充分利用可用空间
+            pass
+        else:
+            # 上下布局：移除高度限制，允许描述区域正常扩展
+            # 注释掉原有的高度限制：scroll_area.setMaximumHeight(200)
+            pass
 
         desc_widget_container = QWidget()
         desc_layout = QVBoxLayout(desc_widget_container)
@@ -365,6 +541,11 @@ class FeedbackUI(QMainWindow):
         self.description_label = SelectableLabel(self.prompt, self)
         self.description_label.setProperty("class", "prompt-label")
         self.description_label.setWordWrap(True)
+        # 在左右布局模式下，确保文字从顶部开始对齐
+        if layout_direction == LAYOUT_HORIZONTAL:
+            self.description_label.setAlignment(
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+            )
         desc_layout.addWidget(self.description_label)
 
         self.image_usage_label = SelectableLabel(
@@ -380,15 +561,27 @@ class FeedbackUI(QMainWindow):
         self.status_label.setVisible(False)
         desc_layout.addWidget(self.status_label)
 
+        # 在左右布局模式下，添加弹性空间确保内容顶部对齐
+        if layout_direction == LAYOUT_HORIZONTAL:
+            desc_layout.addStretch()
+
         scroll_area.setWidget(desc_widget_container)
         parent_layout.addWidget(scroll_area)
 
     def _create_options_checkboxes(self, parent_layout: QVBoxLayout):
         self.option_checkboxes: list[QCheckBox] = []
         options_frame = QFrame()
+
+        # 修复：设置选项框架的大小策略，防止异常扩大
+        options_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+
         options_layout = QVBoxLayout(options_frame)
-        options_layout.setContentsMargins(0, 0, 0, 0)
-        options_layout.setSpacing(2)
+        # 使用负边距补偿复选框宽度(~20px)和间距(5px)，实现与提示文字的精确对齐
+        options_layout.setContentsMargins(-10, 0, 0, 0)
+        # 修复：设置固定间距，防止选项间距异常扩大
+        options_layout.setSpacing(8)  # 从2改为8，提供合适的固定间距
 
         for i, option_text in enumerate(self.predefined_options):
             # 创建一个水平容器用于放置复选框和可选择的标签
@@ -423,7 +616,14 @@ class FeedbackUI(QMainWindow):
 
     def _create_input_submission_area(self, parent_layout: QVBoxLayout):
         self.text_input = FeedbackTextEdit(self)
-        self.text_input.setPlaceholderText("在此输入反馈...")
+        # 设置包含拖拽和快捷键提示的placeholder text
+        placeholder_text = "在此输入反馈... (可拖拽文件和图片到输入框，Enter提交反馈，Shift+Enter换行，Ctrl+V复制剪切板信息)"
+        self.text_input.setPlaceholderText(placeholder_text)
+
+        # 连接焦点事件来动态控制placeholder显示
+        self.text_input.focusInEvent = self._on_text_input_focus_in
+        self.text_input.focusOutEvent = self._on_text_input_focus_out
+
         # QTextEdit should expand vertically, so we give it a stretch factor
         parent_layout.addWidget(self.text_input, 1)
 
@@ -431,7 +631,7 @@ class FeedbackUI(QMainWindow):
         """Creates the bottom bar with canned responses, pin, and settings buttons."""
         bottom_bar_widget = QWidget()
         bottom_layout = QHBoxLayout(bottom_bar_widget)
-        bottom_layout.setContentsMargins(0, 5, 0, 5)
+        bottom_layout.setContentsMargins(0, 3, 0, 3)
         bottom_layout.setSpacing(10)
 
         current_language = self.settings_manager.get_current_language()
@@ -444,6 +644,14 @@ class FeedbackUI(QMainWindow):
         self.canned_responses_button.setToolTip(
             self.tooltip_texts["canned_responses_button"][current_language]
         )
+
+        # 为常用语按钮添加hover事件处理
+        self.canned_responses_button.enterEvent = self._on_canned_responses_button_enter
+        self.canned_responses_button.leaveEvent = self._on_canned_responses_button_leave
+
+        # 初始化hover预览窗口变量
+        self.canned_responses_preview_window = None
+
         bottom_layout.addWidget(self.canned_responses_button)
 
         self.pin_window_button = QPushButton(
@@ -471,10 +679,10 @@ class FeedbackUI(QMainWindow):
         """Creates the GitHub link at the bottom."""
         github_container = QWidget()
         github_layout = QHBoxLayout(github_container)
-        github_layout.setContentsMargins(0, 10, 0, 0)
+        github_layout.setContentsMargins(0, 5, 0, 0)
 
         github_label = QLabel(
-            "<a href='https://github.com/lucas-710/interactive-feedback-mcp'>Project GitHub</a>"
+            "<a href='https://github.com/lucas-710/interactive-feedback-mcp'>GitHub</a>"
         )
         github_label.setOpenExternalLinks(True)
         # 启用文本选择功能
@@ -482,6 +690,8 @@ class FeedbackUI(QMainWindow):
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
+        # 添加小字体样式
+        github_label.setStyleSheet("font-size: 10pt; color: #888888;")
 
         # 设置选择文本时的高亮颜色为灰色
         set_selection_colors(github_label)
@@ -548,12 +758,24 @@ class FeedbackUI(QMainWindow):
 
     def _show_canned_responses_dialog(self):
         self.disable_auto_minimize = True
+        # 禁用预览功能，防止对话框触发预览窗口
+        self._preview_disabled = True
+        # 隐藏任何现有的预览窗口
+        self._hide_canned_responses_preview()
+
         dialog = SelectCannedResponseDialog(self.canned_responses, self)
         dialog.exec()
+
         self.disable_auto_minimize = False
+        # 延迟重新启用预览功能，确保双击操作完全完成且鼠标事件处理完毕
+        QTimer.singleShot(500, self._re_enable_preview)
         # After the dialog closes, settings are updated internally by the dialog.
         # We just need to reload them here.
         self._load_canned_responses_from_settings()
+
+    def _re_enable_preview(self):
+        """重新启用预览功能"""
+        self._preview_disabled = False
 
     def open_settings_dialog(self):
         """Opens the settings dialog."""
@@ -566,17 +788,32 @@ class FeedbackUI(QMainWindow):
         # 从设置中加载固定窗口状态，但不改变按钮样式
         self.pin_window_button.setChecked(self.window_pinned)
 
-        # 只应用窗口标志，不改变按钮样式
+        # 应用窗口标志 - 使用明确的标志组合，确保关闭按钮等基本功能不受影响
         if self.window_pinned:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            # 固定窗口：添加置顶标志，保留所有标准窗口功能
+            self.setWindowFlags(
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+                | Qt.WindowType.WindowStaysOnTopHint
+            )
             # 设置提示文本
             self.pin_window_button.setToolTip(
                 "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
             )
             self.pin_window_button.setObjectName("pin_window_active")
         else:
+            # 标准窗口：使用标准窗口标志，确保所有按钮功能正常
             self.setWindowFlags(
-                self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
             )
             self.pin_window_button.setToolTip("")
             # 确保按钮初始状态样式与其他按钮一致
@@ -592,17 +829,35 @@ class FeedbackUI(QMainWindow):
         self.window_pinned = self.pin_window_button.isChecked()
         self.settings_manager.set_main_window_pinned(self.window_pinned)
 
-        # 设置窗口标志
+        # 保存当前窗口几何信息
+        current_geometry = self.saveGeometry()
+
+        # 设置窗口标志 - 使用明确的标志组合，确保关闭按钮等基本功能不受影响
         if self.window_pinned:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            # 固定窗口：添加置顶标志，保留所有标准窗口功能
+            self.setWindowFlags(
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
+                | Qt.WindowType.WindowStaysOnTopHint
+            )
             # 只有当按钮被激活时才改变样式
             self.pin_window_button.setObjectName("pin_window_active")
             self.pin_window_button.setToolTip(
                 "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
             )
         else:
+            # 取消固定：使用标准窗口标志，确保所有按钮功能正常
             self.setWindowFlags(
-                self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint
+                Qt.WindowType.Window
+                | Qt.WindowType.WindowTitleHint
+                | Qt.WindowType.WindowSystemMenuHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowCloseButtonHint
             )
             # 恢复为普通按钮样式
             self.pin_window_button.setObjectName("secondary_button")
@@ -613,8 +868,9 @@ class FeedbackUI(QMainWindow):
         self.pin_window_button.style().polish(self.pin_window_button)
         self.pin_window_button.update()
 
-        # 重新显示窗口（因为改变了窗口标志）
+        # 重新显示窗口并恢复几何信息（因为改变了窗口标志）
         self.show()
+        self.restoreGeometry(current_geometry)
 
     def add_image_preview(self, pixmap: QPixmap) -> int | None:
         if pixmap and not pixmap.isNull():
@@ -879,6 +1135,260 @@ class FeedbackUI(QMainWindow):
 
         # 将事件传递给父类处理，保持所有控件的原有功能
         return super().eventFilter(obj, event)
+
+    def _on_text_input_focus_in(self, event):
+        """输入框获得焦点时的处理 - 隐藏placeholder text"""
+        # 调用原始的focusInEvent
+        FeedbackTextEdit.focusInEvent(self.text_input, event)
+
+        # 如果输入框为空，临时清除placeholder text以避免显示
+        if not self.text_input.toPlainText().strip():
+            self.text_input.setPlaceholderText("")
+
+    def _on_text_input_focus_out(self, event):
+        """输入框失去焦点时的处理 - 恢复placeholder text"""
+        # 调用原始的focusOutEvent
+        FeedbackTextEdit.focusOutEvent(self.text_input, event)
+
+        # 如果输入框为空，恢复placeholder text
+        if not self.text_input.toPlainText().strip():
+            placeholder_text = "在此输入反馈... (可拖拽文件和图片到输入框，Enter提交反馈，Shift+Enter换行，Ctrl+V复制剪切板信息)"
+            self.text_input.setPlaceholderText(placeholder_text)
+
+    def _on_canned_responses_button_enter(self, event):
+        """常用语按钮鼠标进入事件 - 显示常用语预览"""
+        # 调用原始的enterEvent
+        QPushButton.enterEvent(self.canned_responses_button, event)
+
+        # 如果有常用语且没有禁用预览，显示预览窗口
+        if self.canned_responses and not getattr(self, "_preview_disabled", False):
+            self._show_canned_responses_preview()
+
+    def _on_canned_responses_button_leave(self, event):
+        """常用语按钮鼠标离开事件 - 延迟隐藏常用语预览"""
+        # 调用原始的leaveEvent
+        QPushButton.leaveEvent(self.canned_responses_button, event)
+
+        # 延迟隐藏预览窗口，给用户时间移动到预览窗口
+        QTimer.singleShot(200, self._delayed_hide_preview)
+
+    def _on_preview_window_enter(self, event):
+        """预览窗口鼠标进入事件 - 取消隐藏计时器"""
+        # 取消延迟隐藏
+        pass
+
+    def _on_preview_window_leave(self, event):
+        """预览窗口鼠标离开事件 - 隐藏预览窗口"""
+        # 立即隐藏预览窗口
+        self._hide_canned_responses_preview()
+
+    def _delayed_hide_preview(self):
+        """延迟隐藏预览窗口 - 检查鼠标是否在预览窗口内"""
+        if (
+            self.canned_responses_preview_window
+            and self.canned_responses_preview_window.isVisible()
+        ):
+            # 获取鼠标位置
+            from PySide6.QtGui import QCursor
+
+            mouse_pos = QCursor.pos()
+
+            # 检查鼠标是否在预览窗口内
+            preview_rect = self.canned_responses_preview_window.geometry()
+            if not preview_rect.contains(mouse_pos):
+                # 鼠标不在预览窗口内，隐藏窗口
+                self._hide_canned_responses_preview()
+
+    def _show_canned_responses_preview(self):
+        """显示常用语预览窗口"""
+        if not self.canned_responses:
+            return
+
+        # 如果预览窗口已存在，先关闭
+        if self.canned_responses_preview_window:
+            self.canned_responses_preview_window.close()
+            self.canned_responses_preview_window = None
+
+        # 创建预览窗口
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QFont
+
+        self.canned_responses_preview_window = QWidget()
+        self.canned_responses_preview_window.setWindowFlags(
+            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        )
+        self.canned_responses_preview_window.setAttribute(
+            Qt.WidgetAttribute.WA_ShowWithoutActivating
+        )
+
+        # 为预览窗口添加hover事件处理，支持鼠标移动到预览窗口
+        self.canned_responses_preview_window.enterEvent = self._on_preview_window_enter
+        self.canned_responses_preview_window.leaveEvent = self._on_preview_window_leave
+
+        # 主布局
+        main_layout = QVBoxLayout(self.canned_responses_preview_window)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        # 滚动内容容器
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # 获取当前主题
+        current_theme = self.settings_manager.get_current_theme()
+        is_dark = current_theme == "dark"
+
+        # 根据主题设置颜色
+        if is_dark:
+            bg_color = "#2D2D2D"
+            border_color = "#3A3A3A"
+            text_color = "#CCCCCC"
+            item_bg = "#333333"
+            item_border = "#444444"
+            item_hover_bg = "#0078d4"
+            item_hover_border = "#1890ff"
+            more_text_color = "#888888"
+        else:
+            bg_color = "#FFFFFF"
+            border_color = "#CCCCCC"
+            text_color = "#333333"
+            item_bg = "#F8F9FA"
+            item_border = "#E0E0E0"
+            item_hover_bg = "#E8F4FD"
+            item_hover_border = "#0078D4"
+            more_text_color = "#666666"
+
+        # 添加所有常用语项目
+        for i, response in enumerate(self.canned_responses):
+            # 限制显示长度，过长的文本进行截断
+            display_text = response if len(response) <= 60 else response[:57] + "..."
+
+            response_label = QLabel(display_text)
+            response_label.setWordWrap(True)
+            response_label.setStyleSheet(
+                f"""
+                QLabel {{
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    background-color: {item_bg};
+                    color: {text_color};
+                    border: 1px solid {item_border};
+                    margin: 2px 0px;
+                }}
+                QLabel:hover {{
+                    background-color: {item_hover_bg};
+                    border-color: {item_hover_border};
+                    color: white;
+                }}
+            """
+            )
+            response_label.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            # 为每个标签添加点击事件
+            response_label.mousePressEvent = (
+                lambda event, text=response: self._on_preview_item_clicked(text)
+            )
+
+            layout.addWidget(response_label)
+
+        # 设置滚动内容
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
+
+        # 设置滚动区域样式
+        scroll_area.setStyleSheet(
+            f"""
+            QScrollArea {{
+                background-color: {bg_color};
+                border: none;
+                border-radius: 10px;
+            }}
+            QScrollBar:vertical {{
+                background-color: {bg_color};
+                width: 8px;
+                border-radius: 4px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {item_border};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {item_hover_border};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """
+        )
+
+        # 设置窗口样式（包含阴影效果）
+        self.canned_responses_preview_window.setStyleSheet(
+            f"""
+            QWidget {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+            }}
+        """
+        )
+
+        # 计算位置（在按钮上方显示）
+        button_pos = self.canned_responses_button.mapToGlobal(
+            self.canned_responses_button.rect().topLeft()
+        )
+        preview_width = 350
+
+        # 计算高度：如果常用语超过10个，限制最大高度并启用滚动
+        max_display_items = 10
+        if len(self.canned_responses) > max_display_items:
+            # 限制最大高度，大约10个项目的高度
+            preview_height = min(
+                400, max_display_items * 50 + 20
+            )  # 每个项目约50px高度，加上边距
+        else:
+            # 使用实际内容高度
+            preview_height = scroll_content.sizeHint().height() + 20
+
+        # 在按钮上方显示
+        x = button_pos.x()
+        y = button_pos.y() - preview_height - 10
+
+        self.canned_responses_preview_window.setGeometry(
+            x, y, preview_width, preview_height
+        )
+        self.canned_responses_preview_window.show()
+
+    def _hide_canned_responses_preview(self):
+        """隐藏常用语预览窗口"""
+        if self.canned_responses_preview_window:
+            self.canned_responses_preview_window.close()
+            self.canned_responses_preview_window = None
+
+    def _on_preview_item_clicked(self, text):
+        """预览项目被点击时插入到输入框"""
+        if self.text_input:
+            self.text_input.insertPlainText(text)
+            self.text_input.setFocus()
+
+            # 移动光标到末尾
+            cursor = self.text_input.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.text_input.setTextCursor(cursor)
+
+        # 隐藏预览窗口
+        self._hide_canned_responses_preview()
 
     def update_font_sizes(self):
         """

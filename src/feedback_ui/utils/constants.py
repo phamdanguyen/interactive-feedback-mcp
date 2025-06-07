@@ -34,6 +34,22 @@ DEFAULT_SPLITTER_RATIO = [250, 400]  # 上:下 = 250:400
 MIN_UPPER_AREA_HEIGHT = 150
 MIN_LOWER_AREA_HEIGHT = 200
 
+# 布局方向常量 (Layout Direction Constants)
+LAYOUT_VERTICAL = "vertical"  # 上下布局
+LAYOUT_HORIZONTAL = "horizontal"  # 左右布局
+DEFAULT_LAYOUT_DIRECTION = LAYOUT_VERTICAL
+
+# 布局设置键 (Layout Settings Keys)
+SETTINGS_KEY_LAYOUT_DIRECTION = "ui/layout_direction"
+SETTINGS_KEY_HORIZONTAL_SPLITTER_SIZES = "ui/horizontal_splitter_sizes"
+SETTINGS_KEY_HORIZONTAL_SPLITTER_STATE = "ui/horizontal_splitter_state"
+
+# 默认水平分割比例 (Default Horizontal Splitter Configuration)
+# 调整为5:5比例，给左侧更多空间展示长文本和选项
+DEFAULT_HORIZONTAL_SPLITTER_RATIO = [500, 500]  # 左右比例 5:5
+MIN_LEFT_AREA_WIDTH = 350  # 增加左侧最小宽度以容纳更多内容
+MIN_RIGHT_AREA_WIDTH = 400
+
 MAX_IMAGE_WIDTH = 512
 MAX_IMAGE_HEIGHT = 512
 MAX_IMAGE_BYTES = 1048576  # 1MB (1兆字节)

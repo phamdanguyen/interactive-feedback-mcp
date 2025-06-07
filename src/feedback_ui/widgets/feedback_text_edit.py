@@ -4,7 +4,7 @@ import re
 import sys
 from typing import Any  # For type hinting parent
 
-from PySide6.QtCore import QEvent, QMimeData, QPoint, Qt, QTimer
+from PySide6.QtCore import QEvent, QMimeData, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -12,8 +12,9 @@ from PySide6.QtGui import (
     QPalette,
     QPixmap,
     QTextCursor,
+    QTextCharFormat,
 )
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QTextEdit, QWidget
 
 # Forward declaration for type hinting to avoid circular import
 # This is a common pattern when dealing with tightly coupled classes
@@ -23,12 +24,12 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QPlainTextEdit, QWidget
 FeedbackUI = "FeedbackUI"
 
 
-class FeedbackTextEdit(QPlainTextEdit):
+class FeedbackTextEdit(QTextEdit):
     """
-    Custom QPlainTextEdit for feedback input, handling text, image pasting/dropping,
-    and file reference management.
+    Custom QTextEdit for feedback input, handling text, image pasting/dropping,
+    and file reference management with rich text support for file references.
 
-    用于反馈输入的自定义 QPlainTextEdit，处理文本、图像粘贴/拖放以及文件引用管理。
+    用于反馈输入的自定义 QTextEdit，处理文本、图像粘贴/拖放以及文件引用管理，支持文件引用的富文本格式。
     """
 
     # Define signals if you want to decouple further, e.g.:
@@ -38,11 +39,9 @@ class FeedbackTextEdit(QPlainTextEdit):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        # QPlainTextEdit 默认就是纯文本编辑器，不需要设置以下属性
-        # self.setAcceptRichText(False)
-        # document = self.document()
-        # document.setDefaultStyleSheet("") # Ensure no default rich text styles
-        # self.setAutoFormatting(QTextEdit.AutoFormattingFlag.AutoNone)
+        # 设置为支持富文本，但主要用于文件引用的颜色显示
+        self.setAcceptRichText(True)
+        # 设置默认为纯文本模式，只在插入文件引用时使用富文本
         self.setPlainText("")  # Start with empty plain text
 
         font = QFont("Segoe UI", 13)
@@ -361,9 +360,29 @@ class FeedbackTextEdit(QPlainTextEdit):
                 if display_name in self._file_reference_cache["references"]:
                     self._file_reference_cache["references"].remove(display_name)
 
+                # 清理字典中不再存在于文本中的引用
+                self._cleanup_orphaned_references(parent_feedback_ui)
+
                 self._invalidate_reference_cache()  # Mark cache as invalid for next update
                 return True  # Deletion handled
         return False
+
+    def _cleanup_orphaned_references(self, parent_feedback_ui: Any):
+        """清理字典中不再存在于文本中的文件引用"""
+        if not parent_feedback_ui or not parent_feedback_ui.dropped_file_references:
+            return
+
+        current_text = self.toPlainText()
+        orphaned_refs = []
+
+        # 找出不再存在于文本中的引用
+        for display_name in parent_feedback_ui.dropped_file_references.keys():
+            if display_name not in current_text:
+                orphaned_refs.append(display_name)
+
+        # 删除孤立的引用
+        for ref in orphaned_refs:
+            del parent_feedback_ui.dropped_file_references[ref]
 
     def insertFromMimeData(self, source: QMimeData):
         """
@@ -457,9 +476,7 @@ class FeedbackTextEdit(QPlainTextEdit):
                 self._invalidate_reference_cache()
 
                 # 使用计时器设置焦点，确保UI更新后触发
-                QTimer.singleShot(
-                    100, lambda: self._focus_after_content_drop(drop_position)
-                )
+                QTimer.singleShot(100, lambda: self._focus_after_content_drop())
                 return
 
         # 2. Handle file drop from local system
@@ -478,9 +495,7 @@ class FeedbackTextEdit(QPlainTextEdit):
                     self._invalidate_reference_cache()
 
                     # 使用计时器设置焦点，确保UI更新后触发
-                    QTimer.singleShot(
-                        100, lambda: self._focus_after_content_drop(drop_position)
-                    )
+                    QTimer.singleShot(100, lambda: self._focus_after_content_drop())
                     return
 
         # 3. Handle text drop (could be from another app or internally)
@@ -490,9 +505,7 @@ class FeedbackTextEdit(QPlainTextEdit):
                 self._invalidate_reference_cache()
 
                 # 使用计时器设置焦点，确保UI更新后触发
-                QTimer.singleShot(
-                    100, lambda: self._focus_after_content_drop(drop_position)
-                )
+                QTimer.singleShot(100, lambda: self._focus_after_content_drop())
                 return
             else:
                 # Standard text drop
@@ -598,31 +611,50 @@ class FeedbackTextEdit(QPlainTextEdit):
     def _insert_file_reference_text(
         self, parent_feedback_ui: Any, file_path: str, file_name: str
     ):
-        """Inserts a file reference placeholder into the text edit."""
-        display_name = f"@{file_name}"
+        """Inserts a file reference placeholder into the text edit with blue color formatting."""
+        base_display_name = f"@{file_name}"
+        display_name = base_display_name
+
+        # 检查当前文本中实际存在的文件引用，而不是依赖字典
+        current_text = self.toPlainText()
         counter = 1
-        original_display_name = display_name
-        # Ensure unique display name if multiple files with same name are dropped
-        while display_name in parent_feedback_ui.dropped_file_references:
-            display_name = f"{original_display_name}({counter})"  # Note: Original was f"... ({counter})"
+        while display_name in current_text:
+            display_name = f"@{file_name}({counter})"
             counter += 1
 
+        # Store the file reference in the parent's tracking dictionary
         parent_feedback_ui.dropped_file_references[display_name] = file_path
 
         try:
             cursor = self.textCursor()
-
-            # QPlainTextEdit不支持直接的富文本格式，简单插入文本
             cursor.clearSelection()  # Ensure no text is replaced
-            cursor.insertText(
-                " "
-            )  # Add a space before if cursor is not at start or after newline
-            cursor.insertText(display_name)  # 简单插入文本引用，没有格式
-            cursor.insertText(" ")  # Add a space after
 
-            self.setTextCursor(cursor)  # Move cursor to end of inserted text
+            # 保存插入前的位置
+            insert_start_pos = cursor.position()
+
+            # 添加前导空格（如果需要）
+            if insert_start_pos > 0:
+                cursor.insertText(" ")
+                insert_start_pos = cursor.position()
+
+            # 创建蓝色文本格式
+            blue_format = QTextCharFormat()
+            blue_format.setForeground(QColor("#0078d4"))  # 蓝色
+            blue_format.setFontWeight(QFont.Weight.Bold)  # 加粗
+
+            # 插入带格式的文件引用
+            cursor.insertText(display_name, blue_format)
+
+            # 添加后续空格
+            cursor.insertText(" ")
+
+            # 确保光标位置在文件引用末尾（包括后续空格）
+            final_pos = cursor.position()
+            cursor.setPosition(final_pos)
+            self.setTextCursor(cursor)
+
             self._invalidate_reference_cache()
-            # 不再需要强制更新
+
         except Exception as e:
             print(
                 f"ERROR: FeedbackTextEdit _insert_file_reference - Text insertion failed: {e}",
@@ -637,12 +669,14 @@ class FeedbackTextEdit(QPlainTextEdit):
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
 
-    def _focus_after_content_drop(self, drop_pos: QPoint):
+    def _focus_after_content_drop(self):
         """
         设置拖放事件后的焦点和光标位置。
         确保光标处于激活状态，用户可以直接输入文字。
+        对于文件拖拽，光标应该在插入的文件引用末尾，而不是拖放位置。
         Sets focus and cursor position after a drop event.
         Ensures the cursor is active so the user can directly type text.
+        For file drops, cursor should be at the end of inserted file reference, not at drop position.
         """
         # 确保窗口获得焦点
         if parent_widget := self.window():
@@ -653,8 +687,10 @@ class FeedbackTextEdit(QPlainTextEdit):
         self.activateWindow()
         self.setFocus(Qt.FocusReason.MouseFocusReason)
 
-        # 设置光标位置到拖放位置
-        cursor = self.cursorForPosition(drop_pos)
+        # 不使用拖放位置，而是将光标设置到文本末尾
+        # 这样可以确保光标在插入的文件引用之后，而不是在文件名中间
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
         self.setTextCursor(cursor)
 
         # 确保光标可见并闪烁

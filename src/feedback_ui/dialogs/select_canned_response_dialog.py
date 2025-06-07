@@ -52,6 +52,10 @@ class SelectCannedResponseDialog(QDialog):
                 "zh_CN": "双击插入文本，点击删除按钮移除，拖拽调整顺序。",
                 "en_US": "Double-click to insert, click delete button, drag to reorder.",
             },
+            "input_label": {
+                "zh_CN": "输入新的常用语:",
+                "en_US": "Enter new canned response:",
+            },
             "input_placeholder": {
                 "zh_CN": "输入新的常用语",
                 "en_US": "Enter new canned response",
@@ -113,25 +117,47 @@ class SelectCannedResponseDialog(QDialog):
             self.responses_list_widget, 1
         )  # Give list widget stretch factor
 
-        input_layout = QHBoxLayout()
+        # 输入框单独一行
+        input_layout = QVBoxLayout()
+        input_layout.setSpacing(8)
+
+        # 输入框标签
+        current_language = self.settings_manager.get_current_language()
+        input_label = QLabel(self.texts["input_label"][current_language])
+        input_label.setStyleSheet("font-weight: bold; margin-bottom: 4px;")
+        input_layout.addWidget(input_label)
+
+        # 输入框
         self.input_field = QLineEdit()
         # 稍后设置占位符文本
         self.input_field.returnPressed.connect(self._add_new_response_from_input)
         input_layout.addWidget(self.input_field)
 
+        layout.addLayout(input_layout)
+
+        # 底部按钮区域 - 左侧保存，右侧关闭
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+
+        # 保存按钮（左侧）
         self.add_button = QPushButton("")  # 稍后设置文本
         self.add_button.clicked.connect(self._add_new_response_from_input)
         self.add_button.setObjectName("secondary_button")
-        input_layout.addWidget(self.add_button)
-        layout.addLayout(input_layout)
+        button_layout.addWidget(self.add_button)
 
-        # OK/Close button (optional, as double-click also closes)
+        # 弹性空间
+        button_layout.addStretch()
+
+        # 关闭按钮（右侧）
         close_button = QPushButton("")  # 稍后设置文本
         close_button.setObjectName("secondary_button")
         close_button.clicked.connect(self.accept)  # Accept will save and close
-        layout.addWidget(close_button, 0, Qt.AlignmentFlag.AlignRight)
+        button_layout.addWidget(close_button)
+
+        layout.addLayout(button_layout)
 
         self.close_button = close_button
+        self.input_label = input_label
 
     def _load_responses_to_list_widget(self, responses: list[str]):
         """Populates the list widget with given responses."""
@@ -245,10 +271,14 @@ class SelectCannedResponseDialog(QDialog):
         if (
             text_of_item
             and self.parent_feedback_ui
-            and hasattr(self.parent_feedback_ui, "feedback_text")
+            and hasattr(self.parent_feedback_ui, "text_input")
         ):
-            # Access the feedback_text QTextEdit widget on the parent FeedbackUI
-            feedback_text_widget = self.parent_feedback_ui.feedback_text
+            # 隐藏任何现有的预览窗口
+            if hasattr(self.parent_feedback_ui, "_hide_canned_responses_preview"):
+                self.parent_feedback_ui._hide_canned_responses_preview()
+
+            # Access the text_input QTextEdit widget on the parent FeedbackUI
+            feedback_text_widget = self.parent_feedback_ui.text_input
             if feedback_text_widget:
                 feedback_text_widget.insertPlainText(text_of_item)
                 # Optionally, set focus back to the text edit and move cursor
@@ -301,7 +331,10 @@ class SelectCannedResponseDialog(QDialog):
         if hasattr(self, "hint_label"):
             self.hint_label.setText(self.texts["hint"][current_language])
 
-        # 更新输入框占位符
+        # 更新输入框标签和占位符
+        if hasattr(self, "input_label"):
+            self.input_label.setText(self.texts["input_label"][current_language])
+
         if hasattr(self, "input_field"):
             self.input_field.setPlaceholderText(
                 self.texts["input_placeholder"][current_language]

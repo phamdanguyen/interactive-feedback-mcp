@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "0.1.1"
+version = "0.2.0"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
 ]
-description = "MCP server for interactive user feedback and command execution in AI-assisted development, by Fábio Ferreira and Pau Oliva."
+description = "Enhanced MCP server for interactive user feedback with rich file drag-drop, smart canned responses preview, and optimized UI experience in AI-assisted development."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

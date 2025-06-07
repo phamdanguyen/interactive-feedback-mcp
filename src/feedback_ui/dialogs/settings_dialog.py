@@ -1,7 +1,6 @@
 from PySide6.QtCore import QCoreApplication, QEvent, QTranslator
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
@@ -50,6 +49,9 @@ class SettingsDialog(QDialog):
                 "zh_CN": "输入框文字大小:",
                 "en_US": "Input Font Size:",
             },
+            "layout_group": {"zh_CN": "界面布局", "en_US": "Interface Layout"},
+            "vertical_layout": {"zh_CN": "上下布局", "en_US": "Vertical Layout"},
+            "horizontal_layout": {"zh_CN": "左右布局", "en_US": "Horizontal Layout"},
         }
 
         self._setup_ui()
@@ -59,6 +61,7 @@ class SettingsDialog(QDialog):
 
     def _setup_ui(self):
         self._setup_theme_group()
+        self._setup_layout_group()
         self._setup_language_group()
         self._setup_font_size_group()
 
@@ -100,17 +103,58 @@ class SettingsDialog(QDialog):
         self.lang_group = QGroupBox("")  # 稍后设置文本
         lang_layout = QVBoxLayout()
 
-        self.lang_combo = QComboBox()
-        # 稍后添加选项
+        self.chinese_radio = QRadioButton("")  # 稍后设置文本
+        self.english_radio = QRadioButton("")  # 稍后设置文本
 
         current_lang = self.settings_manager.get_current_language()
+        if current_lang == "zh_CN":
+            self.chinese_radio.setChecked(True)
+        else:
+            self.english_radio.setChecked(True)
 
-        # 当语言选择变化时，立即应用
-        self.lang_combo.currentIndexChanged.connect(self.switch_language)
+        # 当选项变化时，立即应用语言
+        self.chinese_radio.toggled.connect(
+            lambda checked: self.switch_language_radio("zh_CN", checked)
+        )
+        self.english_radio.toggled.connect(
+            lambda checked: self.switch_language_radio("en_US", checked)
+        )
 
-        lang_layout.addWidget(self.lang_combo)
+        lang_layout.addWidget(self.chinese_radio)
+        lang_layout.addWidget(self.english_radio)
         self.lang_group.setLayout(lang_layout)
         self.layout.addWidget(self.lang_group)
+
+    def _setup_layout_group(self):
+        """设置界面布局选择区域"""
+        self.layout_group = QGroupBox("")  # 稍后设置文本
+        layout_layout = QVBoxLayout()
+
+        self.vertical_layout_radio = QRadioButton("")  # 稍后设置文本
+        self.horizontal_layout_radio = QRadioButton("")  # 稍后设置文本
+
+        # 获取当前布局方向设置
+        from ..utils.constants import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
+
+        current_layout = self.settings_manager.get_layout_direction()
+
+        if current_layout == LAYOUT_HORIZONTAL:
+            self.horizontal_layout_radio.setChecked(True)
+        else:
+            self.vertical_layout_radio.setChecked(True)
+
+        # 当选项变化时，立即应用布局
+        self.vertical_layout_radio.toggled.connect(
+            lambda checked: self.switch_layout(LAYOUT_VERTICAL, checked)
+        )
+        self.horizontal_layout_radio.toggled.connect(
+            lambda checked: self.switch_layout(LAYOUT_HORIZONTAL, checked)
+        )
+
+        layout_layout.addWidget(self.vertical_layout_radio)
+        layout_layout.addWidget(self.horizontal_layout_radio)
+        self.layout_group.setLayout(layout_layout)
+        self.layout.addWidget(self.layout_group)
 
     def _setup_font_size_group(self):
         """设置字体大小调整区域"""
@@ -175,14 +219,39 @@ class SettingsDialog(QDialog):
                             widget.update_font_sizes()
                         break
 
+    def switch_layout(self, layout_direction: str, checked: bool):
+        """切换界面布局方向"""
+        if checked:
+            self.settings_manager.set_layout_direction(layout_direction)
+
+            # 通知主窗口重新创建布局
+            app_instance = QApplication.instance()
+            if app_instance:
+                for widget in app_instance.topLevelWidgets():
+                    if widget.__class__.__name__ == "FeedbackUI":
+                        if hasattr(widget, "_recreate_layout"):
+                            widget._recreate_layout()
+                        break
+
+    def switch_language_radio(self, language_code: str, checked: bool):
+        """
+        通过单选按钮切换语言设置
+        """
+        if checked:
+            self.switch_language_internal(language_code)
+
     def switch_language(self, index: int):
         """
-        切换语言设置
+        切换语言设置（下拉框版本，保留兼容性）
         通过直接设置和触发特定更新方法来实现语言切换
         """
-        # 获取选择的语言代码
-        selected_lang = self.lang_combo.currentData()
+        # 这个方法现在已经不使用，但保留以防有其他地方调用
+        pass
 
+    def switch_language_internal(self, selected_lang: str):
+        """
+        内部语言切换逻辑
+        """
         # 如果语言没有变化，则不需要处理
         if selected_lang == self.current_language:
             return
@@ -200,7 +269,6 @@ class SettingsDialog(QDialog):
 
             # 2. 准备新翻译器
             self.translator = QTranslator(self)
-            translation_loaded = False
 
             # 3. 根据语言选择加载/移除翻译器
             if selected_lang == "zh_CN":
@@ -210,7 +278,6 @@ class SettingsDialog(QDialog):
                 # 英文需要加载翻译
                 if self.translator.load(f":/translations/{selected_lang}.qm"):
                     app.installTranslator(self.translator)
-                    translation_loaded = True
                     print("设置对话框：加载英文翻译")
                 else:
                     print("设置对话框：无法加载英文翻译")
@@ -289,22 +356,15 @@ class SettingsDialog(QDialog):
         if hasattr(self, "light_theme_radio"):
             self.light_theme_radio.setText(self.texts["light_mode"][current_lang])
 
-        # 更新语言组标题和下拉菜单
+        # 更新语言组标题和单选按钮
         if hasattr(self, "lang_group"):
             self.lang_group.setTitle(self.texts["language_group"][current_lang])
 
-        if hasattr(self, "lang_combo"):
-            # 清空旧选项并重新填充
-            self.lang_combo.blockSignals(True)  # 阻止信号循环触发
-            self.lang_combo.clear()
-            self.lang_combo.addItem(self.texts["chinese"][current_lang], "zh_CN")
-            self.lang_combo.addItem(self.texts["english"][current_lang], "en_US")
-            self.lang_combo.blockSignals(False)
+        if hasattr(self, "chinese_radio"):
+            self.chinese_radio.setText(self.texts["chinese"][current_lang])
 
-            # 查找与当前保存的语言代码匹配的索引
-            index_to_set = self.lang_combo.findData(self.current_language)
-            if index_to_set != -1:
-                self.lang_combo.setCurrentIndex(index_to_set)
+        if hasattr(self, "english_radio"):
+            self.english_radio.setText(self.texts["english"][current_lang])
 
         # 更新字体大小组标题和标签
         if hasattr(self, "font_size_group"):
@@ -320,6 +380,20 @@ class SettingsDialog(QDialog):
 
         if hasattr(self, "input_font_label"):
             self.input_font_label.setText(self.texts["input_font_size"][current_lang])
+
+        # 更新布局组标题和按钮
+        if hasattr(self, "layout_group"):
+            self.layout_group.setTitle(self.texts["layout_group"][current_lang])
+
+        if hasattr(self, "vertical_layout_radio"):
+            self.vertical_layout_radio.setText(
+                self.texts["vertical_layout"][current_lang]
+            )
+
+        if hasattr(self, "horizontal_layout_radio"):
+            self.horizontal_layout_radio.setText(
+                self.texts["horizontal_layout"][current_lang]
+            )
 
         # 更新按钮文本
         if hasattr(self, "button_box"):

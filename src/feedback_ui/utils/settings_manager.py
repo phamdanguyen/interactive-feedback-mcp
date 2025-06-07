@@ -4,7 +4,9 @@ from PySide6.QtCore import QByteArray, QObject, QSettings
 
 from .constants import (
     APP_NAME,
+    DEFAULT_HORIZONTAL_SPLITTER_RATIO,
     DEFAULT_INPUT_FONT_SIZE,
+    DEFAULT_LAYOUT_DIRECTION,
     DEFAULT_OPTIONS_FONT_SIZE,
     DEFAULT_PROMPT_FONT_SIZE,
     DEFAULT_SPLITTER_RATIO,
@@ -12,7 +14,10 @@ from .constants import (
     SETTINGS_GROUP_FONTS,
     SETTINGS_GROUP_MAIN,
     SETTINGS_KEY_GEOMETRY,
+    SETTINGS_KEY_HORIZONTAL_SPLITTER_SIZES,
+    SETTINGS_KEY_HORIZONTAL_SPLITTER_STATE,
     SETTINGS_KEY_INPUT_FONT_SIZE,
+    SETTINGS_KEY_LAYOUT_DIRECTION,
     SETTINGS_KEY_OPTIONS_FONT_SIZE,
     SETTINGS_KEY_PHRASES,
     SETTINGS_KEY_PROMPT_FONT_SIZE,
@@ -191,6 +196,49 @@ class SettingsManager(QObject):
     def set_current_language(self, lang_code: str):
         self.settings.setValue("ui/language", lang_code)
         self.settings.sync()
+
+    # --- 布局方向设置 (Layout Direction Settings) ---
+    def get_layout_direction(self) -> str:
+        """获取布局方向设置"""
+        return self.settings.value(
+            SETTINGS_KEY_LAYOUT_DIRECTION, DEFAULT_LAYOUT_DIRECTION
+        )
+
+    def set_layout_direction(self, direction: str):
+        """设置布局方向"""
+        self.settings.setValue(SETTINGS_KEY_LAYOUT_DIRECTION, direction)
+        self.settings.sync()
+
+    # --- 水平分割器设置 (Horizontal Splitter Settings) ---
+    def get_horizontal_splitter_sizes(self) -> list:
+        """获取水平分割器尺寸"""
+        try:
+            sizes = self.settings.value(
+                SETTINGS_KEY_HORIZONTAL_SPLITTER_SIZES,
+                DEFAULT_HORIZONTAL_SPLITTER_RATIO,
+            )
+            if isinstance(sizes, list) and len(sizes) == 2:
+                return [int(size) for size in sizes]
+        except (ValueError, TypeError):
+            pass
+        return DEFAULT_HORIZONTAL_SPLITTER_RATIO
+
+    def set_horizontal_splitter_sizes(self, sizes: list):
+        """设置水平分割器尺寸"""
+        if isinstance(sizes, list) and len(sizes) == 2:
+            self.settings.setValue(SETTINGS_KEY_HORIZONTAL_SPLITTER_SIZES, sizes)
+            self.settings.sync()
+
+    def get_horizontal_splitter_state(self) -> bytes:
+        """获取水平分割器状态"""
+        state = self.settings.value(SETTINGS_KEY_HORIZONTAL_SPLITTER_STATE, b"")
+        return state if isinstance(state, bytes) else b""
+
+    def set_horizontal_splitter_state(self, state: bytes):
+        """设置水平分割器状态"""
+        if isinstance(state, bytes):
+            self.settings.setValue(SETTINGS_KEY_HORIZONTAL_SPLITTER_STATE, state)
+            self.settings.sync()
 
     # --- 字体大小设置 (Font Size Settings) ---
     def get_prompt_font_size(self) -> int:
