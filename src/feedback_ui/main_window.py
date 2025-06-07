@@ -1,10 +1,8 @@
 # feedback_ui/main_window.py
-import os
 import re  # 正则表达式 (Regular expressions)
-import sys
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
-from PySide6.QtGui import QIcon, QPixmap, QTextCursor
+from PySide6.QtGui import QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -114,21 +112,11 @@ class FeedbackUI(QMainWindow):
         self.installEventFilter(self)
 
     def _setup_window(self):
-        """Sets up basic window properties like title, icon, size."""
+        """Sets up basic window properties like title, size."""
         self.setWindowTitle("交互式反馈 MCP (Interactive Feedback MCP)")
         self.setMinimumWidth(1000)
         self.setMinimumHeight(700)
         self.setWindowFlags(Qt.WindowType.Window)
-
-        icon_path = os.path.join(os.path.dirname(__file__), "images", "feedback.png")
-        if not os.path.exists(icon_path):
-            icon_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "images", "feedback.png"
-            )
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-        else:
-            print(f"警告: 图标文件未找到于 '{icon_path}'。", file=sys.stderr)
 
     def _load_settings(self):
         """从设置中加载保存的窗口状态和几何形状"""

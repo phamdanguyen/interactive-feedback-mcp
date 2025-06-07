@@ -107,6 +107,21 @@
 
 ## 📦 安装
 
+### 方式一：直接从PyPI安装（推荐）
+
+**使用uvx（推荐）：**
+```bash
+# 直接运行，无需安装
+uvx interactive-feedback@latest
+```
+
+**使用pip：**
+```bash
+pip install interactive-feedback
+```
+
+### 方式二：开发安装
+
 1.  **先决条件：**
     *   Python 3.11 或更新版本。
     *   [uv](https://github.com/astral-sh/uv) (一个快速的Python包安装和解析工具)。按以下方式安装：
@@ -130,17 +145,58 @@
 
 ## ⚙️ 配置
 
-1.  将以下配置添加到您的 `claude_desktop_config.json` (Claude Desktop 旧版) 或 `mcp_servers.json` (Cursor, 通常在 `.cursor-ai/mcp_servers.json` 或用户配置目录中)：
+### 方式一：使用uvx（推荐）
 
-    **重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
-    ```json
+将以下配置添加到您的 `claude_desktop_config.json` (Claude Desktop) 或 `mcp_servers.json` (Cursor, 通常在 `.cursor-ai/mcp_servers.json` 或用户配置目录中)：
+
+```json
+{
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "uvx",
+      "args": [
+        "interactive-feedback@latest"
+      ],
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
+    }
+  }
+}
+```
+
+### 方式二：使用pip安装后配置
+
+如果您使用pip安装，配置如下：
+
+```json
+{
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "interactive-feedback",
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
+    }
+  }
+}
+```
+
+### 方式三：开发模式配置
+
+如果您克隆了仓库进行开发，配置如下：
+
+**重要提示：** 将 `/path/to/interactive-feedback-mcp` 替换为您在系统上克隆或解压本仓库的 **实际绝对路径**。
+```json
 {
   "mcpServers": {
     "interactive-feedback": {
       "command": "uv",
       "args": [
         "--directory",
-        "path/to/interactive-feedback-mcp",//需替换为您下载本项目的所在路径如`path/to/interactive-feedback-mcp` 
+        "path/to/interactive-feedback-mcp",
         "run",
         "server.py"
       ],
@@ -149,14 +205,14 @@
         "interactive_feedback"
       ]
     }
-    // 如果您有其他MCP服务，可以继续在此处添加
   }
 }
-    ```
-    **关于 `command` 和 `args` 的说明:**
-    - 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "python", "server.py"]`。
-    - 如果您更倾向于直接使用系统Python（并已在全局或项目虚拟环境中安装了依赖），可以使用 `"command": "python", "args": ["server.py"]` (或python3)。
-    - **`cwd` (Current Working Directory):** 强烈建议设置 `cwd` 为此项目的根目录，以确保脚本能正确找到其依赖文件（如 `cursor_direct_input.py`）。
+```
+
+**关于 `command` 和 `args` 的说明:**
+- 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "python", "server.py"]`。
+- 如果您更倾向于直接使用系统Python（并已在全局或项目虚拟环境中安装了依赖），可以使用 `"command": "python", "args": ["server.py"]` (或python3)。
+- **`cwd` (Current Working Directory):** 强烈建议设置 `cwd` 为此项目的根目录，以确保脚本能正确找到其依赖文件。
 
 2.  将以下自定义规则添加到您的AI助手中 (例如，在 Cursor 的设置 -> Rules -> User Rules):
 
@@ -167,6 +223,56 @@
     ```
 
     这将确保您的AI助手在提示不明确时以及在标记任务完成之前，总是使用此MCP服务器请求用户反馈。
+
+## 🔧 故障排除
+
+如果在安装或配置过程中遇到问题，请参考以下解决方案：
+
+### uvx环境问题
+
+**问题**：MCP配置中使用 `"command": "uvx"` 时出现"命令未找到"错误。
+
+**解决方案**：
+
+1. **检查uvx安装位置**：
+   ```bash
+   # Windows
+   where uvx
+
+   # Linux/macOS
+   which uvx
+   ```
+
+2. **使用完整路径**：
+
+   将MCP配置中的 `"uvx"` 替换为完整路径，例如：
+   ```json
+   {
+     "mcpServers": {
+       "interactive-feedback": {
+         "command": "D:/python/Scripts/uv.exe",
+         "args": ["tool", "run", "interactive-feedback@latest"],
+         "timeout": 600,
+         "autoApprove": ["interactive_feedback"]
+       }
+     }
+   }
+   ```
+
+### MCP配置问题
+
+**问题**：AI助手无法识别或启动服务。
+
+**解决方案**：
+
+1. **验证JSON格式**：确保配置文件语法正确
+2. **检查文件位置**：确认 `mcp_servers.json` 在正确目录
+3. **重启AI助手**：修改配置后重启应用程序
+4. **询问AI助手**：将配置文件内容提供给AI，请求配置建议
+
+**示例**：在Cursor中询问："我在配置MCP服务时遇到问题，请帮我检查这个配置：[粘贴您的配置]"
+
+详细的故障排除指南请参阅 [安装与配置指南.md](./安装与配置指南.md#故障排除)。
 
 ## 📝 使用技巧
 

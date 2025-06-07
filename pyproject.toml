@@ -1,17 +1,31 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "0.2.0"
+version = "2.0.0"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
+  { name="pawa", email="pawaovo@example.com" },
 ]
 description = "Enhanced MCP server for interactive user feedback with rich file drag-drop, smart canned responses preview, and optimized UI experience in AI-assisted development."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+keywords = ["mcp", "ai", "feedback", "interactive", "cursor", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Communications",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "fastmcp>=2.0.0",
     "psutil>=7.0.0",
@@ -22,9 +36,15 @@ dependencies = [
     'pywin32>=228; sys_platform == "win32"',
 ]
 
+[project.urls]
+Homepage = "https://github.com/pawaovo/interactive-feedback-mcp"
+Repository = "https://github.com/pawaovo/interactive-feedback-mcp"
+Issues = "https://github.com/pawaovo/interactive-feedback-mcp/issues"
+Documentation = "https://github.com/pawaovo/interactive-feedback-mcp#readme"
+
 [project.scripts]
+interactive-feedback = "interactive_feedback_server.cli:main"
 feedback-ui = "feedback_ui.cli:main"
-feedback-server = "interactive_feedback_server.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -33,4 +53,6 @@ where = ["src"]
 dev = [
     "black",
     "pre-commit",
+    "build",
+    "twine",
 ]

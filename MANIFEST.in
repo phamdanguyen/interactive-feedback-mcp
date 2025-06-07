@@ -1,0 +1,16 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+recursive-include src *.py
+recursive-include src *.qrc
+recursive-include src *.ui
+recursive-include src/feedback_ui/images *.png *.jpg *.jpeg *.gif *.svg
+recursive-include src/feedback_ui/resources *.qrc *.py
+recursive-include src/feedback_ui/styles *.qss
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.egg-info
+global-exclude .git*
+global-exclude *.bak
+global-exclude *~
