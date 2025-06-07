@@ -11,8 +11,10 @@ from PySide6.QtGui import (
     QKeyEvent,
     QPalette,
     QPixmap,
-    QTextCursor,
+    QSyntaxHighlighter,
     QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
 )
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QTextEdit, QWidget
 
@@ -22,6 +24,36 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QTextEdit, QWidget
 # FeedbackUI 类型的前向声明，以避免循环导入。
 # 这是处理将位于不同模块中的紧密耦合类时的常见模式。
 FeedbackUI = "FeedbackUI"
+
+
+class FileReferenceHighlighter(QSyntaxHighlighter):
+    """语法高亮器，用于在纯文本模式下高亮显示文件引用"""
+
+    def __init__(self, parent: QTextDocument, text_edit: "FeedbackTextEdit"):
+        super().__init__(parent)
+        self.text_edit = text_edit
+
+        # 创建文件引用的格式
+        self.file_ref_format = QTextCharFormat()
+        self.file_ref_format.setForeground(QColor("#0078d4"))  # 蓝色
+
+    def highlightBlock(self, text: str):
+        """高亮显示文本块中的文件引用"""
+        # 获取父窗口的文件引用字典
+        parent_feedback_ui = self.text_edit._find_feedback_ui_parent()
+        if not parent_feedback_ui or not parent_feedback_ui.dropped_file_references:
+            return
+
+        # 高亮显示所有文件引用
+        for display_name in parent_feedback_ui.dropped_file_references.keys():
+            start_index = 0
+            while True:
+                index = text.find(display_name, start_index)
+                if index == -1:
+                    break
+                # 应用蓝色格式
+                self.setFormat(index, len(display_name), self.file_ref_format)
+                start_index = index + len(display_name)
 
 
 class FeedbackTextEdit(QTextEdit):
@@ -39,26 +71,20 @@ class FeedbackTextEdit(QTextEdit):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        # 设置为支持富文本，但主要用于文件引用的颜色显示
-        self.setAcceptRichText(True)
-        # 设置默认为纯文本模式，只在插入文件引用时使用富文本
-        self.setPlainText("")  # Start with empty plain text
+        # 彻底重构：使用纯文本模式，避免富文本格式污染
+        self.setAcceptRichText(False)
+        self.setPlainText("")
 
-        font = QFont("Segoe UI", 13)
+        # 获取提示文字区域的字体大小，保持一致
+        prompt_font_size = self._get_prompt_font_size()
+        font = QFont("Segoe UI", prompt_font_size)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        # font.setHintingPreference(QFont.HintingPreference.PreferFullHinting) # Not in PySide6 QFont
         font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 101.5)
         font.setWordSpacing(1.0)
         self.setFont(font)
 
-        # 创建并保存默认字符格式，用于重置格式
-        self._default_char_format = QTextCharFormat()
-        self._default_char_format.setFont(font)
-        # 不设置前景色，让系统根据主题自动调整
-        # 这样文字颜色会根据深色/浅色主题自动变化
-
-        # 设置当前字符格式为默认格式
-        self.setCurrentCharFormat(self._default_char_format)
+        # 设置语法高亮器，用于文件引用的蓝色显示
+        self.highlighter = FileReferenceHighlighter(self.document(), self)
 
         self._file_reference_cache = {
             "text": "",
@@ -228,11 +254,6 @@ class FeedbackTextEdit(QTextEdit):
             return  # Event handled
 
         else:  # Default key press handling
-            # 在处理普通按键前，确保使用默认格式
-            cursor = self.textCursor()
-            cursor.setCharFormat(self._default_char_format)
-            self.setTextCursor(cursor)
-
             super().keyPressEvent(event)
             self._invalidate_reference_cache()
 
@@ -257,6 +278,40 @@ class FeedbackTextEdit(QTextEdit):
     def mouseReleaseEvent(self, event: QEvent):  # QMouseEvent
         super().mouseReleaseEvent(event)
         self.ensureCursorVisible()  # Ensure visibility after mouse release
+
+    def focusInEvent(self, event: QEvent):  # QFocusEvent
+        """获得焦点时的处理"""
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event: QEvent):  # QFocusEvent
+        """失去焦点时的处理"""
+        super().focusOutEvent(event)
+
+    def _get_prompt_font_size(self) -> int:
+        """获取提示文字区域的字体大小，用于保持一致性"""
+        try:
+            # 尝试从父窗口获取设置管理器
+            parent_feedback_ui = self._find_feedback_ui_parent()
+            if parent_feedback_ui and hasattr(parent_feedback_ui, "settings_manager"):
+                return parent_feedback_ui.settings_manager.get_prompt_font_size()
+        except Exception:
+            pass
+
+        # 如果无法获取，使用默认值
+        from ..utils.constants import DEFAULT_PROMPT_FONT_SIZE
+
+        return DEFAULT_PROMPT_FONT_SIZE
+
+    def update_font_size(self):
+        """更新字体大小，与提示文字区域保持一致"""
+        try:
+            prompt_font_size = self._get_prompt_font_size()
+            current_font = self.font()
+            current_font.setPointSize(prompt_font_size)
+            self.setFont(current_font)
+        except Exception:
+            # 忽略异常，避免影响正常使用
+            pass
 
     def _find_feedback_ui_parent(
         self,
@@ -378,6 +433,8 @@ class FeedbackTextEdit(QTextEdit):
                 self._cleanup_orphaned_references(parent_feedback_ui)
 
                 self._invalidate_reference_cache()  # Mark cache as invalid for next update
+                # 触发语法高亮更新
+                self.highlighter.rehighlight()
                 return True  # Deletion handled
         return False
 
@@ -437,10 +494,9 @@ class FeedbackTextEdit(QTextEdit):
 
         self._invalidate_reference_cache()
 
-        # 确保在粘贴内容后设置焦点，但避免过度更新视口
-        QTimer.singleShot(10, lambda: self.setFocus(Qt.FocusReason.OtherFocusReason))
-        QTimer.singleShot(50, self.ensureCursorVisible)
-        QTimer.singleShot(100, lambda: self._force_cursor_activation())
+        # 确保在粘贴内容后设置焦点
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.ensureCursorVisible()
 
     def show_images_container(self, visible: bool):
         """Shows or hides the image preview container at the bottom."""
@@ -476,8 +532,6 @@ class FeedbackTextEdit(QTextEdit):
         Handles dropping content (images, files, text) onto the text edit widget.
         Ensures cursor is activated after dropping, allowing users to type directly.
         """
-        # 保存拖放位置数据，供后续使用
-        drop_position = event.position().toPoint()
         mime_data = event.mimeData()
         parent_feedback_ui = self._find_feedback_ui_parent()
 
@@ -489,8 +543,8 @@ class FeedbackTextEdit(QTextEdit):
                 event.acceptProposedAction()
                 self._invalidate_reference_cache()
 
-                # 使用计时器设置焦点，确保UI更新后触发
-                QTimer.singleShot(100, lambda: self._focus_after_content_drop())
+                # 设置焦点，确保UI更新后触发
+                QTimer.singleShot(50, self._focus_after_content_drop)
                 return
 
         # 2. Handle file drop from local system
@@ -508,8 +562,8 @@ class FeedbackTextEdit(QTextEdit):
                     event.acceptProposedAction()
                     self._invalidate_reference_cache()
 
-                    # 使用计时器设置焦点，确保UI更新后触发
-                    QTimer.singleShot(100, lambda: self._focus_after_content_drop())
+                    # 设置焦点，确保UI更新后触发
+                    QTimer.singleShot(50, self._focus_after_content_drop)
                     return
 
         # 3. Handle text drop (could be from another app or internally)
@@ -518,25 +572,23 @@ class FeedbackTextEdit(QTextEdit):
             if self._process_text_drop_as_file(event, mime_data, parent_feedback_ui):
                 self._invalidate_reference_cache()
 
-                # 使用计时器设置焦点，确保UI更新后触发
-                QTimer.singleShot(100, lambda: self._focus_after_content_drop())
+                # 设置焦点，确保UI更新后触发
+                QTimer.singleShot(50, self._focus_after_content_drop)
                 return
             else:
                 # Standard text drop
                 super().dropEvent(event)
                 self._invalidate_reference_cache()
 
-                # 使用计时器设置焦点，确保UI更新后触发
-                QTimer.singleShot(
-                    100, lambda: self._focus_after_content_drop(drop_position)
-                )
+                # 设置焦点，确保UI更新后触发
+                QTimer.singleShot(50, self._focus_after_content_drop)
                 return
 
         # Fallback for unhandled drop types
         super().dropEvent(event)
 
         # 即使是未处理的拖放类型，也尝试激活光标
-        QTimer.singleShot(100, lambda: self._focus_after_content_drop(drop_position))
+        QTimer.singleShot(50, self._focus_after_content_drop)
 
     def _process_text_drop_as_file(
         self, event: QEvent, mime_data: QMimeData, parent_feedback_ui: Any
@@ -625,52 +677,39 @@ class FeedbackTextEdit(QTextEdit):
     def _insert_file_reference_text(
         self, parent_feedback_ui: Any, file_path: str, file_name: str
     ):
-        """Inserts a file reference placeholder into the text edit with blue color formatting."""
+        """插入文件引用占位符（纯文本模式）"""
         base_display_name = f"@{file_name}"
         display_name = base_display_name
 
-        # 检查当前文本中实际存在的文件引用，而不是依赖字典
+        # 检查当前文本中实际存在的文件引用，避免重复
         current_text = self.toPlainText()
         counter = 1
         while display_name in current_text:
             display_name = f"@{file_name}({counter})"
             counter += 1
 
-        # Store the file reference in the parent's tracking dictionary
+        # 存储文件引用到父窗口的跟踪字典
         parent_feedback_ui.dropped_file_references[display_name] = file_path
 
         try:
             cursor = self.textCursor()
-            cursor.clearSelection()  # Ensure no text is replaced
-
-            # 保存插入前的位置
-            insert_start_pos = cursor.position()
+            cursor.clearSelection()
 
             # 添加前导空格（如果需要）
-            if insert_start_pos > 0:
+            if cursor.position() > 0:
                 cursor.insertText(" ")
-                insert_start_pos = cursor.position()
 
-            # 创建蓝色文本格式
-            blue_format = QTextCharFormat()
-            blue_format.setForeground(QColor("#0078d4"))  # 蓝色
-            blue_format.setFontWeight(QFont.Weight.Bold)  # 加粗
+            # 插入文件引用（纯文本）
+            cursor.insertText(display_name)
 
-            # 插入带格式的文件引用
-            cursor.insertText(display_name, blue_format)
-
-            # 重置格式为默认格式，确保后续文字不会继承蓝色
-            cursor.setCharFormat(self._default_char_format)
-
-            # 添加后续空格（使用默认格式）
+            # 添加后续空格
             cursor.insertText(" ")
 
-            # 确保光标位置在文件引用末尾（包括后续空格）
-            final_pos = cursor.position()
-            cursor.setPosition(final_pos)
             self.setTextCursor(cursor)
-
             self._invalidate_reference_cache()
+
+            # 触发语法高亮更新
+            self.highlighter.rehighlight()
 
         except Exception as e:
             print(
@@ -690,56 +729,16 @@ class FeedbackTextEdit(QTextEdit):
         """
         设置拖放事件后的焦点和光标位置。
         确保光标处于激活状态，用户可以直接输入文字。
-        对于文件拖拽，光标应该在插入的文件引用末尾，而不是拖放位置。
-        Sets focus and cursor position after a drop event.
-        Ensures the cursor is active so the user can directly type text.
-        For file drops, cursor should be at the end of inserted file reference, not at drop position.
         """
         # 确保窗口获得焦点
         if parent_widget := self.window():
             parent_widget.activateWindow()
             parent_widget.raise_()
 
-        # 强制使文本编辑器获得焦点
-        self.activateWindow()
+        # 设置焦点并移动光标到文本末尾
         self.setFocus(Qt.FocusReason.MouseFocusReason)
-
-        # 不使用拖放位置，而是将光标设置到文本末尾
-        # 这样可以确保光标在插入的文件引用之后，而不是在文件名中间
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-
-        # 确保光标位置使用默认格式，避免继承之前的格式
-        cursor.setCharFormat(self._default_char_format)
-
-        self.setTextCursor(cursor)
-
-        # 确保光标可见并闪烁
-        self.ensureCursorVisible()
-
-        # 使用多个延迟计时器尝试不同时间点激活焦点，增加成功率
-        QTimer.singleShot(10, lambda: self.setFocus(Qt.FocusReason.MouseFocusReason))
-        QTimer.singleShot(50, lambda: self.setFocus(Qt.FocusReason.OtherFocusReason))
-        QTimer.singleShot(100, lambda: self._force_cursor_activation())
-
-    def _force_cursor_activation(self):
-        """强制激活光标，确保其可见并处于输入状态"""
-        self.activateWindow()
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
-
-        # 保存当前光标位置
-        cursor = self.textCursor()
-        pos = cursor.position()
-
-        # 执行一个空操作来触发光标闪烁
-        cursor.movePosition(
-            QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 0
-        )
-        self.setTextCursor(cursor)
-
-        # 恢复原始位置并确保使用默认格式
-        cursor.setPosition(pos)
-        cursor.setCharFormat(self._default_char_format)
         self.setTextCursor(cursor)
 
         # 确保光标可见

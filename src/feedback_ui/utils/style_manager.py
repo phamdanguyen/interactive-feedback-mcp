@@ -35,9 +35,9 @@ def apply_theme(app: QApplication, theme_name: str = "dark"):
     settings_manager = SettingsManager()
     prompt_font_size = settings_manager.get_prompt_font_size()
     options_font_size = settings_manager.get_options_font_size()
-    input_font_size = settings_manager.get_input_font_size()
+    # 输入框字体大小现在与提示文字保持一致，不再单独设置
 
-    # 创建动态字体样式
+    # 创建动态字体样式 - 让输入框字体大小与提示文字保持一致
     dynamic_font_style = f"""
 /* Dynamically Applied Font Sizes */
 SelectableLabel[class="prompt-label"] {{
@@ -47,7 +47,7 @@ SelectableLabel[class="option-label"] {{
     font-size: {options_font_size}pt;
 }}
 QTextEdit, FeedbackTextEdit {{
-    font-size: {input_font_size}pt;
+    font-size: {prompt_font_size}pt;
 }}
 """
 

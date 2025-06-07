@@ -2,7 +2,7 @@
 import re  # 正则表达式 (Regular expressions)
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
-from PySide6.QtGui import QPixmap, QTextCursor
+from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -117,6 +117,30 @@ class FeedbackUI(QMainWindow):
         self.setMinimumWidth(1000)
         self.setMinimumHeight(700)
         self.setWindowFlags(Qt.WindowType.Window)
+
+        # 设置窗口图标
+        self._setup_window_icon()
+
+    def _setup_window_icon(self):
+        """设置窗口图标"""
+        import os
+
+        # 获取图标文件路径
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(script_dir, "feedback_ui", "images", "feedback.png")
+
+        # 尝试加载图标，如果不存在则创建一个空目录确保后续程序正确运行
+        try:
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+            else:
+                # 如果图标文件不存在，确保images目录存在
+                images_dir = os.path.join(script_dir, "feedback_ui", "images")
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir, exist_ok=True)
+                print(f"警告: 图标文件不存在: {icon_path}")
+        except Exception as e:
+            print(f"警告: 无法加载图标文件: {e}")
 
     def _load_settings(self):
         """从设置中加载保存的窗口状态和几何形状"""
@@ -1393,3 +1417,7 @@ class FeedbackUI(QMainWindow):
             # 主题切换后重新应用分割器样式，确保颜色与新主题一致
             if hasattr(self, "main_splitter"):
                 QTimer.singleShot(50, self._force_splitter_style)
+
+            # 更新输入框字体大小，与提示文字保持一致
+            if hasattr(self, "text_input") and self.text_input:
+                QTimer.singleShot(10, self.text_input.update_font_size)
