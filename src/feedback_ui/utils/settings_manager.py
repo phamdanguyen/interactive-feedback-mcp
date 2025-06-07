@@ -7,16 +7,17 @@ from .constants import (
     DEFAULT_INPUT_FONT_SIZE,
     DEFAULT_OPTIONS_FONT_SIZE,
     DEFAULT_PROMPT_FONT_SIZE,
+    DEFAULT_SPLITTER_RATIO,
     SETTINGS_GROUP_CANNED_RESPONSES,
     SETTINGS_GROUP_FONTS,
     SETTINGS_GROUP_MAIN,
     SETTINGS_KEY_GEOMETRY,
     SETTINGS_KEY_INPUT_FONT_SIZE,
-    SETTINGS_KEY_NUMBER_ICONS_VISIBLE,
     SETTINGS_KEY_OPTIONS_FONT_SIZE,
     SETTINGS_KEY_PHRASES,
     SETTINGS_KEY_PROMPT_FONT_SIZE,
-    SETTINGS_KEY_SHOW_SHORTCUT_ICONS,
+    SETTINGS_KEY_SPLITTER_SIZES,
+    SETTINGS_KEY_SPLITTER_STATE,
     SETTINGS_KEY_WINDOW_PINNED,
     SETTINGS_KEY_WINDOW_STATE,
 )
@@ -138,29 +139,40 @@ class SettingsManager(QObject):
         self.settings.endGroup()
         self.settings.sync()
 
-    def get_show_shortcut_icons(self) -> bool:
-        self.settings.beginGroup(SETTINGS_GROUP_CANNED_RESPONSES)
-        show = self.settings.value(SETTINGS_KEY_SHOW_SHORTCUT_ICONS, True, type=bool)
+    # --- Splitter Settings (分割器设置) ---
+    def get_splitter_sizes(self) -> list[int]:
+        """获取保存的分割器尺寸比例"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        sizes = self.settings.value(SETTINGS_KEY_SPLITTER_SIZES, DEFAULT_SPLITTER_RATIO)
         self.settings.endGroup()
-        return show
 
-    def set_show_shortcut_icons(self, show: bool):
-        self.settings.beginGroup(SETTINGS_GROUP_CANNED_RESPONSES)
-        self.settings.setValue(SETTINGS_KEY_SHOW_SHORTCUT_ICONS, show)
+        # 确保返回有效的整数列表
+        if isinstance(sizes, list) and len(sizes) == 2:
+            try:
+                return [int(sizes[0]), int(sizes[1])]
+            except (ValueError, TypeError):
+                return DEFAULT_SPLITTER_RATIO
+        return DEFAULT_SPLITTER_RATIO
+
+    def set_splitter_sizes(self, sizes: list[int]):
+        """保存分割器尺寸比例"""
+        if len(sizes) == 2:
+            self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+            self.settings.setValue(SETTINGS_KEY_SPLITTER_SIZES, sizes)
+            self.settings.endGroup()
+            self.settings.sync()
+
+    def get_splitter_state(self) -> QByteArray | None:
+        """获取分割器状态"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        state = self.settings.value(SETTINGS_KEY_SPLITTER_STATE, None)
         self.settings.endGroup()
-        self.settings.sync()
+        return state if isinstance(state, (QByteArray, type(None))) else None
 
-    def get_number_icons_visible(self) -> bool:
-        self.settings.beginGroup(SETTINGS_GROUP_CANNED_RESPONSES)
-        visible = self.settings.value(
-            SETTINGS_KEY_NUMBER_ICONS_VISIBLE, True, type=bool
-        )
-        self.settings.endGroup()
-        return visible
-
-    def set_number_icons_visible(self, visible: bool):
-        self.settings.beginGroup(SETTINGS_GROUP_CANNED_RESPONSES)
-        self.settings.setValue(SETTINGS_KEY_NUMBER_ICONS_VISIBLE, visible)
+    def set_splitter_state(self, state: QByteArray):
+        """保存分割器状态"""
+        self.settings.beginGroup(SETTINGS_GROUP_MAIN)
+        self.settings.setValue(SETTINGS_KEY_SPLITTER_STATE, state)
         self.settings.endGroup()
         self.settings.sync()
 

@@ -3,7 +3,6 @@
 from PySide6.QtCore import QEvent, QObject, QSize, Qt
 from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -49,7 +48,6 @@ class SelectCannedResponseDialog(QDialog):
         self.texts = {
             "title": {"zh_CN": "常用语管理", "en_US": "Manage Canned Responses"},
             "list_title": {"zh_CN": "常用语列表", "en_US": "Canned Responses List"},
-            "show_icons": {"zh_CN": "显示快捷图标", "en_US": "Show Shortcut Icons"},
             "hint": {
                 "zh_CN": "双击插入文本，点击删除按钮移除，拖拽调整顺序。",
                 "en_US": "Double-click to insert, click delete button, drag to reorder.",
@@ -94,14 +92,6 @@ class SelectCannedResponseDialog(QDialog):
         title_label.setObjectName("DialogTitleLabel")  # For QSS styling
         top_layout.addWidget(title_label)
         top_layout.addStretch(1)
-
-        self.show_shortcut_icons_checkbox = QCheckBox("")  # 稍后设置文本
-        current_show_icons_pref = self.settings_manager.get_show_shortcut_icons()
-        self.show_shortcut_icons_checkbox.setChecked(current_show_icons_pref)
-        self.show_shortcut_icons_checkbox.toggled.connect(
-            self._save_show_icons_preference
-        )
-        top_layout.addWidget(self.show_shortcut_icons_checkbox)
         layout.addLayout(top_layout)
 
         hint_label = QLabel("")  # 稍后设置文本
@@ -282,15 +272,6 @@ class SelectCannedResponseDialog(QDialog):
                     current_responses_in_list.append(label.text())
         self.settings_manager.set_canned_responses(current_responses_in_list)
 
-    def _save_show_icons_preference(self, checked: bool):
-        """Saves the preference for showing shortcut icons."""
-        self.settings_manager.set_show_shortcut_icons(checked)
-        # Notify parent window to update its UI if necessary
-        if self.parent_feedback_ui and hasattr(
-            self.parent_feedback_ui, "_update_shortcut_icons_visibility"
-        ):
-            self.parent_feedback_ui._update_shortcut_icons_visibility(checked)
-
     # Override accept and reject to ensure current list state is saved
     def accept(self):
         self._save_responses_from_list_widget()
@@ -319,11 +300,6 @@ class SelectCannedResponseDialog(QDialog):
 
         if hasattr(self, "hint_label"):
             self.hint_label.setText(self.texts["hint"][current_language])
-
-        if hasattr(self, "show_shortcut_icons_checkbox"):
-            self.show_shortcut_icons_checkbox.setText(
-                self.texts["show_icons"][current_language]
-            )
 
         # 更新输入框占位符
         if hasattr(self, "input_field"):

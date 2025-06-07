@@ -168,6 +168,13 @@ class SettingsDialog(QDialog):
             if app_instance:
                 apply_theme(app_instance, theme_name)
 
+                # 通知主窗口更新分割器样式以匹配新主题
+                for widget in app_instance.topLevelWidgets():
+                    if widget.__class__.__name__ == "FeedbackUI":
+                        if hasattr(widget, "update_font_sizes"):
+                            widget.update_font_sizes()
+                        break
+
     def switch_language(self, index: int):
         """
         切换语言设置

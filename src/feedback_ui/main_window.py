@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -23,11 +24,16 @@ from .dialogs.select_canned_response_dialog import SelectCannedResponseDialog
 from .dialogs.settings_dialog import SettingsDialog
 
 # --- 从子模块导入 (Imports from submodules) ---
-from .utils.constants import ContentItem, FeedbackResult
+from .utils.constants import (
+    ContentItem,
+    FeedbackResult,
+    MIN_LOWER_AREA_HEIGHT,
+    MIN_UPPER_AREA_HEIGHT,
+)
 from .utils.image_processor import get_image_items_from_widgets
 from .utils.settings_manager import SettingsManager
 from .utils.ui_helpers import set_selection_colors
-from .widgets.clickable_label import AtIconLabel, ClickableLabel
+
 from .widgets.feedback_text_edit import FeedbackTextEdit
 from .widgets.image_preview import ImagePreviewWidget
 from .widgets.selectable_label import SelectableLabel
@@ -91,9 +97,10 @@ class FeedbackUI(QMainWindow):
         self._create_ui_layout()
         self._connect_signals()
 
-        self._update_number_icons_display()
-        self._update_shortcut_icons_visibility_state(self.show_shortcut_icons)
         self._apply_pin_state_on_load()
+
+        # 延迟设置分割器样式，确保在窗口显示后应用
+        QTimer.singleShot(100, self._ensure_splitter_visibility)
 
         # 初始化时更新界面文本显示
         self._update_displayed_texts()
@@ -162,14 +169,12 @@ class FeedbackUI(QMainWindow):
 
         self.window_pinned = self.settings_manager.get_main_window_pinned()
         self._load_canned_responses_from_settings()
-        self.show_shortcut_icons = self.settings_manager.get_show_shortcut_icons()
-        self.number_icons_visible = self.settings_manager.get_number_icons_visible()
 
         # 加载字体大小设置
         self.update_font_sizes()
 
     def _create_ui_layout(self):
-        """Creates the main UI layout and populates it with widgets."""
+        """Creates the main UI layout with splitter for resizable areas."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -177,25 +182,26 @@ class FeedbackUI(QMainWindow):
         main_layout.setContentsMargins(20, 5, 20, 10)
         main_layout.setSpacing(15)
 
-        self.feedback_group = QGroupBox()
-        feedback_layout = QVBoxLayout(self.feedback_group)
-        feedback_layout.setContentsMargins(15, 5, 15, 15)
-        feedback_layout.setSpacing(10)
+        # 创建主分割器
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter.setObjectName("mainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)  # 防止区域被完全折叠
 
-        self._create_description_area(feedback_layout)
+        # 创建上部区域（提示文字 + 选项）
+        self.upper_area = self._create_upper_area()
+        self.main_splitter.addWidget(self.upper_area)
 
-        if self.predefined_options:
-            self._create_options_checkboxes(feedback_layout)
+        # 创建下部区域（输入框）
+        self.lower_area = self._create_lower_area()
+        self.main_splitter.addWidget(self.lower_area)
 
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        feedback_layout.addWidget(separator)
+        # 配置分割器属性
+        self._setup_splitter_properties()
 
-        self._create_shortcut_icons_panel(feedback_layout)
-        self._create_input_submission_area(feedback_layout)
+        main_layout.addWidget(self.main_splitter)
 
-        main_layout.addWidget(self.feedback_group)
+        # 强制设置分割器样式
+        self._force_splitter_style()
 
         self._setup_bottom_bar(main_layout)
 
@@ -211,6 +217,139 @@ class FeedbackUI(QMainWindow):
         self._create_github_link_area(main_layout)
 
         self._update_submit_button_text_status()
+
+    def _create_upper_area(self) -> QWidget:
+        """创建上部区域容器（提示文字 + 选项）"""
+        upper_widget = QWidget()
+        upper_layout = QVBoxLayout(upper_widget)
+        upper_layout.setContentsMargins(15, 5, 15, 15)
+        upper_layout.setSpacing(10)
+
+        # 添加现有的描述区域
+        self._create_description_area(upper_layout)
+
+        # 添加选项复选框（如果有）
+        if self.predefined_options:
+            self._create_options_checkboxes(upper_layout)
+
+        return upper_widget
+
+    def _create_lower_area(self) -> QWidget:
+        """创建下部区域容器（输入框）"""
+        lower_widget = QWidget()
+        lower_layout = QVBoxLayout(lower_widget)
+        lower_layout.setContentsMargins(15, 5, 15, 15)
+        lower_layout.setSpacing(10)
+
+        # 添加输入提交区域
+        self._create_input_submission_area(lower_layout)
+
+        return lower_widget
+
+    def _setup_splitter_properties(self):
+        """配置分割器属性"""
+        # 设置分割器手柄宽度，使其更明显
+        self.main_splitter.setHandleWidth(12)
+
+        # 设置最小尺寸
+        self.upper_area.setMinimumHeight(MIN_UPPER_AREA_HEIGHT)
+        self.lower_area.setMinimumHeight(MIN_LOWER_AREA_HEIGHT)
+
+        # 设置初始尺寸
+        saved_sizes = self.settings_manager.get_splitter_sizes()
+        self.main_splitter.setSizes(saved_sizes)
+
+        # 连接信号以保存状态
+        self.main_splitter.splitterMoved.connect(self._on_splitter_moved)
+
+        # 恢复分割器状态
+        saved_state = self.settings_manager.get_splitter_state()
+        if saved_state:
+            self.main_splitter.restoreState(saved_state)
+
+        # 双击重置功能
+        self._setup_splitter_double_click()
+
+    def _force_splitter_style(self):
+        """强制设置分割器样式，确保可见性"""
+        # 获取当前主题的按钮悬停颜色，保持UI风格一致
+        current_theme = self.settings_manager.get_current_theme()
+        is_dark = current_theme == "dark"
+
+        if is_dark:
+            # 深色主题：使用与按钮悬停相同的颜色
+            base_color = "#444444"
+            hover_color = "#555555"
+            pressed_color = "#333333"
+        else:
+            # 浅色主题：使用与按钮悬停相同的颜色
+            base_color = "#cccccc"
+            hover_color = "#dddddd"
+            pressed_color = "#bbbbbb"
+
+        # 精致的分割线样式：细线，与UI风格一致
+        splitter_style = f"""
+        QSplitter::handle:vertical {{
+            background-color: {base_color} !important;
+            border: none !important;
+            border-radius: 2px;
+            height: 6px !important;
+            min-height: 6px !important;
+            max-height: 6px !important;
+            margin: 2px 4px;
+        }}
+        QSplitter::handle:vertical:hover {{
+            background-color: {hover_color} !important;
+        }}
+        QSplitter::handle:vertical:pressed {{
+            background-color: {pressed_color} !important;
+        }}
+        """
+        self.main_splitter.setStyleSheet(splitter_style)
+
+        # 设置精致的手柄宽度
+        self.main_splitter.setHandleWidth(6)
+
+        # 确保分割器手柄可见
+        for i in range(self.main_splitter.count() - 1):
+            handle = self.main_splitter.handle(i + 1)
+            if handle:
+                handle.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+                handle.setMinimumHeight(6)
+                handle.setMaximumHeight(6)
+                # 设置与主题一致的背景色
+                handle.setStyleSheet(
+                    f"background-color: {base_color}; border: none; border-radius: 2px; margin: 2px 4px;"
+                )
+
+    def _ensure_splitter_visibility(self):
+        """确保分割器在窗口显示后可见"""
+        if hasattr(self, "main_splitter"):
+            # 重新应用样式
+            self._force_splitter_style()
+
+            # 强制刷新分割器
+            self.main_splitter.update()
+
+    def _setup_splitter_double_click(self):
+        """设置分割器双击重置功能"""
+        # 获取分割器手柄并设置双击事件
+        handle = self.main_splitter.handle(1)
+        if handle:
+            handle.mouseDoubleClickEvent = self._reset_splitter_to_default
+
+    def _reset_splitter_to_default(self, event):
+        """双击分割器手柄时重置为默认比例"""
+        from .utils.constants import DEFAULT_SPLITTER_RATIO
+
+        self.main_splitter.setSizes(DEFAULT_SPLITTER_RATIO)
+        self._on_splitter_moved(0, 0)  # 保存新的状态
+
+    def _on_splitter_moved(self, pos: int, index: int):
+        """分割器移动时保存状态"""
+        sizes = self.main_splitter.sizes()
+        self.settings_manager.set_splitter_sizes(sizes)
+        self.settings_manager.set_splitter_state(self.main_splitter.saveState())
 
     def _create_description_area(self, parent_layout: QVBoxLayout):
         scroll_area = QScrollArea()
@@ -281,33 +420,6 @@ class FeedbackUI(QMainWindow):
             options_layout.addWidget(option_container)
 
         parent_layout.addWidget(options_frame)
-
-    def _create_shortcut_icons_panel(self, parent_layout: QVBoxLayout):
-        self.shortcuts_container = QWidget(self)
-        shortcuts_container_layout = QHBoxLayout(self.shortcuts_container)
-        shortcuts_container_layout.setContentsMargins(0, 0, 0, 0)
-        shortcuts_container_layout.setSpacing(5)
-
-        self.at_icon = AtIconLabel(self.shortcuts_container)
-        shortcuts_container_layout.addWidget(self.at_icon)
-
-        self.number_icons_container = QWidget(self.shortcuts_container)
-        number_icons_layout = QHBoxLayout(self.number_icons_container)
-        number_icons_layout.setContentsMargins(0, 0, 0, 0)
-        number_icons_layout.setSpacing(5)
-
-        self.shortcut_number_icons: list[ClickableLabel] = []
-        for i in range(10):
-            number_label = ClickableLabel(str(i + 1), self.number_icons_container)
-            number_label.setFixedSize(22, 22)
-            number_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            number_label.setObjectName("shortcut_number_icon")
-            number_icons_layout.addWidget(number_label)
-            self.shortcut_number_icons.append(number_label)
-
-        number_icons_layout.addStretch(1)
-        shortcuts_container_layout.addWidget(self.number_icons_container, 1)
-        parent_layout.addWidget(self.shortcuts_container)
 
     def _create_input_submission_area(self, parent_layout: QVBoxLayout):
         self.text_input = FeedbackTextEdit(self)
@@ -380,15 +492,11 @@ class FeedbackUI(QMainWindow):
         parent_layout.addWidget(github_container)
 
     def _connect_signals(self):
-        self.at_icon.clicked.connect(self._toggle_number_icons_visibility_action)
         self.text_input.textChanged.connect(self._update_submit_button_text_status)
         self.canned_responses_button.clicked.connect(self._show_canned_responses_dialog)
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
         self.submit_button.clicked.connect(self._prepare_and_submit_feedback)
-
-        for i, icon in enumerate(self.shortcut_number_icons):
-            icon.clicked.connect(lambda i=i: self._handle_number_icon_click_action(i))
 
     def event(self, event: QEvent) -> bool:
         if event.type() == QEvent.Type.WindowDeactivate:
@@ -402,6 +510,12 @@ class FeedbackUI(QMainWindow):
         return super().event(event)
 
     def closeEvent(self, event: QEvent):
+        # 保存分割器状态
+        if hasattr(self, "main_splitter"):
+            sizes = self.main_splitter.sizes()
+            self.settings_manager.set_splitter_sizes(sizes)
+            self.settings_manager.set_splitter_state(self.main_splitter.saveState())
+
         # 保存窗口几何和状态
         self.settings_manager.set_main_window_geometry(self.saveGeometry())
         self.settings_manager.set_main_window_state(self.saveState())
@@ -422,31 +536,6 @@ class FeedbackUI(QMainWindow):
     def _load_canned_responses_from_settings(self):
         self.canned_responses = self.settings_manager.get_canned_responses()
 
-    def _update_number_icons_display(self):
-        for i, icon in enumerate(self.shortcut_number_icons):
-            if i < len(self.canned_responses):
-                icon.setToolTip(self.canned_responses[i])
-                icon.setVisible(True)
-            else:
-                icon.setVisible(False)
-
-    def _update_shortcut_icons_visibility_state(self, visible: bool | None = None):
-        if visible is None:
-            visible = self.settings_manager.get_show_shortcut_icons()
-        self.number_icons_container.setVisible(visible)
-
-    def _toggle_number_icons_visibility_action(self):
-        new_visibility = not self.number_icons_container.isVisible()
-        self.settings_manager.set_number_icons_visible(new_visibility)
-        self.number_icons_container.setVisible(new_visibility)
-
-    def _handle_number_icon_click_action(self, index: int):
-        if 0 <= index < len(self.canned_responses):
-            text_to_insert = self.canned_responses[index]
-            if text_to_insert and isinstance(text_to_insert, str):
-                self.text_input.insertPlainText(text_to_insert)
-                self.text_input.setFocus()
-
     def _update_submit_button_text_status(self):
         has_text = bool(self.text_input.toPlainText().strip())
         has_images = bool(self.image_widgets)
@@ -465,7 +554,6 @@ class FeedbackUI(QMainWindow):
         # After the dialog closes, settings are updated internally by the dialog.
         # We just need to reload them here.
         self._load_canned_responses_from_settings()
-        self._update_number_icons_display()
 
     def open_settings_dialog(self):
         """Opens the settings dialog."""
@@ -803,3 +891,7 @@ class FeedbackUI(QMainWindow):
 
             current_theme = self.settings_manager.get_current_theme()
             apply_theme(app, current_theme)
+
+            # 主题切换后重新应用分割器样式，确保颜色与新主题一致
+            if hasattr(self, "main_splitter"):
+                QTimer.singleShot(50, self._force_splitter_style)

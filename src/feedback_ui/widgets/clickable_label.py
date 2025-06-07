@@ -1,6 +1,5 @@
 # feedback_ui/widgets/clickable_label.py
-from PySide6.QtCore import QEvent, QObject, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import QLabel
 
 
@@ -79,51 +78,6 @@ class ClickableLabel(QLabel):
             if self.rect().contains(
                 event.position().toPoint()
             ):  # event.pos() in PySide6 is QPointF
-                self.clicked.emit()
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-
-class AtIconLabel(QLabel):
-    """
-    A QLabel that displays an '@' symbol and emits a 'clicked' signal.
-    一个显示 '@' 符号并发出 'clicked' 信号的 QLabel。
-    """
-
-    clicked = Signal()
-
-    def __init__(self, parent: QObject = None):
-        super().__init__(parent)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(28, 28)
-        # self.setStyleSheet("background-color: transparent;") # Better to set in global QSS
-
-    def paintEvent(self, event: QEvent):  # Parameter type QPaintEvent expected
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.setPen(QColor("#cccccc"))
-        font = QFont()
-        font.setPointSize(18)
-        font.setBold(True)
-        painter.setFont(font)
-        rect = self.rect()
-        # Adjust for better vertical centering of '@'
-        adjusted_rect = QRect(rect.x(), rect.y() - 1, rect.width(), rect.height())
-        painter.drawText(adjusted_rect, Qt.AlignmentFlag.AlignCenter, "@")
-        painter.end()
-
-    def mousePressEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
-        if event.button() == Qt.MouseButton.LeftButton:
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event: QEvent):  # Parameter type QMouseEvent expected
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.rect().contains(event.position().toPoint()):
                 self.clicked.emit()
             event.accept()
         else:

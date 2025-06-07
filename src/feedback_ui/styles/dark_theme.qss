@@ -274,4 +274,42 @@ SelectCannedResponseDialog QCheckBox::indicator:checked {
 /* QLabel within DraggableListWidget items (for text display) */
 DraggableListWidget QLabel {
     color: white;
-} 
+}
+
+/* QSplitter 样式 (Splitter Styles) - 精致版本 */
+QSplitter {
+    background-color: transparent;
+}
+
+/* 精致的分割器样式，与按钮悬停颜色一致 */
+QSplitter[objectName="mainSplitter"]::handle,
+QSplitter::handle {
+    background-color: #444444;  /* 与按钮悬停颜色一致 */
+    border: none;
+    border-radius: 2px;
+    margin: 2px 4px;
+}
+
+QSplitter[objectName="mainSplitter"]::handle:horizontal,
+QSplitter::handle:horizontal {
+    width: 6px;
+    min-width: 6px;
+    max-width: 6px;
+}
+
+QSplitter[objectName="mainSplitter"]::handle:vertical,
+QSplitter::handle:vertical {
+    height: 6px;
+    min-height: 6px;
+    max-height: 6px;
+}
+
+QSplitter[objectName="mainSplitter"]::handle:hover,
+QSplitter::handle:hover {
+    background-color: #555555;  /* 悬停时稍亮 */
+}
+
+QSplitter[objectName="mainSplitter"]::handle:pressed,
+QSplitter::handle:pressed {
+    background-color: #333333;  /* 按下时稍暗 */
+}
