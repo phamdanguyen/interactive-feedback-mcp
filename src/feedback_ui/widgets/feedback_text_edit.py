@@ -75,9 +75,9 @@ class FeedbackTextEdit(QTextEdit):
         self.setAcceptRichText(False)
         self.setPlainText("")
 
-        # 获取提示文字区域的字体大小，保持一致
-        prompt_font_size = self._get_prompt_font_size()
-        font = QFont("Segoe UI", prompt_font_size)
+        # 获取输入框的字体大小设置
+        input_font_size = self._get_input_font_size()
+        font = QFont("Segoe UI", input_font_size)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 101.5)
         font.setWordSpacing(1.0)
@@ -287,27 +287,27 @@ class FeedbackTextEdit(QTextEdit):
         """失去焦点时的处理"""
         super().focusOutEvent(event)
 
-    def _get_prompt_font_size(self) -> int:
-        """获取提示文字区域的字体大小，用于保持一致性"""
+    def _get_input_font_size(self) -> int:
+        """获取输入框的字体大小设置"""
         try:
             # 尝试从父窗口获取设置管理器
             parent_feedback_ui = self._find_feedback_ui_parent()
             if parent_feedback_ui and hasattr(parent_feedback_ui, "settings_manager"):
-                return parent_feedback_ui.settings_manager.get_prompt_font_size()
+                return parent_feedback_ui.settings_manager.get_input_font_size()
         except Exception:
             pass
 
         # 如果无法获取，使用默认值
-        from ..utils.constants import DEFAULT_PROMPT_FONT_SIZE
+        from ..utils.constants import DEFAULT_INPUT_FONT_SIZE
 
-        return DEFAULT_PROMPT_FONT_SIZE
+        return DEFAULT_INPUT_FONT_SIZE
 
     def update_font_size(self):
-        """更新字体大小，与提示文字区域保持一致"""
+        """更新输入框字体大小"""
         try:
-            prompt_font_size = self._get_prompt_font_size()
+            input_font_size = self._get_input_font_size()
             current_font = self.font()
-            current_font.setPointSize(prompt_font_size)
+            current_font.setPointSize(input_font_size)
             self.setFont(current_font)
         except Exception:
             # 忽略异常，避免影响正常使用

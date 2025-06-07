@@ -31,13 +31,16 @@ def apply_theme(app: QApplication, theme_name: str = "dark"):
         app.setStyleSheet("QWidget { background-color: #333; color: white; }")
         return
 
+    # 设置QPalette以确保复选框等控件使用正确的颜色
+    _apply_theme_palette(app, theme_name)
+
     # 从设置中获取动态字体大小
     settings_manager = SettingsManager()
     prompt_font_size = settings_manager.get_prompt_font_size()
     options_font_size = settings_manager.get_options_font_size()
-    # 输入框字体大小现在与提示文字保持一致，不再单独设置
+    input_font_size = settings_manager.get_input_font_size()
 
-    # 创建动态字体样式 - 让输入框字体大小与提示文字保持一致
+    # 创建动态字体样式 - 恢复输入框独立的字体大小控制
     dynamic_font_style = f"""
 /* Dynamically Applied Font Sizes */
 SelectableLabel[class="prompt-label"] {{
@@ -47,10 +50,32 @@ SelectableLabel[class="option-label"] {{
     font-size: {options_font_size}pt;
 }}
 QTextEdit, FeedbackTextEdit {{
-    font-size: {prompt_font_size}pt;
+    font-size: {input_font_size}pt;
 }}
 """
 
     # 合并基础样式和动态字体样式
     final_stylesheet = base_stylesheet + "\n" + dynamic_font_style
     app.setStyleSheet(final_stylesheet)
+
+
+def _apply_theme_palette(app: QApplication, theme_name: str):
+    """为指定主题设置QPalette，确保控件颜色正确"""
+    from PySide6.QtGui import QPalette, QColor
+
+    palette = app.palette()
+
+    if theme_name == "dark":
+        # 深色主题的QPalette设置
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#4D4D4D"))  # 深灰色高亮
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText, QColor("#FFFFFF")
+        )  # 白色高亮文本
+    else:
+        # 浅色主题的QPalette设置 - 使用灰色而不是蓝色
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#666666"))  # 灰色高亮
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText, QColor("#FFFFFF")
+        )  # 白色高亮文本
+
+    app.setPalette(palette)
