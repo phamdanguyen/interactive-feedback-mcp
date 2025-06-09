@@ -6,6 +6,22 @@
     font-weight: 400;
 }
 
+/* 工具提示样式 (Tooltip Styles) */
+QToolTip {
+    background-color: #3c3c3c;
+    color: #f0f0f0;
+    border: 1px solid #555555;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12pt;
+    font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+    line-height: 1.5;
+    max-width: 380px;
+    word-wrap: break-word;
+    /* 添加阴影效果，与预览窗口风格保持一致 */
+    qproperty-windowOpacity: 0.95;
+}
+
 QMainWindow, QDialog {
     background-color: #2c2c2c;
 }
@@ -169,6 +185,36 @@ QCheckBox::indicator:checked {
 }
 QCheckBox::indicator:hover:!checked { border: 1px solid #666666; background-color: #333333; }
 QCheckBox::indicator:checked:hover { background-color: #555555; border-color: #666666; }
+
+/* QRadioButton 样式 - 深色主题 */
+QRadioButton {
+    color: #aaaaaa; /* 与复选框文字颜色一致 */
+    spacing: 8px;
+    min-height: 28px;
+    padding: 1px;
+}
+QRadioButton::indicator {
+    width: 22px; height: 22px;
+    border: 1px solid #444444;
+    border-radius: 11px; /* 圆形 */
+    background-color: transparent;
+}
+QRadioButton::indicator:checked {
+    background-color: transparent;
+    border: 2px solid #555555;
+    /* 使用径向渐变创建圆点效果 */
+    background-image: radial-gradient(circle, #4D4D4D 30%, transparent 32%);
+}
+QRadioButton::indicator:hover:!checked {
+    border: 1px solid #666666;
+    background-color: #333333;
+}
+QRadioButton::indicator:checked:hover {
+    border-color: #666666;
+    background-image: radial-gradient(circle, #555555 30%, transparent 32%);
+}
+
+
 
 QFrame[frameShape="4"] /* HLine */ {
     color: #555555; max-height: 1px; margin: 10px 0;

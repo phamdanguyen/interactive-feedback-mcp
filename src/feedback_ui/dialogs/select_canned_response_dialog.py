@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid  # 替换sip
 
 from ..utils.settings_manager import SettingsManager  # Relative import
+from ..utils.tooltip_formatter import TooltipFormatter  # Import tooltip formatter
 from .draggable_list_widget import DraggableListWidget  # Import the custom list widget
 
 # Forward declaration for type hinting parent window
@@ -36,8 +37,8 @@ class SelectCannedResponseDialog(QDialog):
     ):  # parent_window is FeedbackUI
         super().__init__(parent_window)  # Set parent for modality and context
         self.setWindowTitle(self.tr("常用语管理"))
-        self.resize(500, 450)
-        self.setMinimumSize(450, 400)
+        self.resize(500, 500)  # 增加高度
+        self.setMinimumSize(450, 450)  # 增加最小高度
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
         self.parent_feedback_ui = parent_window  # Store reference to the main UI
@@ -91,20 +92,7 @@ class SelectCannedResponseDialog(QDialog):
         layout.setSpacing(16)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        top_layout = QHBoxLayout()
-        title_label = QLabel("")  # 稍后设置文本
-        title_label.setObjectName("DialogTitleLabel")  # For QSS styling
-        top_layout.addWidget(title_label)
-        top_layout.addStretch(1)
-        layout.addLayout(top_layout)
-
-        hint_label = QLabel("")  # 稍后设置文本
-        hint_label.setObjectName("DialogHintLabel")
-        layout.addWidget(hint_label)
-        layout.addSpacing(5)
-
-        self.title_label = title_label
-        self.hint_label = hint_label
+        # 移除标题和提示标签，简化界面
 
         self.responses_list_widget = DraggableListWidget(self)
         self.responses_list_widget.item_double_clicked.connect(
@@ -113,27 +101,19 @@ class SelectCannedResponseDialog(QDialog):
         self.responses_list_widget.drag_completed.connect(
             self._save_responses_from_list_widget
         )
+
+        # 设置列表的最小高度，确保能显示更多项目
+        self.responses_list_widget.setMinimumHeight(250)  # 增加列表高度
+
         layout.addWidget(
             self.responses_list_widget, 1
         )  # Give list widget stretch factor
 
-        # 输入框单独一行
-        input_layout = QVBoxLayout()
-        input_layout.setSpacing(8)
-
-        # 输入框标签
-        current_language = self.settings_manager.get_current_language()
-        input_label = QLabel(self.texts["input_label"][current_language])
-        input_label.setStyleSheet("font-weight: bold; margin-bottom: 4px;")
-        input_layout.addWidget(input_label)
-
-        # 输入框
+        # 输入框单独一行，移除标签
         self.input_field = QLineEdit()
         # 稍后设置占位符文本
         self.input_field.returnPressed.connect(self._add_new_response_from_input)
-        input_layout.addWidget(self.input_field)
-
-        layout.addLayout(input_layout)
+        layout.addWidget(self.input_field)
 
         # 底部按钮区域 - 左侧保存，右侧关闭
         button_layout = QHBoxLayout()
@@ -157,7 +137,6 @@ class SelectCannedResponseDialog(QDialog):
         layout.addLayout(button_layout)
 
         self.close_button = close_button
-        self.input_label = input_label
 
     def _load_responses_to_list_widget(self, responses: list[str]):
         """Populates the list widget with given responses."""
@@ -184,6 +163,8 @@ class SelectCannedResponseDialog(QDialog):
         text_label.setMaximumWidth(
             350
         )  # Prevent very long text from expanding too much
+        # 为文本标签设置工具提示，显示完整的常用语文本内容
+        TooltipFormatter.set_tooltip_for_widget(text_label, text)
         item_layout.addWidget(text_label, 1)  # Label takes available space
 
         current_language = self.settings_manager.get_current_language()
@@ -195,9 +176,7 @@ class SelectCannedResponseDialog(QDialog):
         delete_button.setToolTip(self.texts["delete_tooltip"][current_language])
         # Use lambda to pass the item (or its text) to the delete function
         delete_button.clicked.connect(
-            lambda checked=False, item_to_delete=item: self._delete_response_item(
-                item_to_delete
-            )
+            lambda _, item_to_delete=item: self._delete_response_item(item_to_delete)
         )
         item_layout.addWidget(delete_button)
 
@@ -230,16 +209,14 @@ class SelectCannedResponseDialog(QDialog):
 
     def _add_new_response_from_input(self):
         """Adds a new response from the input field to the list and settings."""
+        # 立即获取输入文本
         text_to_add = self.input_field.text().strip()
-        current_language = self.settings_manager.get_current_language()
 
+        # 如果输入为空，静默返回，不显示警告
         if not text_to_add:
-            QMessageBox.warning(
-                self,
-                self.texts["invalid_input"][current_language],
-                self.texts["empty_input_message"][current_language],
-            )
             return
+
+        current_language = self.settings_manager.get_current_language()
 
         # Check for duplicates in the current list items
         for i in range(self.responses_list_widget.count()):
@@ -324,17 +301,7 @@ class SelectCannedResponseDialog(QDialog):
         # 更新窗口标题
         self.setWindowTitle(self.texts["title"][current_language])
 
-        # 更新标题和提示标签
-        if hasattr(self, "title_label"):
-            self.title_label.setText(self.texts["list_title"][current_language])
-
-        if hasattr(self, "hint_label"):
-            self.hint_label.setText(self.texts["hint"][current_language])
-
-        # 更新输入框标签和占位符
-        if hasattr(self, "input_label"):
-            self.input_label.setText(self.texts["input_label"][current_language])
-
+        # 由于移除了标题和提示标签，直接更新输入框占位符
         if hasattr(self, "input_field"):
             self.input_field.setPlaceholderText(
                 self.texts["input_placeholder"][current_language]

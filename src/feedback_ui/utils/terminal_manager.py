@@ -30,30 +30,20 @@ class TerminalManager:
 
     def detect_terminals(self):
         """检测系统中可用的终端"""
-        print("DEBUG: 开始检测系统中的终端程序", file=sys.stderr)
-
         # 检测 PowerShell
         powershell_path = self._detect_powershell()
         if powershell_path:
             self.available_terminals[TERMINAL_POWERSHELL] = powershell_path
-            print(f"DEBUG: 检测到 PowerShell: {powershell_path}", file=sys.stderr)
 
         # 检测 Git Bash
         gitbash_path = self._detect_git_bash()
         if gitbash_path:
             self.available_terminals[TERMINAL_GITBASH] = gitbash_path
-            print(f"DEBUG: 检测到 Git Bash: {gitbash_path}", file=sys.stderr)
 
         # 检测 Command Prompt
         cmd_path = self._detect_cmd()
         if cmd_path:
             self.available_terminals[TERMINAL_CMD] = cmd_path
-            print(f"DEBUG: 检测到 Command Prompt: {cmd_path}", file=sys.stderr)
-
-        print(
-            f"DEBUG: 终端检测完成，共找到 {len(self.available_terminals)} 个终端",
-            file=sys.stderr,
-        )
 
     def _detect_powershell(self) -> str:
         """检测 PowerShell 路径"""

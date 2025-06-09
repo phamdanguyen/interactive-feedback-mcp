@@ -1,11 +1,10 @@
 # feedback_ui/dialogs/manage_canned_responses_dialog.py
-from PySide6.QtCore import QEvent, QObject, Qt  # Added QObject and QEvent
-from PySide6.QtGui import QCursor, QRect  # Added QRect, QCursor
+from PySide6.QtCore import QEvent, QObject, Qt, QRect  # Added QObject, QEvent, QRect
+from PySide6.QtGui import QCursor  # Added QCursor
 from PySide6.QtWidgets import (
     QDialog,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
@@ -15,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..utils.settings_manager import SettingsManager  # Relative import
+from ..utils.tooltip_formatter import TooltipFormatter  # Import tooltip formatter
 
 
 class ManageCannedResponsesDialog(QDialog):
@@ -46,25 +46,20 @@ class ManageCannedResponsesDialog(QDialog):
         main_layout.setContentsMargins(18, 18, 18, 18)
         main_layout.setSpacing(18)
 
-        description_label = QLabel()
-        description_label.setText(
-            self.tr(
-                "管理您的常用反馈短语。点击列表项进行编辑，编辑完成后点击更新按钮。"
-            )
-        )
-        description_label.setWordWrap(True)
-        description_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        main_layout.addWidget(description_label)
-
+        # 移除描述标签，直接显示列表
         self.responses_list_widget = QListWidget()
         self.responses_list_widget.setAlternatingRowColors(True)
         self.responses_list_widget.itemClicked.connect(self._on_list_item_selected)
+
+        # 设置列表的最小高度，确保能显示5个项目
+        # 假设每个项目高度约30px，加上边距和滚动条空间
+        self.responses_list_widget.setMinimumHeight(180)  # 5 * 30 + 30 (边距)
+
         main_layout.addWidget(self.responses_list_widget)
 
         # --- Edit Group ---
-        edit_group = QGroupBox(self.tr("编辑常用语"))
+        # 移除分组框标题，简化界面
+        edit_group = QGroupBox()  # 不设置标题
         edit_layout = QVBoxLayout(edit_group)
         edit_layout.setContentsMargins(12, 15, 12, 15)
         edit_layout.setSpacing(12)
@@ -125,6 +120,11 @@ class ManageCannedResponsesDialog(QDialog):
         if responses:
             for response_text in responses:
                 self.responses_list_widget.addItem(response_text)
+                # 为列表项设置工具提示，显示完整的常用语文本内容
+                item = self.responses_list_widget.item(
+                    self.responses_list_widget.count() - 1
+                )
+                TooltipFormatter.set_tooltip_for_widget(item, response_text)
         self._update_button_states()
 
     def _save_responses_to_settings(self):
@@ -165,6 +165,9 @@ class ManageCannedResponsesDialog(QDialog):
             return
 
         self.responses_list_widget.addItem(text)
+        # 为新添加的列表项设置工具提示
+        item = self.responses_list_widget.item(self.responses_list_widget.count() - 1)
+        TooltipFormatter.set_tooltip_for_widget(item, text)
         self._save_responses_to_settings()
         self.input_field.clear()
         self.responses_list_widget.setCurrentRow(
@@ -194,6 +197,8 @@ class ManageCannedResponsesDialog(QDialog):
                 return
 
         current_item.setText(new_text)
+        # 更新工具提示以显示新的文本内容
+        TooltipFormatter.set_tooltip_for_widget(current_item, new_text)
         self._save_responses_to_settings()
         # self.input_field.clear() # Keep text for further editing if desired
         # self.responses_list_widget.clearSelection() # Keep item selected
@@ -261,48 +266,21 @@ class ManageCannedResponsesDialog(QDialog):
         """更新界面上的所有文本"""
         self.setWindowTitle(self.tr("管理常用语"))
 
-        # 更新描述标签
-        description_label = self.findChild(QLabel)
-        if description_label:
-            description_label.setText(
-                self.tr(
-                    "管理您的常用反馈短语。点击列表项进行编辑，编辑完成后点击更新按钮。"
-                )
+        # 由于移除了描述标签和分组框标题，直接更新输入框和按钮
+        # 更新输入框
+        if hasattr(self, "input_field") and self.input_field:
+            self.input_field.setPlaceholderText(
+                self.tr("输入新的常用语或编辑选中的项目")
             )
 
-        # 更新分组框标题
-        edit_group = None
-        for i in range(self.layout().count()):
-            widget = self.layout().itemAt(i).widget()
-            if isinstance(widget, QGroupBox):
-                edit_group = widget
-                break
-
-        if edit_group:
-            edit_group.setTitle(self.tr("编辑常用语"))
-
-            # 更新输入框
-            input_field = edit_group.findChild(QLineEdit)
-            if input_field:
-                input_field.setPlaceholderText(
-                    self.tr("输入新的常用语或编辑选中的项目")
-                )
-
-            # 更新按钮
-            buttons = edit_group.findChildren(QPushButton)
-            for button in buttons:
-                if button.objectName() == "add_button" or "添加" in button.text():
-                    button.setText(self.tr("添加"))
-                elif button.objectName() == "update_button" or "更新" in button.text():
-                    button.setText(self.tr("更新"))
-                elif button.objectName() == "delete_button" or "删除" in button.text():
-                    button.setText(self.tr("删除"))
-                elif (
-                    button.objectName() == "clear_all_button" or "清空" in button.text()
-                ):
-                    button.setText(self.tr("清空全部"))
-
-        # 更新关闭按钮
-        close_button = self.findChild(QPushButton, "close_dialog_button")
-        if close_button:
-            close_button.setText(self.tr("关闭"))
+        # 更新按钮
+        if hasattr(self, "add_button") and self.add_button:
+            self.add_button.setText(self.tr("添加"))
+        if hasattr(self, "update_button") and self.update_button:
+            self.update_button.setText(self.tr("更新"))
+        if hasattr(self, "delete_button") and self.delete_button:
+            self.delete_button.setText(self.tr("删除"))
+        if hasattr(self, "clear_all_button") and self.clear_all_button:
+            self.clear_all_button.setText(self.tr("清空全部"))
+        if hasattr(self, "close_dialog_button") and self.close_dialog_button:
+            self.close_dialog_button.setText(self.tr("关闭"))

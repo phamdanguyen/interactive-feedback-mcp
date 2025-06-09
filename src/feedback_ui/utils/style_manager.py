@@ -71,11 +71,38 @@ def _apply_theme_palette(app: QApplication, theme_name: str):
         palette.setColor(
             QPalette.ColorRole.HighlightedText, QColor("#FFFFFF")
         )  # 白色高亮文本
+
+        # 设置按钮和选择控件的颜色
+        palette.setColor(QPalette.ColorRole.Button, QColor("#3C3C3C"))  # 按钮背景
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor("#FFFFFF"))  # 按钮文字
+
+        # 设置选择控件的强调色（影响单选按钮、复选框等）
+        palette.setColor(QPalette.ColorRole.Accent, QColor("#4D4D4D"))  # 深灰色强调色
+
+        # 设置窗口和基础颜色
+        palette.setColor(QPalette.ColorRole.Window, QColor("#2c2c2c"))  # 窗口背景
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#f0f0f0"))  # 窗口文字
+        palette.setColor(QPalette.ColorRole.Base, QColor("#272727"))  # 输入框背景
+        palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))  # 输入框文字
+
     else:
         # 浅色主题的QPalette设置 - 使用灰色而不是蓝色
-        palette.setColor(QPalette.ColorRole.Highlight, QColor("#666666"))  # 灰色高亮
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#6B6B6B"))  # 灰色高亮
         palette.setColor(
             QPalette.ColorRole.HighlightedText, QColor("#FFFFFF")
         )  # 白色高亮文本
+
+        # 设置按钮和选择控件的颜色
+        palette.setColor(QPalette.ColorRole.Button, QColor("#e1e1e1"))  # 按钮背景
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor("#111111"))  # 按钮文字
+
+        # 设置选择控件的强调色（影响单选按钮、复选框等）
+        palette.setColor(QPalette.ColorRole.Accent, QColor("#6B6B6B"))  # 灰色强调色
+
+        # 设置窗口和基础颜色
+        palette.setColor(QPalette.ColorRole.Window, QColor("#f0f0f0"))  # 窗口背景
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#111111"))  # 窗口文字
+        palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))  # 输入框背景
+        palette.setColor(QPalette.ColorRole.Text, QColor("#111111"))  # 输入框文字
 
     app.setPalette(palette)

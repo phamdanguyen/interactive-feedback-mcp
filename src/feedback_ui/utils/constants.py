@@ -134,3 +134,18 @@ TERMINAL_TYPES = {
 SETTINGS_GROUP_TERMINAL = "Terminal"
 SETTINGS_KEY_DEFAULT_TERMINAL = "default_terminal_type"
 SETTINGS_KEY_TERMINAL_PATH_PREFIX = "terminal_path_"
+
+# 选项间距相关常量 (Option Spacing Constants)
+DEFAULT_OPTION_SPACING = 8  # 默认选项间距
+MAX_OPTION_SPACING = 24  # 最大选项间距（3倍限制）
+MIN_OPTION_SPACING = 6  # 最小选项间距
+OPTION_SPACING_MULTIPLIER = 3  # 间距倍数限制
+
+# 截图功能相关常量 (Screenshot Feature Constants)
+SCREENSHOT_MIN_SIZE = 10  # 最小截图尺寸（像素）
+SCREENSHOT_OVERLAY_OPACITY = 100  # 遮罩透明度 (0-255)
+SCREENSHOT_BORDER_COLOR = (0, 120, 215)  # 选择框边框颜色 (RGB)
+SCREENSHOT_BORDER_WIDTH = 2  # 选择框边框宽度
+SCREENSHOT_TEXT_COLOR = (255, 255, 255)  # 尺寸文本颜色 (RGB)
+SCREENSHOT_WINDOW_MINIMIZE_DELAY = 500  # 主窗口最小化延迟（毫秒）
+SCREENSHOT_FOCUS_DELAY = 100  # 截图后焦点设置延迟（毫秒）

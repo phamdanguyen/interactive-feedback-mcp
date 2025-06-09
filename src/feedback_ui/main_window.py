@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -31,11 +30,12 @@ from .utils.constants import (
     ContentItem,
     FeedbackResult,
     LAYOUT_HORIZONTAL,
-    LAYOUT_VERTICAL,
     MIN_LEFT_AREA_WIDTH,
     MIN_LOWER_AREA_HEIGHT,
     MIN_RIGHT_AREA_WIDTH,
     MIN_UPPER_AREA_HEIGHT,
+    SCREENSHOT_WINDOW_MINIMIZE_DELAY,
+    SCREENSHOT_FOCUS_DELAY,
 )
 from .utils.image_processor import get_image_items_from_widgets
 from .utils.settings_manager import SettingsManager
@@ -44,6 +44,7 @@ from .utils.ui_helpers import set_selection_colors
 from .widgets.feedback_text_edit import FeedbackTextEdit
 from .widgets.image_preview import ImagePreviewWidget
 from .widgets.selectable_label import SelectableLabel
+from .widgets.screenshot_window import ScreenshotWindow
 
 
 class FeedbackUI(QMainWindow):
@@ -81,6 +82,7 @@ class FeedbackUI(QMainWindow):
             "submit_button": {"zh_CN": "提交", "en_US": "Submit"},
             "canned_responses_button": {"zh_CN": "常用语", "en_US": "Canned Responses"},
             "select_file_button": {"zh_CN": "选择文件", "en_US": "Select Files"},
+            "screenshot_button": {"zh_CN": "窗口截图", "en_US": "Screenshot"},
             "open_terminal_button": {"zh_CN": "启用终端", "en_US": "Open Terminal"},
             "pin_window_button": {"zh_CN": "固定窗口", "en_US": "Pin Window"},
             "settings_button": {"zh_CN": "设置", "en_US": "Settings"},
@@ -95,6 +97,10 @@ class FeedbackUI(QMainWindow):
             "select_file_button": {
                 "zh_CN": "打开文件选择器，选择要添加的文件或图片",
                 "en_US": "Open file selector to choose files or images to add",
+            },
+            "screenshot_button": {
+                "zh_CN": "截取屏幕区域并添加到输入框",
+                "en_US": "Capture screen area and add to input box",
             },
             "open_terminal_button": {
                 "zh_CN": "在当前项目路径中打开PowerShell终端",
@@ -125,6 +131,35 @@ class FeedbackUI(QMainWindow):
         # 为主窗口安装事件过滤器，以实现点击背景聚焦输入框的功能
         self.installEventFilter(self)
 
+        # 添加窗口大小变化监听，用于动态调整选项间距
+        self._setup_resize_monitoring()
+
+        # 配置工具提示显示延迟，减少悬浮提示的延迟
+        self._configure_tooltip_timing()
+
+    def _configure_tooltip_timing(self):
+        """配置工具提示显示延迟，减少悬浮提示的延迟"""
+        try:
+            # 通过设置应用程序属性来优化工具提示显示
+            app = QApplication.instance()
+            if app:
+                # 设置工具提示相关属性
+                app.setAttribute(
+                    Qt.ApplicationAttribute.AA_DisableWindowContextHelpButton, True
+                )
+
+                # 使用QToolTip的静态方法设置全局工具提示字体
+                from PySide6.QtWidgets import QToolTip
+                from PySide6.QtGui import QFont
+
+                # 设置工具提示字体，这也会影响显示性能
+                font = QFont("Segoe UI", 12)
+                QToolTip.setFont(font)
+
+                print("DEBUG: 工具提示延迟配置已应用", file=sys.stderr)
+        except Exception as e:
+            print(f"DEBUG: 配置工具提示延迟时出错: {e}", file=sys.stderr)
+
     def _setup_window(self):
         """Sets up basic window properties like title, size."""
         self.setWindowTitle("交互式反馈 MCP (Interactive Feedback MCP)")
@@ -137,8 +172,6 @@ class FeedbackUI(QMainWindow):
 
     def _setup_window_icon(self):
         """设置窗口图标"""
-        import os
-
         # 获取图标文件路径
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         icon_path = os.path.join(script_dir, "feedback_ui", "images", "feedback.png")
@@ -159,41 +192,21 @@ class FeedbackUI(QMainWindow):
     def _load_settings(self):
         """从设置中加载保存的窗口状态和几何形状"""
 
-        # 加载窗口几何形状（位置和大小）
-        # 设置默认大小和位置
+        # 设置默认大小
         default_width, default_height = 1000, 750
 
-        # 尝试获取保存的窗口大小
-        saved_size = self.settings_manager.get_main_window_size()
-        if saved_size:
-            width, height = saved_size
-            self.resize(width, height)
+        # 尝试恢复保存的窗口几何信息（位置和大小）
+        saved_geometry = self.settings_manager.get_main_window_geometry()
+        if saved_geometry:
+            # 使用Qt标准方法恢复几何信息
+            if not self.restoreGeometry(saved_geometry):
+                # 如果恢复失败，使用默认设置
+                self._set_default_window_geometry(default_width, default_height)
         else:
-            self.resize(default_width, default_height)
+            # 没有保存的几何信息，使用默认设置
+            self._set_default_window_geometry(default_width, default_height)
 
-        # 获取屏幕大小
-        screen = QApplication.primaryScreen().geometry()
-        screen_width, screen_height = screen.width(), screen.height()
-
-        # 尝试获取保存的窗口位置
-        saved_position = self.settings_manager.get_main_window_position()
-        if saved_position:
-            x, y = saved_position
-            # 检查位置是否有效（在屏幕范围内）
-            if 0 <= x < screen_width - 100 and 0 <= y < screen_height - 100:
-                self.move(x, y)
-            else:
-                # 位置无效，使用默认居中位置
-                default_x = (screen_width - self.width()) // 2
-                default_y = (screen_height - self.height()) // 2
-                self.move(default_x, default_y)
-        else:
-            # 没有保存的位置，使用默认居中位置
-            default_x = (screen_width - self.width()) // 2
-            default_y = (screen_height - self.height()) // 2
-            self.move(default_x, default_y)
-
-        # 恢复窗口状态
+        # 恢复窗口状态（工具栏、停靠窗口等）
         state = self.settings_manager.get_main_window_state()
         if state:
             self.restoreState(state)
@@ -203,6 +216,25 @@ class FeedbackUI(QMainWindow):
 
         # 加载字体大小设置
         self.update_font_sizes()
+
+    def _set_default_window_geometry(self, width: int, height: int):
+        """设置默认的窗口几何信息"""
+        # 设置默认大小
+        self.resize(width, height)
+
+        # 获取屏幕大小并居中显示
+        screen = QApplication.primaryScreen().geometry()
+        screen_width, screen_height = screen.width(), screen.height()
+
+        # 计算居中位置
+        default_x = (screen_width - width) // 2
+        default_y = (screen_height - height) // 2
+
+        # 确保窗口在屏幕范围内
+        default_x = max(0, min(default_x, screen_width - width))
+        default_y = max(0, min(default_y, screen_height - height))
+
+        self.move(default_x, default_y)
 
     def _create_ui_layout(self):
         """根据设置创建对应的UI布局"""
@@ -420,20 +452,15 @@ class FeedbackUI(QMainWindow):
 
     def _force_splitter_style(self):
         """强制设置分割器样式，确保可见性"""
-        # 获取当前主题的按钮悬停颜色，保持UI风格一致
-        current_theme = self.settings_manager.get_current_theme()
-        is_dark = current_theme == "dark"
+        # 获取当前主题的分割器颜色配置
+        from .utils.theme_colors import ThemeColors
 
-        if is_dark:
-            # 深色主题：使用与按钮悬停相同的颜色
-            base_color = "#444444"
-            hover_color = "#555555"
-            pressed_color = "#333333"
-        else:
-            # 浅色主题：使用与按钮悬停相同的颜色
-            base_color = "#cccccc"
-            hover_color = "#dddddd"
-            pressed_color = "#bbbbbb"
+        current_theme = self.settings_manager.get_current_theme()
+        colors = ThemeColors.get_splitter_colors(current_theme)
+
+        base_color = colors["base_color"]
+        hover_color = colors["hover_color"]
+        pressed_color = colors["pressed_color"]
 
         # 精致的分割线样式：细线，与UI风格一致
         splitter_style = f"""
@@ -535,6 +562,9 @@ class FeedbackUI(QMainWindow):
         self.settings_manager.set_splitter_sizes(sizes)
         self.settings_manager.set_splitter_state(self.main_splitter.saveState())
 
+        # 延迟更新选项间距，因为分割器移动可能影响可用空间
+        QTimer.singleShot(100, self._update_option_spacing)
+
     def _on_horizontal_splitter_moved(self, pos: int, index: int):
         """水平分割器移动时保存状态"""
         sizes = self.main_splitter.sizes()
@@ -542,6 +572,9 @@ class FeedbackUI(QMainWindow):
         self.settings_manager.set_horizontal_splitter_state(
             self.main_splitter.saveState()
         )
+
+        # 延迟更新选项间距，因为分割器移动可能影响可用空间
+        QTimer.singleShot(100, self._update_option_spacing)
 
     def _create_description_area(self, parent_layout: QVBoxLayout):
         scroll_area = QScrollArea()
@@ -574,13 +607,6 @@ class FeedbackUI(QMainWindow):
             )
         desc_layout.addWidget(self.description_label)
 
-        self.image_usage_label = SelectableLabel(
-            "如果图片反馈异常，建议切换Claude 3.5 Sonnet模型。", self
-        )
-        self.image_usage_label.setWordWrap(True)
-        self.image_usage_label.setVisible(False)
-        desc_layout.addWidget(self.image_usage_label)
-
         self.status_label = SelectableLabel("", self)
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -596,18 +622,22 @@ class FeedbackUI(QMainWindow):
 
     def _create_options_checkboxes(self, parent_layout: QVBoxLayout):
         self.option_checkboxes: list[QCheckBox] = []
-        options_frame = QFrame()
+        self.options_frame = QFrame()
 
-        # 修复：设置选项框架的大小策略，防止异常扩大
-        options_frame.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        # 动态调整：设置选项框架的大小策略为可扩展，允许动态调整高度
+        self.options_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
-        options_layout = QVBoxLayout(options_frame)
+        self.options_layout = QVBoxLayout(self.options_frame)
         # 使用负边距补偿复选框宽度(~20px)和间距(5px)，实现与提示文字的精确对齐
-        options_layout.setContentsMargins(-10, 0, 0, 0)
-        # 修复：设置固定间距，防止选项间距异常扩大
-        options_layout.setSpacing(8)  # 从2改为8，提供合适的固定间距
+        self.options_layout.setContentsMargins(-10, 0, 0, 0)
+
+        # 动态间距：初始设置为默认间距，后续会根据可用空间动态调整
+        from .utils.constants import DEFAULT_OPTION_SPACING
+
+        self.current_option_spacing = DEFAULT_OPTION_SPACING
+        self.options_layout.setSpacing(self.current_option_spacing)
 
         for i, option_text in enumerate(self.predefined_options):
             # 创建一个水平容器用于放置复选框和可选择的标签
@@ -619,6 +649,9 @@ class FeedbackUI(QMainWindow):
             # 创建无文本的复选框
             checkbox = QCheckBox("", self)
             checkbox.setObjectName(f"optionCheckbox_{i}")
+
+            # 应用主题样式，确保覆盖系统默认蓝色
+            self._apply_checkbox_theme_style(checkbox)
 
             # 创建可选择文本的标签
             label = SelectableLabel(option_text, self)
@@ -636,9 +669,184 @@ class FeedbackUI(QMainWindow):
             self.option_checkboxes.append(checkbox)
 
             # 将整个容器添加到选项布局
-            options_layout.addWidget(option_container)
+            self.options_layout.addWidget(option_container)
 
-        parent_layout.addWidget(options_frame)
+        parent_layout.addWidget(self.options_frame)
+
+        # 延迟初始化动态间距计算，确保所有选项都已创建
+        QTimer.singleShot(200, self._setup_dynamic_option_spacing)
+
+    def _apply_checkbox_theme_style(self, checkbox: QCheckBox):
+        """为复选框应用主题相关的样式，确保覆盖系统默认蓝色"""
+        from .utils.theme_colors import ThemeColors
+
+        current_theme = self.settings_manager.get_current_theme()
+        colors = ThemeColors.get_checkbox_colors(current_theme)
+
+        # 直接设置强制样式，确保覆盖系统默认蓝色
+        checkbox_style = f"""
+        QCheckBox {{
+            color: {colors['text_color']};
+            spacing: 8px;
+            min-height: 28px;
+            padding: 1px;
+        }}
+        QCheckBox::indicator {{
+            width: 22px; height: 22px;
+            border: 1px solid {colors['border_color']};
+            border-radius: 4px;
+            background-color: {colors['bg_color']};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {colors['checked_bg']} !important;
+            border: 2px solid {colors['checked_border']} !important;
+            image: none;
+            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='%23ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+            background-position: center;
+            background-repeat: no-repeat;
+        }}
+        QCheckBox::indicator:hover:!checked {{
+            border: 1px solid {colors['hover_border']};
+            background-color: {colors['hover_bg']};
+        }}
+        QCheckBox::indicator:checked:hover {{
+            background-color: {colors['hover_border']} !important;
+            border-color: {colors['hover_border']} !important;
+        }}
+        """
+
+        checkbox.setStyleSheet(checkbox_style)
+
+    def _update_all_checkbox_styles(self):
+        """更新所有复选框的样式（主题切换时调用）"""
+        if hasattr(self, "option_checkboxes"):
+            for checkbox in self.option_checkboxes:
+                self._apply_checkbox_theme_style(checkbox)
+
+    def _setup_dynamic_option_spacing(self):
+        """设置动态选项间距功能"""
+        # 立即执行，因为已经延迟调用了这个方法
+        self._update_option_spacing()
+
+    def _calculate_dynamic_option_spacing(self) -> int:
+        """计算动态选项间距"""
+        from .utils.constants import (
+            DEFAULT_OPTION_SPACING,
+            MAX_OPTION_SPACING,
+            MIN_OPTION_SPACING,
+        )
+
+        try:
+            # 获取当前布局方向
+            layout_direction = self.settings_manager.get_layout_direction()
+
+            # 获取容器和内容信息
+            container_height = 0
+            content_height = 0
+
+            if layout_direction == "horizontal":
+                # 水平布局：检查左侧区域的可用空间
+                if hasattr(self, "left_area") and hasattr(self, "description_label"):
+                    container_height = self.left_area.height()
+                    content_height = self._get_description_content_height()
+                else:
+                    return DEFAULT_OPTION_SPACING
+            else:
+                # 垂直布局：检查上部区域的可用空间
+                if hasattr(self, "upper_area") and hasattr(self, "description_label"):
+                    container_height = self.upper_area.height()
+                    content_height = self._get_description_content_height()
+                else:
+                    return DEFAULT_OPTION_SPACING
+
+            # 计算选项区域的基础高度需求
+            option_count = (
+                len(self.predefined_options) if self.predefined_options else 0
+            )
+            if option_count == 0:
+                return DEFAULT_OPTION_SPACING
+
+            # 估算每个选项的基础高度（复选框 + 文本）
+            base_option_height = 30  # 调整为更准确的选项高度
+            base_options_height = option_count * base_option_height
+
+            # 计算选项间距的总高度（选项数量-1个间距）
+            total_spacing_height = max(0, option_count - 1) * DEFAULT_OPTION_SPACING
+
+            # 计算可用的额外空间
+            available_space = (
+                container_height
+                - content_height
+                - base_options_height
+                - total_spacing_height
+                - 80
+            )  # 增加边距缓冲
+
+            if available_space > 50:  # 只有当可用空间足够大时才增加间距
+                # 计算可以增加的间距，使用更保守的算法
+                extra_spacing_per_gap = min(
+                    available_space // max(1, option_count + 1), 16
+                )  # 限制最大额外间距
+                new_spacing = min(
+                    DEFAULT_OPTION_SPACING + extra_spacing_per_gap, MAX_OPTION_SPACING
+                )
+                return max(new_spacing, MIN_OPTION_SPACING)
+            else:
+                return DEFAULT_OPTION_SPACING
+
+        except Exception as e:
+            print(f"DEBUG: 计算动态间距时出错: {e}", file=sys.stderr)
+            return DEFAULT_OPTION_SPACING
+
+    def _get_description_content_height(self) -> int:
+        """获取描述文字的实际内容高度"""
+        try:
+            if hasattr(self, "description_label"):
+                # 获取文本的实际渲染高度
+                font_metrics = self.description_label.fontMetrics()
+                text = self.description_label.text()
+
+                # 计算文本在当前宽度下的高度
+                available_width = self.description_label.width() - 20  # 减去边距
+                if available_width > 0:
+                    text_rect = font_metrics.boundingRect(
+                        0, 0, available_width, 0, Qt.TextFlag.TextWordWrap, text
+                    )
+                    return text_rect.height() + 40  # 加上一些边距
+            return 100  # 默认高度
+        except Exception as e:
+            print(f"DEBUG: 获取描述内容高度时出错: {e}", file=sys.stderr)
+            return 100
+
+    def _update_option_spacing(self):
+        """更新选项间距"""
+        try:
+            if hasattr(self, "options_layout") and hasattr(self, "predefined_options"):
+                new_spacing = self._calculate_dynamic_option_spacing()
+                if new_spacing != self.current_option_spacing:
+                    self.current_option_spacing = new_spacing
+                    self.options_layout.setSpacing(new_spacing)
+        except Exception as e:
+            print(f"DEBUG: 更新选项间距时出错: {e}", file=sys.stderr)
+
+    def _setup_resize_monitoring(self):
+        """设置窗口大小变化监听"""
+        # 创建定时器，用于延迟处理窗口大小变化
+        self.resize_timer = QTimer()
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self._on_window_resized)
+
+    def resizeEvent(self, event):
+        """窗口大小变化事件"""
+        super().resizeEvent(event)
+        # 延迟更新选项间距，避免频繁计算
+        if hasattr(self, "resize_timer"):
+            self.resize_timer.start(200)  # 200ms延迟
+
+    def _on_window_resized(self):
+        """窗口大小变化后的处理"""
+        # 重新计算选项间距
+        self._update_option_spacing()
 
     def _create_input_submission_area(self, parent_layout: QVBoxLayout):
         self.text_input = FeedbackTextEdit(self)
@@ -705,6 +913,16 @@ class FeedbackUI(QMainWindow):
 
         bottom_layout.addWidget(self.open_terminal_button)
 
+        # 截图按钮（在启用终端按钮后，固定窗口按钮前）
+        self.screenshot_button = QPushButton(
+            self.button_texts["screenshot_button"][current_language]
+        )
+        self.screenshot_button.setObjectName("secondary_button")
+        self.screenshot_button.setToolTip(
+            self.tooltip_texts["screenshot_button"][current_language]
+        )
+        bottom_layout.addWidget(self.screenshot_button)
+
         self.pin_window_button = QPushButton(
             self.button_texts["pin_window_button"][current_language]
         )
@@ -732,17 +950,22 @@ class FeedbackUI(QMainWindow):
         github_layout = QHBoxLayout(github_container)
         github_layout.setContentsMargins(0, 5, 0, 0)
 
-        github_label = QLabel(
-            "<a href='https://github.com/lucas-710/interactive-feedback-mcp'>GitHub</a>"
-        )
-        github_label.setOpenExternalLinks(True)
+        # 重构：使用可点击的纯文本标签而不是HTML链接
+        github_label = QLabel("GitHub")
+        github_label.setCursor(Qt.CursorShape.PointingHandCursor)
+
         # 启用文本选择功能
         github_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
-        # 添加小字体样式
-        github_label.setStyleSheet("font-size: 10pt; color: #888888;")
+
+        # 设置灰色文字颜色，与主题协调
+        github_label.setStyleSheet(
+            "font-size: 10pt; color: #666666; text-decoration: underline;"
+        )
+
+        # 连接点击事件
+        github_label.mousePressEvent = lambda event: self._open_github_link()
 
         # 设置选择文本时的高亮颜色为灰色
         set_selection_colors(github_label)
@@ -752,10 +975,17 @@ class FeedbackUI(QMainWindow):
         github_layout.addStretch()
         parent_layout.addWidget(github_container)
 
+    def _open_github_link(self):
+        """打开GitHub链接"""
+        import webbrowser
+
+        webbrowser.open("https://github.com/pawaovo/interactive-feedback-mcp")
+
     def _connect_signals(self):
         self.text_input.textChanged.connect(self._update_submit_button_text_status)
         self.canned_responses_button.clicked.connect(self._show_canned_responses_dialog)
         self.select_file_button.clicked.connect(self._open_file_dialog)
+        self.screenshot_button.clicked.connect(self._take_screenshot)
         self.open_terminal_button.clicked.connect(self._open_terminal)
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
@@ -822,16 +1052,10 @@ class FeedbackUI(QMainWindow):
             self.settings_manager.set_splitter_sizes(sizes)
             self.settings_manager.set_splitter_state(self.main_splitter.saveState())
 
-        # 保存窗口几何和状态
+        # 保存窗口几何和状态（使用Qt标准方法）
         self.settings_manager.set_main_window_geometry(self.saveGeometry())
         self.settings_manager.set_main_window_state(self.saveState())
         self.settings_manager.set_main_window_pinned(self.window_pinned)
-
-        # 单独保存窗口大小
-        self.settings_manager.set_main_window_size(self.width(), self.height())
-
-        # 保存窗口位置
-        self.settings_manager.set_main_window_position(self.x(), self.y())
 
         # 确保在用户直接关闭窗口时也返回空结果
         # 此处不需要检查 self.output_result 是否已设置，因为在 __init__ 中已初始化为空结果
@@ -853,11 +1077,16 @@ class FeedbackUI(QMainWindow):
         self.submit_button.setEnabled(True)
 
     def _show_canned_responses_dialog(self):
+        # 立即设置自动最小化保护，确保在任何操作之前就有保护
         self.disable_auto_minimize = True
+
         # 禁用预览功能，防止对话框触发预览窗口
         self._preview_disabled = True
-        # 隐藏任何现有的预览窗口
-        self._hide_canned_responses_preview()
+        # 隐藏任何现有的预览窗口（注意：这可能会尝试恢复disable_auto_minimize，但我们已经设置了保护）
+        if self.canned_responses_preview_window:
+            self.canned_responses_preview_window.close()
+            self.canned_responses_preview_window = None
+            # 不调用_hide_canned_responses_preview()，避免它恢复disable_auto_minimize
 
         dialog = SelectCannedResponseDialog(self.canned_responses, self)
         dialog.exec()
@@ -875,6 +1104,9 @@ class FeedbackUI(QMainWindow):
 
     def _open_file_dialog(self):
         """打开文件选择对话框，允许用户选择多个文件"""
+        # 禁用自动最小化，防止对话框导致窗口最小化
+        self.disable_auto_minimize = True
+
         try:
             file_paths, _ = QFileDialog.getOpenFileNames(
                 self,
@@ -888,6 +1120,9 @@ class FeedbackUI(QMainWindow):
 
         except Exception as e:
             print(f"ERROR: 文件选择对话框出错: {e}", file=sys.stderr)
+        finally:
+            # 恢复自动最小化功能
+            self.disable_auto_minimize = False
 
     def _process_selected_files(self, file_paths: list[str]):
         """处理用户选择的文件列表"""
@@ -941,35 +1176,46 @@ class FeedbackUI(QMainWindow):
 
     def _open_terminal_with_type(self, terminal_type: str):
         """打开指定类型的嵌入式终端窗口"""
+        # 禁用自动最小化，防止终端启动时窗口最小化
+        self.disable_auto_minimize = True
+
         try:
             project_path = self._get_project_path()
-            print(f"DEBUG: 项目路径: {project_path}", file=sys.stderr)
-            print(f"DEBUG: 终端类型: {terminal_type}", file=sys.stderr)
 
             # 导入嵌入式终端窗口
             from .widgets.embedded_terminal_window import EmbeddedTerminalWindow
 
-            # 创建并显示嵌入式终端窗口
+            # 创建并显示嵌入式终端窗口（不设置父窗口，使其独立显示）
             terminal_window = EmbeddedTerminalWindow(
-                working_directory=project_path, terminal_type=terminal_type, parent=self
+                working_directory=project_path, terminal_type=terminal_type, parent=None
+            )
+
+            # 保存终端窗口引用，防止被垃圾回收
+            if not hasattr(self, "_terminal_windows"):
+                self._terminal_windows = []
+            self._terminal_windows.append(terminal_window)
+
+            # 连接关闭信号，清理引用
+            terminal_window.destroyed.connect(
+                lambda: (
+                    self._terminal_windows.remove(terminal_window)
+                    if hasattr(self, "_terminal_windows")
+                    and terminal_window in self._terminal_windows
+                    else None
+                )
             )
 
             # 显示窗口并获取焦点
             terminal_window.show_and_focus()
 
-            print(
-                f"INFO: 已在路径 {project_path} 中启动 {terminal_type} 终端",
-                file=sys.stderr,
-            )
-
         except Exception as e:
-            print(f"ERROR: 启动 {terminal_type} 终端失败: {e}", file=sys.stderr)
-            import traceback
-
-            print(f"ERROR: 详细错误信息: {traceback.format_exc()}", file=sys.stderr)
-
             # 如果嵌入式终端失败，回退到原始方法
             self._open_terminal_fallback()
+        finally:
+            # 延迟恢复自动最小化功能，给终端窗口足够时间完成启动
+            QTimer.singleShot(
+                1000, lambda: setattr(self, "disable_auto_minimize", False)
+            )
 
     def _open_terminal_fallback(self):
         """回退到原始的外部终端启动方法"""
@@ -977,7 +1223,11 @@ class FeedbackUI(QMainWindow):
             project_path = self._get_project_path()
             print(f"DEBUG: 回退方法 - 项目路径: {project_path}", file=sys.stderr)
 
-            terminal_command = self._detect_terminal_command()
+            # 使用TerminalManager获取终端命令
+            from .utils.terminal_manager import get_terminal_manager
+
+            terminal_manager = get_terminal_manager()
+            terminal_command = terminal_manager.get_terminal_command("powershell")
             print(
                 f"DEBUG: 回退方法 - 检测到的终端命令: {terminal_command}",
                 file=sys.stderr,
@@ -1083,95 +1333,7 @@ class FeedbackUI(QMainWindow):
             # 最后的回退选项
             return "C:\\" if os.name == "nt" else "/"
 
-    def _detect_terminal_command(self) -> str:
-        """检测可用的PowerShell命令，优先使用高版本"""
-        print(f"DEBUG: 开始检测PowerShell命令，操作系统: {os.name}", file=sys.stderr)
-
-        if os.name == "nt":  # Windows
-            # 按优先级顺序检测PowerShell
-            powershell_candidates = [
-                # PowerShell 7+ 常见安装路径
-                r"C:\Program Files\PowerShell\7\pwsh.exe",
-                r"C:\Program Files\PowerShell\6\pwsh.exe",
-                # 通过PATH查找pwsh
-                "pwsh.exe",
-                # Windows PowerShell 5.1
-                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                # 通过PATH查找powershell
-                "powershell.exe",
-            ]
-
-            for candidate in powershell_candidates:
-                try:
-                    print(f"DEBUG: 检测PowerShell: {candidate}", file=sys.stderr)
-                    if os.path.isabs(candidate):
-                        # 绝对路径，直接检查文件是否存在
-                        if os.path.isfile(candidate):
-                            version_info = self._get_powershell_version(candidate)
-                            print(
-                                f"DEBUG: 找到PowerShell: {candidate}, 版本: {version_info}",
-                                file=sys.stderr,
-                            )
-                            return candidate
-                    else:
-                        # 相对路径，通过where命令查找
-                        result = subprocess.run(
-                            ["where", candidate],
-                            capture_output=True,
-                            text=True,
-                            shell=True,
-                        )
-                        if result.returncode == 0:
-                            found_path = result.stdout.strip().split("\n")[
-                                0
-                            ]  # 取第一个结果
-                            version_info = self._get_powershell_version(found_path)
-                            print(
-                                f"DEBUG: 找到PowerShell: {found_path}, 版本: {version_info}",
-                                file=sys.stderr,
-                            )
-                            return found_path
-                except Exception as e:
-                    print(f"DEBUG: 检测 {candidate} 时出错: {e}", file=sys.stderr)
-                    continue
-        else:
-            # Linux/macOS
-            terminals = ["gnome-terminal", "xterm", "konsole", "terminal"]
-            for terminal in terminals:
-                try:
-                    print(f"DEBUG: 检测终端: {terminal}", file=sys.stderr)
-                    result = subprocess.run(
-                        ["which", terminal], capture_output=True, text=True
-                    )
-                    print(
-                        f"DEBUG: which {terminal} 返回码: {result.returncode}",
-                        file=sys.stderr,
-                    )
-                    if result.returncode == 0:
-                        print(f"DEBUG: 找到可用终端: {terminal}", file=sys.stderr)
-                        return terminal
-                except Exception as e:
-                    print(f"DEBUG: 检测 {terminal} 时出错: {e}", file=sys.stderr)
-                    continue
-
-        print("DEBUG: 未找到任何可用的PowerShell程序", file=sys.stderr)
-        return ""  # 未找到可用终端
-
-    def _get_powershell_version(self, powershell_path: str) -> str:
-        """获取PowerShell版本信息"""
-        try:
-            result = subprocess.run(
-                [powershell_path, "-Command", "$PSVersionTable.PSVersion.ToString()"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-            else:
-                return "未知版本"
-        except Exception:
-            return "版本检测失败"
+    # 移除重复的PowerShell检测代码，现在使用TerminalManager统一管理
 
     def open_settings_dialog(self):
         """Opens the settings dialog."""
@@ -1180,11 +1342,8 @@ class FeedbackUI(QMainWindow):
         dialog.exec()
         self.disable_auto_minimize = False
 
-    def _apply_pin_state_on_load(self):
-        # 从设置中加载固定窗口状态，但不改变按钮样式
-        self.pin_window_button.setChecked(self.window_pinned)
-
-        # 应用窗口标志 - 使用明确的标志组合，确保关闭按钮等基本功能不受影响
+    def _apply_window_flags(self):
+        """应用窗口标志 - 统一的窗口标志设置方法"""
         if self.window_pinned:
             # 固定窗口：添加置顶标志，保留所有标准窗口功能
             self.setWindowFlags(
@@ -1196,11 +1355,6 @@ class FeedbackUI(QMainWindow):
                 | Qt.WindowType.WindowCloseButtonHint
                 | Qt.WindowType.WindowStaysOnTopHint
             )
-            # 设置提示文本
-            self.pin_window_button.setToolTip(
-                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
-            )
-            self.pin_window_button.setObjectName("pin_window_active")
         else:
             # 标准窗口：使用标准窗口标志，确保所有按钮功能正常
             self.setWindowFlags(
@@ -1211,9 +1365,23 @@ class FeedbackUI(QMainWindow):
                 | Qt.WindowType.WindowMaximizeButtonHint
                 | Qt.WindowType.WindowCloseButtonHint
             )
-            self.pin_window_button.setToolTip("")
-            # 确保按钮初始状态样式与其他按钮一致
+
+    def _apply_pin_state_on_load(self):
+        # 从设置中加载固定窗口状态，但不改变按钮样式
+        self.pin_window_button.setChecked(self.window_pinned)
+
+        # 应用窗口标志（使用统一的方法）
+        self._apply_window_flags()
+
+        # 设置按钮样式和提示文本
+        if self.window_pinned:
+            self.pin_window_button.setObjectName("pin_window_active")
+            self.pin_window_button.setToolTip(
+                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
+            )
+        else:
             self.pin_window_button.setObjectName("secondary_button")
+            self.pin_window_button.setToolTip("")
 
         # 只应用样式到固定窗口按钮，避免影响其他按钮
         self.pin_window_button.style().unpolish(self.pin_window_button)
@@ -1228,34 +1396,16 @@ class FeedbackUI(QMainWindow):
         # 保存当前窗口几何信息
         current_geometry = self.saveGeometry()
 
-        # 设置窗口标志 - 使用明确的标志组合，确保关闭按钮等基本功能不受影响
+        # 应用窗口标志（使用统一的方法）
+        self._apply_window_flags()
+
+        # 设置按钮样式和提示文本
         if self.window_pinned:
-            # 固定窗口：添加置顶标志，保留所有标准窗口功能
-            self.setWindowFlags(
-                Qt.WindowType.Window
-                | Qt.WindowType.WindowTitleHint
-                | Qt.WindowType.WindowSystemMenuHint
-                | Qt.WindowType.WindowMinimizeButtonHint
-                | Qt.WindowType.WindowMaximizeButtonHint
-                | Qt.WindowType.WindowCloseButtonHint
-                | Qt.WindowType.WindowStaysOnTopHint
-            )
-            # 只有当按钮被激活时才改变样式
             self.pin_window_button.setObjectName("pin_window_active")
             self.pin_window_button.setToolTip(
                 "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
             )
         else:
-            # 取消固定：使用标准窗口标志，确保所有按钮功能正常
-            self.setWindowFlags(
-                Qt.WindowType.Window
-                | Qt.WindowType.WindowTitleHint
-                | Qt.WindowType.WindowSystemMenuHint
-                | Qt.WindowType.WindowMinimizeButtonHint
-                | Qt.WindowType.WindowMaximizeButtonHint
-                | Qt.WindowType.WindowCloseButtonHint
-            )
-            # 恢复为普通按钮样式
             self.pin_window_button.setObjectName("secondary_button")
             self.pin_window_button.setToolTip("")
 
@@ -1282,7 +1432,6 @@ class FeedbackUI(QMainWindow):
             self.image_widgets[image_id] = image_widget
 
             self.text_input.show_images_container(True)
-            self.image_usage_label.setVisible(True)
             self._update_submit_button_text_status()
             return image_id
         return None
@@ -1295,7 +1444,6 @@ class FeedbackUI(QMainWindow):
 
             if not self.image_widgets:
                 self.text_input.show_images_container(False)
-                self.image_usage_label.setVisible(False)
             self._update_submit_button_text_status()
 
     def _prepare_and_submit_feedback(self):
@@ -1335,14 +1483,9 @@ class FeedbackUI(QMainWindow):
         self.output_result = FeedbackResult(content=final_content_list)
 
         # 保存窗口几何和状态信息，确保即使通过提交反馈关闭窗口时也能保存这些信息
+        # 使用Qt标准方法保存完整的几何信息
         self.settings_manager.set_main_window_geometry(self.saveGeometry())
         self.settings_manager.set_main_window_state(self.saveState())
-
-        # 单独保存窗口大小
-        self.settings_manager.set_main_window_size(self.width(), self.height())
-
-        # 保存窗口位置
-        self.settings_manager.set_main_window_position(self.x(), self.y())
 
         self.close()
 
@@ -1368,11 +1511,149 @@ class FeedbackUI(QMainWindow):
             self.text_input.setTextCursor(cursor)
             self.text_input.ensureCursorVisible()
 
-    def _enforce_min_window_size(self):
-        pass
+    # --- 截图功能 (Screenshot Functions) ---
+    def _take_screenshot(self):
+        """开始截图流程"""
+        try:
+            # 保存当前窗口状态
+            self._save_window_state_for_screenshot()
 
-    def _clear_all_image_previews(self):
-        pass
+            # 最小化主窗口（即使在固定状态下）
+            self._minimize_for_screenshot()
+
+            # 增加延迟时间确保窗口完全最小化，减少闪烁
+            QTimer.singleShot(
+                SCREENSHOT_WINDOW_MINIMIZE_DELAY, self._show_screenshot_window
+            )
+
+        except Exception as e:
+            print(f"ERROR: 截图流程启动失败: {e}", file=sys.stderr)
+            self._restore_window_after_screenshot()
+
+    def _save_window_state_for_screenshot(self):
+        """保存窗口状态用于截图后恢复"""
+        self._screenshot_window_geometry = self.saveGeometry()
+        self._screenshot_window_state = self.saveState()
+        self._screenshot_was_pinned = self.window_pinned
+        self._screenshot_was_visible = self.isVisible()
+
+    def _minimize_for_screenshot(self):
+        """为截图最小化窗口"""
+        # 临时禁用自动最小化，避免干扰
+        self.disable_auto_minimize = True
+
+        # 最小化窗口
+        self.showMinimized()
+
+    def _show_screenshot_window(self):
+        """显示截图窗口"""
+        try:
+            # 创建截图窗口
+            self.screenshot_window = ScreenshotWindow(self)
+
+            # 连接信号
+            self.screenshot_window.screenshot_taken.connect(self._on_screenshot_taken)
+            self.screenshot_window.screenshot_cancelled.connect(
+                self._on_screenshot_cancelled
+            )
+
+            print("DEBUG: 截图窗口已显示", file=sys.stderr)
+
+        except Exception as e:
+            print(f"ERROR: 显示截图窗口失败: {e}", file=sys.stderr)
+            self._restore_window_after_screenshot()
+
+    def _on_screenshot_taken(self, pixmap):
+        """截图完成回调"""
+        try:
+            # 恢复主窗口
+            self._restore_window_after_screenshot()
+
+            # 将截图添加到输入框
+            if pixmap and not pixmap.isNull():
+                self.add_image_preview(pixmap)
+
+        except Exception as e:
+            print(f"ERROR: 处理截图失败: {e}", file=sys.stderr)
+            self._restore_window_after_screenshot()
+
+    def _on_screenshot_cancelled(self):
+        """截图取消回调"""
+        self._restore_window_after_screenshot()
+
+    def _restore_window_after_screenshot(self):
+        """截图后恢复窗口状态"""
+        try:
+            # 重新启用自动最小化
+            self.disable_auto_minimize = False
+
+            # 恢复窗口显示
+            if (
+                hasattr(self, "_screenshot_was_visible")
+                and self._screenshot_was_visible
+            ):
+                # 先显示窗口
+                self.show()
+
+                # 恢复窗口几何信息
+                if hasattr(self, "_screenshot_window_geometry"):
+                    self.restoreGeometry(self._screenshot_window_geometry)
+
+                # 恢复窗口状态
+                if hasattr(self, "_screenshot_window_state"):
+                    self.restoreState(self._screenshot_window_state)
+
+                # 强制激活窗口并置顶
+                self.setWindowState(
+                    self.windowState() & ~Qt.WindowState.WindowMinimized
+                    | Qt.WindowState.WindowActive
+                )
+                self.activateWindow()
+                self.raise_()
+
+                # 延迟设置焦点，确保窗口完全恢复
+                QTimer.singleShot(
+                    SCREENSHOT_FOCUS_DELAY, self._set_focus_after_screenshot
+                )
+
+            # 清理临时变量
+            self._cleanup_screenshot_variables()
+
+        except Exception as e:
+            print(f"ERROR: 恢复窗口状态失败: {e}", file=sys.stderr)
+            # 确保重新启用自动最小化
+            self.disable_auto_minimize = False
+
+    def _set_focus_after_screenshot(self):
+        """截图后设置焦点"""
+        try:
+            # 再次确保窗口激活
+            self.activateWindow()
+            self.raise_()
+
+            # 设置焦点到输入框
+            if hasattr(self, "text_input"):
+                self.text_input.setFocus()
+
+        except Exception as e:
+            print(f"ERROR: 设置焦点失败: {e}", file=sys.stderr)
+
+    def _cleanup_screenshot_variables(self):
+        """清理截图相关的临时变量"""
+        attrs_to_remove = [
+            "_screenshot_window_geometry",
+            "_screenshot_window_state",
+            "_screenshot_was_pinned",
+            "_screenshot_was_visible",
+        ]
+
+        for attr in attrs_to_remove:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+        # 清理截图窗口引用
+        if hasattr(self, "screenshot_window"):
+            self.screenshot_window = None
 
     def changeEvent(self, event: QEvent):
         """处理语言变化事件，更新界面文本"""
@@ -1440,6 +1721,16 @@ class FeedbackUI(QMainWindow):
             self.select_file_button.setToolTip(
                 self.tooltip_texts["select_file_button"].get(
                     language_code, "打开文件选择器，选择要添加的文件或图片"
+                )
+            )
+
+        if hasattr(self, "screenshot_button") and self.screenshot_button:
+            self.screenshot_button.setText(
+                self.button_texts["screenshot_button"].get(language_code, "窗口截图")
+            )
+            self.screenshot_button.setToolTip(
+                self.tooltip_texts["screenshot_button"].get(
+                    language_code, "截取屏幕区域并添加到输入框"
                 )
             )
 
@@ -1620,15 +1911,17 @@ class FeedbackUI(QMainWindow):
         if not self.canned_responses:
             return
 
+        # 预先设置自动最小化保护，防止预览窗口交互导致窗口最小化
+        self.disable_auto_minimize = True
+
         # 如果预览窗口已存在，先关闭
         if self.canned_responses_preview_window:
             self.canned_responses_preview_window.close()
             self.canned_responses_preview_window = None
 
         # 创建预览窗口
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QFont
 
         self.canned_responses_preview_window = QWidget()
         self.canned_responses_preview_window.setWindowFlags(
@@ -1642,55 +1935,46 @@ class FeedbackUI(QMainWindow):
         self.canned_responses_preview_window.enterEvent = self._on_preview_window_enter
         self.canned_responses_preview_window.leaveEvent = self._on_preview_window_leave
 
-        # 主布局
+        # 主布局 - 直接使用VBoxLayout，不使用滚动区域
         main_layout = QVBoxLayout(self.canned_responses_preview_window)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(1)  # 减少间距，与终端预览窗口保持一致
 
-        # 创建滚动区域
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        # 获取当前主题的颜色配置
+        from .utils.theme_colors import ThemeColors
 
-        # 滚动内容容器
-        scroll_content = QWidget()
-        layout = QVBoxLayout(scroll_content)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
-
-        # 获取当前主题
         current_theme = self.settings_manager.get_current_theme()
-        is_dark = current_theme == "dark"
+        colors = ThemeColors.get_preview_colors(current_theme)
 
-        # 根据主题设置颜色
-        if is_dark:
-            bg_color = "#2D2D2D"
-            border_color = "#3A3A3A"
-            text_color = "#CCCCCC"
-            item_bg = "#333333"
-            item_border = "#444444"
-            item_hover_bg = "#0078d4"
-            item_hover_border = "#1890ff"
-            more_text_color = "#888888"
-        else:
-            bg_color = "#FFFFFF"
-            border_color = "#CCCCCC"
-            text_color = "#333333"
-            item_bg = "#F8F9FA"
-            item_border = "#E0E0E0"
-            item_hover_bg = "#E8F4FD"
-            item_hover_border = "#0078D4"
-            more_text_color = "#666666"
+        bg_color = colors["bg_color"]
+        border_color = colors["border_color"]
+        text_color = colors["text_color"]
+        item_bg = colors["item_bg"]
+        item_border = colors["item_border"]
+        item_hover_bg = colors["item_hover_bg"]
+        item_hover_border = colors["item_hover_border"]
 
         # 添加所有常用语项目
         for i, response in enumerate(self.canned_responses):
-            # 限制显示长度，过长的文本进行截断（减少截断长度以适应更窄的窗口）
-            display_text = response if len(response) <= 45 else response[:42] + "..."
+            response_label = QLabel(response)
 
-            response_label = QLabel(display_text)
-            response_label.setWordWrap(True)
+            # 设置固定高度和文本省略模式
+            response_label.setFixedHeight(40)  # 调整到40px以获得更好的文字显示效果
+            response_label.setWordWrap(False)  # 禁用自动换行
+
+            # 使用Qt原生的文本省略功能
+            from PySide6.QtCore import Qt
+
+            response_label.setTextFormat(Qt.TextFormat.PlainText)
+
+            # 设置文本省略模式为末尾省略
+            font_metrics = response_label.fontMetrics()
+            available_width = 260 - 20  # 预览窗口宽度减去padding
+            elided_text = font_metrics.elidedText(
+                response, Qt.TextElideMode.ElideRight, available_width
+            )
+            response_label.setText(elided_text)
+
             response_label.setStyleSheet(
                 f"""
                 QLabel {{
@@ -1715,39 +1999,7 @@ class FeedbackUI(QMainWindow):
                 lambda event, text=response: self._on_preview_item_clicked(text)
             )
 
-            layout.addWidget(response_label)
-
-        # 设置滚动内容
-        scroll_area.setWidget(scroll_content)
-        main_layout.addWidget(scroll_area)
-
-        # 设置滚动区域样式
-        scroll_area.setStyleSheet(
-            f"""
-            QScrollArea {{
-                background-color: {bg_color};
-                border: none;
-                border-radius: 10px;
-            }}
-            QScrollBar:vertical {{
-                background-color: {bg_color};
-                width: 8px;
-                border-radius: 4px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {item_border};
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {item_hover_border};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-        """
-        )
+            main_layout.addWidget(response_label)
 
         # 设置窗口样式（包含阴影效果）
         self.canned_responses_preview_window.setStyleSheet(
@@ -1766,16 +2018,21 @@ class FeedbackUI(QMainWindow):
         )
         preview_width = 280  # 减少宽度，使预览窗口更紧凑
 
-        # 计算高度：如果常用语超过10个，限制最大高度并启用滚动
-        max_display_items = 10
-        if len(self.canned_responses) > max_display_items:
-            # 限制最大高度，大约10个项目的高度
-            preview_height = min(
-                350, max_display_items * 40 + 20
-            )  # 每个项目约40px高度（减少了高度），加上边距
+        # 根据实际常用语数量动态计算高度，不限制最大数量
+        # 每个项目40px高度 + 间距1px + 上下边距16px
+        item_height = 40
+        spacing = 1
+        padding = 16
+
+        # 计算总高度：项目高度 + 间距 + 边距
+        if len(self.canned_responses) > 0:
+            preview_height = (
+                len(self.canned_responses) * item_height  # 所有项目的高度
+                + max(0, len(self.canned_responses) - 1) * spacing  # 项目间距
+                + padding  # 上下边距
+            )
         else:
-            # 使用实际内容高度
-            preview_height = scroll_content.sizeHint().height() + 20
+            preview_height = 50  # 最小高度，防止空列表时窗口过小
 
         # 在按钮上方显示
         x = button_pos.x()
@@ -1792,6 +2049,9 @@ class FeedbackUI(QMainWindow):
             self.canned_responses_preview_window.close()
             self.canned_responses_preview_window = None
 
+        # 恢复自动最小化功能
+        self.disable_auto_minimize = False
+
     def _on_preview_item_clicked(self, text):
         """预览项目被点击时插入到输入框"""
         if self.text_input:
@@ -1803,27 +2063,20 @@ class FeedbackUI(QMainWindow):
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.text_input.setTextCursor(cursor)
 
-        # 隐藏预览窗口
+        # 隐藏预览窗口（会自动恢复disable_auto_minimize）
         self._hide_canned_responses_preview()
 
     # --- 终端预览功能 (Terminal Preview Functions) ---
     def _on_terminal_button_enter(self, event):
         """终端按钮鼠标进入事件 - 显示终端预览"""
-        print("DEBUG: 终端按钮鼠标进入事件触发", file=sys.stderr)
-
         # 显示终端预览窗口
         try:
-            self._show_terminal_preview()
-        except Exception as e:
-            print(f"ERROR: 显示终端预览失败: {e}", file=sys.stderr)
-            import traceback
-
-            print(f"ERROR: 详细错误信息: {traceback.format_exc()}", file=sys.stderr)
+            self._show_simple_terminal_preview()
+        except Exception:
+            pass  # 静默处理错误
 
     def _on_terminal_button_leave(self, event):
         """终端按钮鼠标离开事件 - 延迟隐藏终端预览"""
-        print("DEBUG: 终端按钮鼠标离开事件触发", file=sys.stderr)
-
         # 延迟隐藏预览窗口，给用户时间移动到预览窗口
         QTimer.singleShot(200, self._delayed_hide_terminal_preview)
 
@@ -1841,149 +2094,14 @@ class FeedbackUI(QMainWindow):
         # 立即隐藏预览窗口
         self._hide_terminal_preview()
 
-    def _show_terminal_preview(self):
-        """显示终端选择预览窗口"""
-        print("DEBUG: 开始显示终端预览窗口", file=sys.stderr)
-
-        if self.terminal_preview_window:
-            self.terminal_preview_window.close()
-
-        # 获取终端管理器
-        from .utils.terminal_manager import get_terminal_manager
-
-        terminal_manager = get_terminal_manager()
-
-        # 简化的终端列表 - 直接使用固定的3个终端
-        from .utils.constants import TERMINAL_TYPES
-
-        terminal_list = [
-            {"type": "powershell", "name": "PowerShell (pwsh)", "icon": "🔷"},
-            {"type": "gitbash", "name": "Git Bash (bash)", "icon": "🔶"},
-            {"type": "cmd", "name": "Command Prompt (cmd)", "icon": "⬛"},
-        ]
-
-        print(f"DEBUG: 准备显示 {len(terminal_list)} 个终端选项", file=sys.stderr)
-
-        # 创建预览窗口
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QFont
-
-        self.terminal_preview_window = QWidget()
-        self.terminal_preview_window.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.terminal_preview_window.setAttribute(
-            Qt.WidgetAttribute.WA_ShowWithoutActivating
-        )
-
-        # 设置预览窗口的鼠标事件
-        self.terminal_preview_window.enterEvent = self._on_terminal_preview_window_enter
-        self.terminal_preview_window.leaveEvent = self._on_terminal_preview_window_leave
-
-        # 创建布局
-        layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
-
-        # 获取当前主题
-        is_dark_theme = self.settings_manager.get_theme() == "dark"
-
-        # 设置样式
-        if is_dark_theme:
-            bg_color = "#2D2D2D"
-            border_color = "#555555"
-            text_color = "#FFFFFF"
-            item_bg = "#3C3C3C"
-            item_border = "#444444"
-            item_hover_bg = "#0078d4"
-            item_hover_border = "#1890ff"
-        else:
-            bg_color = "#FFFFFF"
-            border_color = "#CCCCCC"
-            text_color = "#000000"
-            item_bg = "#F8F8F8"
-            item_border = "#E0E0E0"
-            item_hover_bg = "#E8F4FD"
-            item_hover_border = "#0078D4"
-
-        # 添加终端选项
-        for terminal_info in terminal_list:
-            terminal_label = self._create_terminal_preview_item(
-                terminal_info,
-                item_bg,
-                item_border,
-                item_hover_bg,
-                item_hover_border,
-                text_color,
-            )
-            layout.addWidget(terminal_label)
-
-        self.terminal_preview_window.setLayout(layout)
-
-        # 设置窗口样式
-        self.terminal_preview_window.setStyleSheet(
-            f"""
-            QWidget {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-            }}
-        """
-        )
-
-        # 计算位置并显示
-        self._position_terminal_preview_window()
-        self.terminal_preview_window.show()
-
-    def _create_terminal_preview_item(
-        self,
-        terminal_info: dict,
-        item_bg: str,
-        item_border: str,
-        item_hover_bg: str,
-        item_hover_border: str,
-        text_color: str,
-    ) -> QLabel:
-        """创建终端预览项目"""
-        display_text = f"{terminal_info['icon']} {terminal_info['name']}"
-
-        item_label = QLabel(display_text)
-        item_label.setWordWrap(True)
-        item_label.setStyleSheet(
-            f"""
-            QLabel {{
-                padding: 8px 12px;
-                border-radius: 6px;
-                background-color: {item_bg};
-                color: {text_color};
-                border: 1px solid {item_border};
-                margin: 2px 0px;
-                font-size: 11pt;
-            }}
-            QLabel:hover {{
-                background-color: {item_hover_bg};
-                border-color: {item_hover_border};
-                color: white;
-            }}
-        """
-        )
-        item_label.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        # 添加点击事件
-        item_label.mousePressEvent = lambda event: self._on_terminal_preview_clicked(
-            terminal_info["type"]
-        )
-
-        return item_label
-
     # --- 简单终端预览功能 (Simple Terminal Preview Functions) ---
     def _show_simple_terminal_preview(self):
         """显示简单的终端预览窗口"""
-        print("DEBUG: 显示简单终端预览", file=sys.stderr)
-
         if self.terminal_preview_window:
             self.terminal_preview_window.close()
+
+        # 预先设置自动最小化保护，防止预览窗口交互导致窗口最小化
+        self.disable_auto_minimize = True
 
         # 创建预览窗口 - 参考常用语预览窗口的实现
         from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
@@ -1999,39 +2117,31 @@ class FeedbackUI(QMainWindow):
 
         # 添加预览窗口的鼠标事件处理
         def preview_enter_event(event):
-            print("DEBUG: 鼠标进入终端预览窗口", file=sys.stderr)
             # 取消隐藏计时器
             if hasattr(self, "terminal_hide_timer") and self.terminal_hide_timer:
-                print("DEBUG: 取消终端预览窗口隐藏计时器", file=sys.stderr)
                 self.terminal_hide_timer.stop()
                 self.terminal_hide_timer = None
 
         def preview_leave_event(event):
-            print("DEBUG: 鼠标离开终端预览窗口", file=sys.stderr)
             # 立即隐藏预览窗口
             self._hide_simple_terminal_preview()
 
         self.terminal_preview_window.enterEvent = preview_enter_event
         self.terminal_preview_window.leaveEvent = preview_leave_event
 
-        # 获取主题样式 - 参考常用语预览窗口
+        # 获取主题颜色配置
+        from .utils.theme_colors import ThemeColors
+
         current_theme = self.settings_manager.get_current_theme()
-        if current_theme == "dark":
-            bg_color = "#2d2d2d"
-            border_color = "#555555"
-            text_color = "#ffffff"
-            item_bg = "#3c3c3c"
-            item_border = "#444444"
-            item_hover_bg = "#0078d4"
-            item_hover_border = "#1890ff"
-        else:
-            bg_color = "#FFFFFF"
-            border_color = "#CCCCCC"
-            text_color = "#000000"
-            item_bg = "#F8F8F8"
-            item_border = "#E0E0E0"
-            item_hover_bg = "#E8F4FD"
-            item_hover_border = "#0078D4"
+        colors = ThemeColors.get_preview_colors(current_theme)
+
+        bg_color = colors["bg_color"]
+        border_color = colors["border_color"]
+        text_color = colors["text_color"]
+        item_bg = colors["item_bg"]
+        item_border = colors["item_border"]
+        item_hover_bg = colors["item_hover_bg"]
+        item_hover_border = colors["item_hover_border"]
 
         # 创建主布局 - 完全参考常用语预览窗口
         main_layout = QVBoxLayout(self.terminal_preview_window)
@@ -2149,12 +2259,14 @@ class FeedbackUI(QMainWindow):
 
         # 显示窗口
         self.terminal_preview_window.show()
-        print("DEBUG: 简单终端预览窗口已显示", file=sys.stderr)
 
     def _on_simple_terminal_clicked(self, terminal_type: str):
         """简单终端预览项目被点击"""
-        print(f"DEBUG: 用户选择了终端: {terminal_type}", file=sys.stderr)
+        # 隐藏预览窗口
         self._hide_simple_terminal_preview()
+
+        # 注意：不需要在这里设置disable_auto_minimize，
+        # 因为_open_terminal_with_type()方法已经有了保护机制
         self._open_terminal_with_type(terminal_type)
 
     def _hide_simple_terminal_preview(self):
@@ -2162,51 +2274,13 @@ class FeedbackUI(QMainWindow):
         if self.terminal_preview_window:
             self.terminal_preview_window.close()
             self.terminal_preview_window = None
-            print("DEBUG: 简单终端预览窗口已隐藏", file=sys.stderr)
 
-    def _position_terminal_preview_window(self):
-        """定位终端预览窗口"""
-        if not self.terminal_preview_window:
-            return
-
-        # 获取终端按钮的全局位置
-        button_global_pos = self.open_terminal_button.mapToGlobal(
-            self.open_terminal_button.rect().topLeft()
-        )
-        button_size = self.open_terminal_button.size()
-
-        # 计算预览窗口大小
-        self.terminal_preview_window.adjustSize()
-        preview_size = self.terminal_preview_window.size()
-
-        # 计算位置（在按钮上方显示）
-        x = button_global_pos.x()
-        y = button_global_pos.y() - preview_size.height() - 5
-
-        # 确保窗口在屏幕范围内
-        screen = QApplication.primaryScreen().geometry()
-        if x + preview_size.width() > screen.right():
-            x = screen.right() - preview_size.width()
-        if x < screen.left():
-            x = screen.left()
-        if y < screen.top():
-            y = button_global_pos.y() + button_size.height() + 5
-
-        self.terminal_preview_window.move(x, y)
+        # 恢复自动最小化功能
+        self.disable_auto_minimize = False
 
     def _hide_terminal_preview(self):
-        """隐藏终端预览窗口"""
-        if self.terminal_preview_window:
-            self.terminal_preview_window.close()
-            self.terminal_preview_window = None
-
-    def _on_terminal_preview_clicked(self, terminal_type: str):
-        """终端预览项目被点击"""
-        # 隐藏预览窗口
-        self._hide_terminal_preview()
-
-        # 启动选定的终端
-        self._open_terminal_with_type(terminal_type)
+        """隐藏终端预览窗口（兼容性方法）"""
+        self._hide_simple_terminal_preview()
 
     def update_font_sizes(self):
         """
@@ -2227,3 +2301,6 @@ class FeedbackUI(QMainWindow):
             # 更新输入框字体大小，与提示文字保持一致
             if hasattr(self, "text_input") and self.text_input:
                 QTimer.singleShot(10, self.text_input.update_font_size)
+
+            # 更新复选框样式，确保主题切换时颜色正确
+            QTimer.singleShot(100, self._update_all_checkbox_styles)
