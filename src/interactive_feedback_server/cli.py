@@ -24,6 +24,9 @@ from pydantic import (
     Field,
 )  # Field 由 FastMCP 内部使用 (Field is used internally by FastMCP)
 
+# V3.2 新增导入 - 配置管理和规则引擎
+from .utils import get_config, get_display_mode, resolve_final_options
+
 # 服务启动时的基本信息打印可以保留，用于基本诊断
 # Basic info print on server start can be kept for diagnostics
 print(f"Server.py 启动 - Python解释器路径: {sys.executable}")
@@ -31,6 +34,11 @@ print(f"Server.py 当前工作目录: {os.getcwd()}")
 
 
 mcp = FastMCP("Interactive Feedback MCP", log_level="ERROR")
+
+# V3.2 新增：响应缓存文件路径
+RESPONSE_CACHE_FILE = os.path.join(
+    tempfile.gettempdir(), "interactive_feedback_last_response.txt"
+)
 
 
 def launch_feedback_ui(
@@ -134,6 +142,59 @@ def launch_feedback_ui(
 
 
 @mcp.tool()
+def post_last_response(
+    response: str = Field(
+        description="AI's complete response to be cached for potential use in full display mode (AI的完整回复，用于完整显示模式)"
+    ),
+) -> str:
+    """
+    V3.2 New Tool: Cache AI's complete response for potential use in full display mode.
+    This tool allows AI to store its complete response, which can be retrieved
+    and displayed in the UI when full mode is enabled.
+
+    V3.2 新工具：缓存AI的完整回复，用于完整显示模式。
+    此工具允许AI存储其完整回复，在启用完整模式时可以在UI中检索和显示。
+
+    Args:
+        response: AI的完整回复内容
+
+    Returns:
+        str: 操作结果确认信息
+    """
+    try:
+        # 将响应保存到临时文件
+        with open(RESPONSE_CACHE_FILE, "w", encoding="utf-8") as f:
+            f.write(response)
+
+        return f"AI回复已缓存 (AI response cached): {len(response)} 字符"
+
+    except Exception as e:
+        error_msg = f"缓存AI回复失败 (Failed to cache AI response): {e}"
+        print(error_msg, file=sys.stderr)
+        return error_msg
+
+
+def get_cached_response() -> str:
+    """
+    获取缓存的AI回复
+    Get cached AI response
+
+    Returns:
+        str: 缓存的回复内容，如果不存在则返回空字符串
+    """
+    try:
+        if os.path.exists(RESPONSE_CACHE_FILE):
+            with open(RESPONSE_CACHE_FILE, "r", encoding="utf-8") as f:
+                return f.read()
+    except Exception as e:
+        print(
+            f"读取缓存回复失败 (Failed to read cached response): {e}", file=sys.stderr
+        )
+
+    return ""
+
+
+@mcp.tool()
 def interactive_feedback(
     message: str = Field(
         description="The specific question for the user (给用户的具体问题)"
@@ -147,25 +208,44 @@ def interactive_feedback(
     Processes the UI's output to return a tuple compatible with FastMCP,
     allowing for mixed text and image content to be sent back to Cursor.
 
+    V3.2 Enhancement: Supports configurable display modes and three-layer fallback options.
+
     通过GUI请求用户的交互式反馈。
     处理UI的输出以返回与FastMCP兼容的元组，
     允许将混合的文本和图像内容发送回Cursor。
+
+    V3.2 增强：支持可配置的显示模式和三层回退选项。
     """
 
-    options_list_for_ui: Optional[List[str]] = (
-        None  # 清晰的变量名 (Clear variable name)
+    # V3.2 新增：获取配置和解析最终选项
+    config = get_config()
+    display_mode = get_display_mode(config)
+
+    # 步骤1：决定提示内容（根据显示模式）
+    prompt_to_display = message  # 精简模式默认只显示message
+
+    # 如果是完整模式，这里可以扩展为显示更多内容
+    # 当前版本保持简单，后续可根据需要扩展
+    if display_mode == "full":
+        # 完整模式可以在这里添加更多上下文信息
+        # 目前保持与精简模式相同，主要区别在选项处理
+        prompt_to_display = message
+
+    # 步骤2：V3.2核心变更 - 三层回退选项逻辑
+    final_options = resolve_final_options(
+        ai_options=predefined_options, text=prompt_to_display, config=config
     )
-    if predefined_options:
-        if isinstance(predefined_options, list):
-            # 确保所有选项都是字符串 (Ensure all options are strings)
-            options_list_for_ui = [
-                str(item) for item in predefined_options if item is not None
-            ]
-        else:  # 如果不是列表但存在，则包装成单元素列表 (If not a list but exists, wrap in single-element list)
-            options_list_for_ui = [str(predefined_options)]
+
+    # 转换为UI需要的格式
+    options_list_for_ui: Optional[List[str]] = None
+    if final_options:
+        # 确保所有选项都是字符串
+        options_list_for_ui = [str(item) for item in final_options if item is not None]
+
+    # 调试信息已移除以减少噪音
 
     # ui_output_dict 是从 UI 脚本获取的原始输出 (ui_output_dict is the raw output from the UI script)
-    ui_output_dict = launch_feedback_ui(message, options_list_for_ui)
+    ui_output_dict = launch_feedback_ui(prompt_to_display, options_list_for_ui)
 
     processed_mcp_content: List[Union[str, Image]] = (
         []

@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..utils.object_pool import get_pixmap_pool, PooledResource
+
 
 class ImagePreviewWidget(QWidget):
     """
@@ -48,16 +50,10 @@ class ImagePreviewWidget(QWidget):
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Create scaled thumbnail for display
-        thumbnail = self.original_pixmap.scaled(
-            44,
-            44,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.display_thumbnail = thumbnail  # Thumbnail shown by default
+        # Create scaled thumbnail for display (using object pool if available)
+        self.display_thumbnail = self._create_scaled_pixmap(44, 44)
         self.hover_thumbnail = self._create_hover_thumbnail(
-            thumbnail
+            self.display_thumbnail
         )  # Thumbnail for hover state
 
         self.thumbnail_label.setPixmap(self.display_thumbnail)
@@ -127,17 +123,10 @@ class ImagePreviewWidget(QWidget):
         max_preview_width = 400
         max_preview_height = 300
 
-        preview_pixmap = self.original_pixmap
-        if (
-            preview_pixmap.width() > max_preview_width
-            or preview_pixmap.height() > max_preview_height
-        ):
-            preview_pixmap = preview_pixmap.scaled(
-                max_preview_width,
-                max_preview_height,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        # 使用优化的缩放方法
+        preview_pixmap = self._create_scaled_pixmap(
+            max_preview_width, max_preview_height
+        )
 
         cursor_pos = QCursor.pos()  # Global cursor position
 
@@ -202,3 +191,38 @@ class ImagePreviewWidget(QWidget):
             self.preview_window.close()  # Close preview if open
         self.image_deleted.emit(self.image_id)
         # The parent (FeedbackUI) will handle self.deleteLater()
+
+    def _create_scaled_pixmap(self, max_width: int, max_height: int) -> QPixmap:
+        """
+        创建缩放后的QPixmap，优先使用对象池
+        Create scaled QPixmap, preferring object pool
+        """
+        # 检查是否需要缩放
+        if (
+            self.original_pixmap.width() <= max_width
+            and self.original_pixmap.height() <= max_height
+        ):
+            return self.original_pixmap
+
+        # 尝试使用对象池
+        pixmap_pool = get_pixmap_pool()
+        if pixmap_pool is not None:
+            with PooledResource(pixmap_pool) as temp_pixmap:
+                # 使用池化的pixmap进行缩放
+                scaled = self.original_pixmap.scaled(
+                    max_width,
+                    max_height,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                # 复制结果到新的pixmap（因为池化对象会被回收）
+                result = QPixmap(scaled)
+                return result
+        else:
+            # 回退到直接创建
+            return self.original_pixmap.scaled(
+                max_width,
+                max_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )

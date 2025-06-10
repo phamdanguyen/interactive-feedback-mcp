@@ -160,7 +160,7 @@ def main():
     )
     args = parser.parse_args()
 
-    # Process predefined options
+    # Process predefined options with V3.2 three-layer fallback logic
     options_list: List[str] = []
     if args.predefined_options:
         options_list = [
@@ -172,6 +172,52 @@ def main():
             "我发现了一个小问题... (I found a small issue...)",
             "可以考虑增加... (Could you consider adding...)",
         ]
+
+    # V3.2 严格边界控制：应用三层回退逻辑
+    try:
+        # 导入V3.2配置和规则引擎
+        import sys
+        import os
+
+        # 获取项目根目录
+        current_file = os.path.abspath(__file__)
+        feedback_ui_dir = os.path.dirname(current_file)  # src/feedback_ui
+        src_dir = os.path.dirname(feedback_ui_dir)  # src
+        project_root = os.path.dirname(src_dir)  # 项目根目录
+
+        # 添加到路径
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+
+        from src.interactive_feedback_server.utils.rule_engine import (
+            resolve_final_options,
+        )
+        from src.interactive_feedback_server.utils.config_manager import get_config
+
+        # 获取配置
+        config = get_config()
+
+        # 严格的三层回退逻辑：
+        # 1. 如果有预定义选项，作为AI选项传入（第一层）
+        # 2. 如果没有预定义选项，传入None让规则引擎处理（第二层）
+        # 3. 规则引擎无法处理时自动使用后备选项（第三层）
+        ai_options_for_engine = options_list if options_list else None
+
+        final_options = resolve_final_options(
+            ai_options=ai_options_for_engine,  # 严格按照边界规则传入
+            text=args.prompt,  # 使用提示文本
+            config=config,
+        )
+
+        # 更新选项列表
+        if final_options:
+            options_list = final_options
+
+    except Exception as e:
+        print(f"V3.2 Error - 三层回退逻辑失败: {e}", file=sys.stderr)
+        # 极端情况下的保底选项
+        if not options_list:
+            options_list = ["继续", "取消", "需要帮助"]
 
     final_result = start_feedback_tool(args.prompt, options_list, args.output_file)
 
