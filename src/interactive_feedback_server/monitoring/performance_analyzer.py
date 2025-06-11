@@ -285,25 +285,14 @@ class PerformanceAnalyzer:
         return issues
 
     def _analyze_error_rates(self, minutes: int) -> List[PerformanceIssue]:
-        """分析错误率"""
-        issues = []
-
-        # 这里可以添加错误率分析逻辑
-        # 需要从指标中获取错误计数和总请求计数
-
-        return issues
+        """分析错误率 - V4.0 简化版本"""
+        # 简化实现：暂时返回空列表，避免未实现的复杂逻辑
+        return []
 
     def _analyze_resource_trends(self, minutes: int) -> List[PerformanceIssue]:
-        """分析资源使用趋势"""
-        issues = []
-
-        # 获取系统快照历史
-        cutoff_time = time.time() - (minutes * 60)
-
-        # 这里可以添加趋势分析逻辑
-        # 例如：检测内存泄漏、CPU使用率上升趋势等
-
-        return issues
+        """分析资源使用趋势 - V4.0 简化版本"""
+        # 简化实现：暂时返回空列表，避免未实现的复杂逻辑
+        return []
 
     def _calculate_overall_performance(
         self, issues: List[PerformanceIssue]

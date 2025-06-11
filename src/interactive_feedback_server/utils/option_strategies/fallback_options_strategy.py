@@ -38,16 +38,22 @@ class FallbackOptionsStrategy(BaseOptionStrategy):
 
     def is_applicable(self, context: OptionContext) -> bool:
         """
-        后备选项策略总是适用
-        Fallback options strategy is always applicable
+        检查后备选项策略是否适用
+        Check if fallback options strategy is applicable
 
         Args:
             context: 选项解析上下文
 
         Returns:
-            bool: 总是返回True
+            bool: 是否适用
         """
-        # 后备选项作为最后的保障，总是适用
+        # 检查配置是否启用自定义选项
+        if context.config:
+            custom_options_enabled = self._get_custom_options_enabled(context.config)
+            if not custom_options_enabled:
+                return False
+
+        # 后备选项作为最后的保障，在启用时总是适用
         return True
 
     def parse_options(self, context: OptionContext) -> Optional[OptionResult]:
@@ -120,6 +126,34 @@ class FallbackOptionsStrategy(BaseOptionStrategy):
                         return valid_options
 
         return []
+
+    def _get_custom_options_enabled(self, config: dict) -> bool:
+        """
+        检查配置中是否启用自定义选项
+        Check if custom options are enabled in configuration
+
+        Args:
+            config: 配置字典
+
+        Returns:
+            bool: 是否启用自定义选项
+        """
+        # 使用统一的配置检查工具
+        try:
+            from ..config_manager import get_feature_enabled
+
+            return get_feature_enabled(config, "enable_custom_options", False)
+        except ImportError:
+            # 回退到本地实现
+            if "enable_custom_options" in config:
+                value = config["enable_custom_options"]
+                if isinstance(value, bool):
+                    return value
+                elif isinstance(value, str):
+                    return value.lower() in ["true", "1", "yes", "on", "enabled"]
+                elif isinstance(value, int):
+                    return value != 0
+            return False
 
     def _has_custom_fallback_options(self, config: dict) -> bool:
         """

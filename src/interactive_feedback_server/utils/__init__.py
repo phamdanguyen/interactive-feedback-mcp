@@ -12,25 +12,13 @@ from .config_manager import (
     validate_config,
     get_display_mode,
     get_fallback_options,
-    # V3.2 新增：功能开关
-    get_rule_engine_enabled,
+    # V4.1 简化：自定义选项开关
     get_custom_options_enabled,
-    set_rule_engine_enabled,
     set_custom_options_enabled,
-    # V3.2 性能优化：配置缓存管理
-    get_config_cache_stats,
-    clear_config_cache,
-    preload_config_cache,
-    benchmark_config_performance,
 )
 from .rule_engine import (
-    extract_options_from_text,
     resolve_final_options,
-    # V3.2 性能优化：缓存和监控功能
-    get_rule_engine_performance_stats,
-    clear_rule_engine_cache,
-    benchmark_rule_engine,
-    test_rule_engine_performance,
+    # V4.0 简化：保留核心选项解析功能
 )
 
 # V3.2 优化：新增配置辅助工具
@@ -42,14 +30,14 @@ from .config_helpers import (
     safe_config_operation,
 )
 
-# V3.2 Day 3 优化：新增文本处理工具
+# V3.2 Day 3 优化：新增文本处理工具 - V4.1 精简版本
 from .text_processor import (
     fast_normalize_text,
     fast_extract_keywords,
     fast_find_match,
     get_text_processor,
     get_optimized_matcher,
-    get_text_processing_stats,
+    # V4.1 移除：get_text_processing_stats未使用
 )
 
 __all__ = [
@@ -58,31 +46,19 @@ __all__ = [
     "validate_config",
     "get_display_mode",
     "get_fallback_options",
-    # V3.2 新增：功能开关
-    "get_rule_engine_enabled",
+    # V4.1 简化：自定义选项开关
     "get_custom_options_enabled",
-    "set_rule_engine_enabled",
     "set_custom_options_enabled",
-    # V3.2 性能优化：配置缓存管理
-    "get_config_cache_stats",
-    "clear_config_cache",
-    "preload_config_cache",
-    "benchmark_config_performance",
-    # V3.2 Day 3 优化：文本处理工具
+    # 文本处理工具 - V4.1 精简版本
     "fast_normalize_text",
     "fast_extract_keywords",
     "fast_find_match",
     "get_text_processor",
     "get_optimized_matcher",
-    "get_text_processing_stats",
-    "extract_options_from_text",
+    # V4.1 移除：get_text_processing_stats未使用
     "resolve_final_options",
-    # V3.2 性能优化：缓存和监控
-    "get_rule_engine_performance_stats",
-    "clear_rule_engine_cache",
-    "benchmark_rule_engine",
-    "test_rule_engine_performance",
-    # V3.2 优化：配置辅助工具
+    # V4.1 简化：保留核心功能
+    # 配置辅助工具
     "safe_get_config",
     "safe_get_feature_states",
     "safe_get_fallback_options",

@@ -52,7 +52,11 @@ MIN_RIGHT_AREA_WIDTH = 400
 
 MAX_IMAGE_WIDTH = 512
 MAX_IMAGE_HEIGHT = 512
-MAX_IMAGE_BYTES = 1048576  # 1MB (1兆字节)
+MAX_IMAGE_BYTES = 2097152  # 2MB (2兆字节)
+
+# 图像压缩相关常量 (Image Compression Constants)
+IMAGE_QUALITY = 100  # JPEG质量 (100% = 无损压缩)
+IMAGE_SCALE_FACTOR = 0.8  # 尺寸缩放因子
 
 # 支持的图片文件扩展名 (Supported Image File Extensions)
 SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"]

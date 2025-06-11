@@ -86,6 +86,9 @@ class FeedbackUI(QMainWindow):
             "open_terminal_button": {"zh_CN": "启用终端", "en_US": "Open Terminal"},
             "pin_window_button": {"zh_CN": "固定窗口", "en_US": "Pin Window"},
             "settings_button": {"zh_CN": "设置", "en_US": "Settings"},
+            # V4.0 新增：优化按钮
+            "optimize_button": {"zh_CN": "优化", "en_US": "Optimize"},
+            "enhance_button": {"zh_CN": "增强", "en_US": "Enhance"},
         }
 
         # 工具提示的双语映射
@@ -110,9 +113,21 @@ class FeedbackUI(QMainWindow):
                 "zh_CN": "打开设置面板",
                 "en_US": "Open settings panel",
             },
+            # V4.0 新增：优化按钮工具提示
+            "optimize_button": {
+                "zh_CN": "一键优化文本表达",
+                "en_US": "One-click text optimization",
+            },
+            "enhance_button": {
+                "zh_CN": "增强提示词效果",
+                "en_US": "Enhance prompt effectiveness",
+            },
         }
 
         self.settings_manager = SettingsManager(self)
+
+        # 初始化音频管理器
+        self._setup_audio_manager()
 
         self._setup_window()
         self._load_settings()
@@ -128,6 +143,9 @@ class FeedbackUI(QMainWindow):
         # 初始化时更新界面文本显示
         self._update_displayed_texts()
 
+        # V4.0 新增：更新优化按钮可见性
+        QTimer.singleShot(200, self._update_optimization_buttons_visibility)
+
         # 为主窗口安装事件过滤器，以实现点击背景聚焦输入框的功能
         self.installEventFilter(self)
 
@@ -136,6 +154,30 @@ class FeedbackUI(QMainWindow):
 
         # 配置工具提示显示延迟，减少悬浮提示的延迟
         self._configure_tooltip_timing()
+
+        # V4.1 新增：创建加载覆盖层
+        self._setup_loading_overlay()
+
+    def _setup_audio_manager(self):
+        """设置音频管理器"""
+        try:
+            from .utils.audio_manager import get_audio_manager
+
+            self.audio_manager = get_audio_manager()
+
+            if self.audio_manager:
+                # 从设置中加载音频配置
+                enabled = self.settings_manager.get_audio_enabled()
+                volume = self.settings_manager.get_audio_volume()
+
+                self.audio_manager.set_enabled(enabled)
+                self.audio_manager.set_volume(volume)
+
+                pass  # 音频管理器初始化成功
+
+        except Exception as e:
+            print(f"设置音频管理器时出错: {e}", file=sys.stderr)
+            self.audio_manager = None
 
     def _configure_tooltip_timing(self):
         """配置工具提示显示延迟，减少悬浮提示的延迟"""
@@ -159,6 +201,17 @@ class FeedbackUI(QMainWindow):
                 print("DEBUG: 工具提示延迟配置已应用", file=sys.stderr)
         except Exception as e:
             print(f"DEBUG: 配置工具提示延迟时出错: {e}", file=sys.stderr)
+
+    def _setup_loading_overlay(self):
+        """V4.1 新增：设置加载覆盖层"""
+        from .widgets.loading_overlay import LoadingOverlay
+
+        self.loading_overlay = LoadingOverlay(self)
+
+        # 根据当前主题设置样式
+        current_theme = self.settings_manager.get_current_theme()
+        is_dark_theme = current_theme == "dark"
+        self.loading_overlay.set_theme(is_dark_theme)
 
     def _setup_window(self):
         """Sets up basic window properties like title, size."""
@@ -940,9 +993,88 @@ class FeedbackUI(QMainWindow):
         )
         bottom_layout.addWidget(self.settings_button)
 
+        # V4.0 新增：优化按钮
+        self._create_optimization_buttons(bottom_layout, current_language)
+
         bottom_layout.addStretch()  # Pushes buttons to the left
 
         parent_layout.addWidget(bottom_bar_widget)
+
+    def _create_optimization_buttons(self, layout, current_language):
+        """V4.0 新增：创建优化按钮"""
+        # 优化按钮
+        self.optimize_button = QPushButton(
+            self.button_texts["optimize_button"][current_language]
+        )
+        self.optimize_button.setObjectName("optimization_button")
+        self.optimize_button.setToolTip(
+            self.tooltip_texts["optimize_button"][current_language]
+        )
+        # 设置半圆形样式和一半宽度，高度与其他按钮一致
+        self.optimize_button.setStyleSheet(
+            """
+            QPushButton#optimization_button {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 32px;
+                max-height: 32px;
+                border-radius: 16px;
+                background-color: #2D5587;
+                color: white;
+                border: 2px solid #4A90E2;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton#optimization_button:hover {
+                background-color: #375F91;
+                border-color: #5BA0F2;
+            }
+            QPushButton#optimization_button:pressed {
+                background-color: #1F3F67;
+                border-color: #3A80D2;
+            }
+        """
+        )
+        layout.addWidget(self.optimize_button)
+
+        # 增强按钮
+        self.enhance_button = QPushButton(
+            self.button_texts["enhance_button"][current_language]
+        )
+        self.enhance_button.setObjectName("optimization_button")
+        self.enhance_button.setToolTip(
+            self.tooltip_texts["enhance_button"][current_language]
+        )
+        # 设置半圆形样式和一半宽度，高度与其他按钮一致
+        self.enhance_button.setStyleSheet(
+            """
+            QPushButton#optimization_button {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 32px;
+                max-height: 32px;
+                border-radius: 16px;
+                background-color: #2D5587;
+                color: white;
+                border: 2px solid #4A90E2;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton#optimization_button:hover {
+                background-color: #375F91;
+                border-color: #5BA0F2;
+            }
+            QPushButton#optimization_button:pressed {
+                background-color: #1F3F67;
+                border-color: #3A80D2;
+            }
+        """
+        )
+        layout.addWidget(self.enhance_button)
+
+        # 初始隐藏按钮
+        self.optimize_button.setVisible(False)
+        self.enhance_button.setVisible(False)
 
     def _create_github_link_area(self, parent_layout: QVBoxLayout):
         """Creates the GitHub link at the bottom."""
@@ -989,6 +1121,9 @@ class FeedbackUI(QMainWindow):
         self.open_terminal_button.clicked.connect(self._open_terminal)
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
+        # V4.0 新增：连接优化按钮事件
+        self.optimize_button.clicked.connect(self._optimize_text)
+        self.enhance_button.clicked.connect(self._reinforce_text)
         self.submit_button.clicked.connect(self._prepare_and_submit_feedback)
 
     def _setup_simple_terminal_preview(self):
@@ -1479,6 +1614,18 @@ class FeedbackUI(QMainWindow):
             if k in current_text_content_for_refs
         }
 
+        # 将文件引用添加到final_content_list中，确保AI收到完整路径信息
+        for display_name, file_path in file_references.items():
+            file_reference_item: ContentItem = {
+                "type": "file_reference",
+                "display_name": display_name,
+                "path": file_path,
+                "text": None,
+                "data": None,
+                "mimeType": None,
+            }
+            final_content_list.append(file_reference_item)
+
         # 不管 final_content_list 是否为空，都设置结果并关闭窗口
         self.output_result = FeedbackResult(content=final_content_list)
 
@@ -1494,6 +1641,9 @@ class FeedbackUI(QMainWindow):
         self.activateWindow()
         self.text_input.setFocus()
 
+        # 播放提示音
+        self._play_notification_sound()
+
         app_instance = QApplication.instance()
         if app_instance:
             app_instance.exec()
@@ -1501,6 +1651,21 @@ class FeedbackUI(QMainWindow):
         # 直接返回 self.output_result，它在 __init__ 中已初始化为空结果
         # 如果用户有提交内容，它已在 _prepare_and_submit_feedback 中被更新
         return self.output_result
+
+    def _play_notification_sound(self):
+        """播放提示音"""
+        try:
+            if hasattr(self, "audio_manager") and self.audio_manager:
+                # 获取自定义音频文件路径
+                custom_sound_path = self.settings_manager.get_notification_sound_path()
+
+                # 播放提示音
+                self.audio_manager.play_notification_sound(
+                    custom_sound_path if custom_sound_path else None
+                )
+
+        except Exception as e:
+            print(f"播放提示音时出错: {e}", file=sys.stderr)
 
     def _set_initial_focus(self):
         """Sets initial focus to the feedback text edit."""
@@ -2304,3 +2469,420 @@ class FeedbackUI(QMainWindow):
 
             # 更新复选框样式，确保主题切换时颜色正确
             QTimer.singleShot(100, self._update_all_checkbox_styles)
+
+            # V4.1 新增：更新加载覆盖层主题
+            if hasattr(self, "loading_overlay"):
+                is_dark_theme = current_theme == "dark"
+                self.loading_overlay.set_theme(is_dark_theme)
+
+    # V4.0 新增：输入表达优化功能
+    def _update_optimization_buttons_visibility(self):
+        """根据配置更新优化按钮的可见性"""
+        # V4.0 更新：使用底部栏优化按钮
+        if hasattr(self, "optimize_button") and hasattr(self, "enhance_button"):
+            try:
+                # 检查优化功能是否启用
+                import sys
+                import os
+
+                # 添加项目根目录到路径
+                project_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+
+                from src.interactive_feedback_server.utils import get_config
+
+                config = get_config()
+                optimizer_config = config.get("expression_optimizer", {})
+                enabled = optimizer_config.get("enabled", False)
+
+                # 更新按钮可见性
+                self.optimize_button.setVisible(enabled)
+                self.enhance_button.setVisible(enabled)
+
+            except Exception as e:
+                print(f"DEBUG: 更新优化按钮可见性失败: {e}", file=sys.stderr)
+                self.optimize_button.setVisible(False)
+                self.enhance_button.setVisible(False)
+
+    def _optimize_text(self):
+        """一键优化当前输入文本"""
+        current_text = self.text_input.toPlainText().strip()
+        if not current_text:
+            self._show_optimization_message("请先输入要优化的文本")
+            return
+
+        self._perform_optimization(current_text, "optimize")
+
+    def _reinforce_text(self):
+        """提示词强化当前输入文本"""
+        current_text = self.text_input.toPlainText().strip()
+        if not current_text:
+            self._show_optimization_message("请先输入要强化的文本")
+            return
+
+        # 弹出对话框获取强化指令
+        from PySide6.QtWidgets import QInputDialog
+
+        self.disable_auto_minimize = True
+        try:
+            reinforcement_prompt, ok = QInputDialog.getText(
+                self,
+                "提示词强化",
+                "请输入强化指令（例如：用更专业的语气重写）:",
+                text="",
+            )
+
+            if ok and reinforcement_prompt.strip():
+                self._perform_optimization(
+                    current_text, "reinforce", reinforcement_prompt.strip()
+                )
+            elif ok:
+                self._show_optimization_message("强化指令不能为空")
+
+        finally:
+            self.disable_auto_minimize = False
+
+    def _perform_optimization(
+        self, text: str, mode: str, reinforcement_prompt: str = None
+    ):
+        """执行优化操作 - V4.1 异步加载效果"""
+        # V4.1 新增：立即显示加载覆盖层
+        loading_message = (
+            "🔄 正在优化文本，请稍候..."
+            if mode == "optimize"
+            else "🔄 正在增强文本，请稍候..."
+        )
+        self.loading_overlay.show_loading(loading_message)
+
+        # 显示加载状态
+        self._set_optimization_loading_state(True)
+
+        # V4.1 修复：使用QTimer异步执行优化，避免阻塞UI
+        QTimer.singleShot(
+            50,
+            lambda: self._execute_optimization_async(text, mode, reinforcement_prompt),
+        )
+
+    def _execute_optimization_async(
+        self, text: str, mode: str, reinforcement_prompt: str = None
+    ):
+        """异步执行优化操作 - V4.1 新增"""
+        try:
+            # 调用后端MCP工具
+            import sys
+            import os
+
+            # 添加项目根目录到路径
+            project_root = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+
+            from src.interactive_feedback_server.cli import optimize_user_input
+
+            if mode == "reinforce" and reinforcement_prompt:
+                result = optimize_user_input(text, mode, reinforcement_prompt)
+            else:
+                result = optimize_user_input(text, mode)
+
+            # V4.1 智能切换：根据结果类型选择不同的反馈方式
+            if self._is_optimization_error(result):
+                # 错误时：隐藏loading，显示详细的错误对话框
+                self.loading_overlay.hide_loading()
+                self._show_optimization_message(result)
+            else:
+                # 成功时：只更新文本，不显示弹窗（用户能直接看到变化）
+                clean_result = result
+                is_cached = False
+
+                if result.startswith("[CACHED] "):
+                    clean_result = result[9:]  # 移除 "[CACHED] " 前缀
+                    is_cached = True
+
+                # 验证优化结果的质量
+                if self._validate_optimization_result(clean_result, text):
+                    # 成功：使用支持撤销的文本替换方法
+                    self.text_input.replace_text_with_undo_support(clean_result)
+                    # V4.1 新增：激活输入框焦点，让用户可以直接输入
+                    QTimer.singleShot(100, self.text_input.activate_input_focus)
+                    # V4.1 智能反馈：显示简短的成功状态，然后自动消失
+                    success_msg = "✅ 优化完成！" + (" (缓存)" if is_cached else "")
+                    self.loading_overlay.show_success(success_msg, 500)
+                    return  # 提前返回，避免执行finally中的hide_loading
+                else:
+                    # 质量警告：仍然应用文本，使用支持撤销的方法
+                    self.text_input.replace_text_with_undo_support(clean_result)
+                    # V4.1 新增：激活输入框焦点
+                    QTimer.singleShot(100, self.text_input.activate_input_focus)
+                    self.loading_overlay.hide_loading()
+                    self._show_optimization_message(
+                        "⚠️ 优化完成，但结果可能需要手动调整", success=True
+                    )
+
+        except Exception as e:
+            error_msg = f"优化过程中发生错误: {str(e)}"
+            self._show_optimization_message(error_msg)
+            # 异常时隐藏loading overlay
+            self.loading_overlay.hide_loading()
+        finally:
+            # V4.1 修改：只重置按钮状态，loading overlay由具体逻辑控制
+            self._set_optimization_loading_state(False)
+
+    def _is_optimization_error(self, result: str) -> bool:
+        """
+        检测优化结果是否为错误 - V4.1 新增
+        Detect if optimization result is an error - V4.1 New
+        """
+        if not result or not isinstance(result, str):
+            return True
+
+        # 检查明显的错误标识
+        error_indicators = [
+            "[ERROR",
+            "[错误",
+            "[失败",
+            "[系统错误]",
+            "[配置错误]",
+            "[优化失败]",
+            "不可用",
+            "异常",
+            "Exception",
+        ]
+
+        return any(indicator in result for indicator in error_indicators)
+
+    def _validate_optimization_result(self, result: str, original: str) -> bool:
+        """
+        验证优化结果的基本质量 - V4.1 新增
+        Validate basic quality of optimization result - V4.1 New
+        """
+        if not result or not isinstance(result, str):
+            return False
+
+        result = result.strip()
+        original = original.strip()
+
+        # 基本长度检查
+        if len(result) < 2:
+            return False
+
+        # 检查是否过短（相对于原文）
+        if len(result) < len(original) * 0.3:
+            return False
+
+        # 检查是否过长（可能包含了不必要的内容）
+        if len(result) > len(original) * 3:
+            return False
+
+        # 检查是否包含明显的技术内容
+        technical_indicators = [
+            "function",
+            "def ",
+            "class ",
+            "import ",
+            "from ",
+            "Args:",
+            "Returns:",
+            "Parameters:",
+            "Type:",
+        ]
+
+        if any(indicator in result for indicator in technical_indicators):
+            return False
+
+        return True
+
+    def _set_optimization_loading_state(self, loading: bool):
+        """设置优化按钮的加载状态 - V4.1 增强视觉反馈"""
+        # V4.1 更新：改进加载状态的视觉反馈
+        if hasattr(self, "optimize_button") and hasattr(self, "enhance_button"):
+            self.optimize_button.setEnabled(not loading)
+            self.enhance_button.setEnabled(not loading)
+
+            if loading:
+                # 加载时显示动态提示
+                self.optimize_button.setToolTip("🔄 正在优化文本，请稍候...")
+                self.enhance_button.setToolTip("🔄 正在增强文本，请稍候...")
+
+                # 改变按钮样式以显示加载状态
+                self.optimize_button.setStyleSheet(
+                    self.optimize_button.styleSheet() + "QPushButton { opacity: 0.6; }"
+                )
+                self.enhance_button.setStyleSheet(
+                    self.enhance_button.styleSheet() + "QPushButton { opacity: 0.6; }"
+                )
+            else:
+                # 恢复正常状态
+                current_language = self.settings_manager.get_current_language()
+                self.optimize_button.setToolTip(
+                    self.tooltip_texts["optimize_button"][current_language]
+                )
+                self.enhance_button.setToolTip(
+                    self.tooltip_texts["enhance_button"][current_language]
+                )
+
+                # 恢复按钮样式
+                original_style = self.optimize_button.styleSheet().replace(
+                    "QPushButton { opacity: 0.6; }", ""
+                )
+                self.optimize_button.setStyleSheet(original_style)
+                original_style = self.enhance_button.styleSheet().replace(
+                    "QPushButton { opacity: 0.6; }", ""
+                )
+                self.enhance_button.setStyleSheet(original_style)
+
+            # 同时禁用/启用输入框，防止用户在优化过程中修改文本
+            if hasattr(self, "text_input"):
+                self.text_input.setEnabled(not loading)
+
+            if hasattr(self.text_input, "reinforce_button"):
+                self.text_input.reinforce_button.setEnabled(not loading)
+                if loading:
+                    self.text_input.reinforce_button.setToolTip("🔄 强化中...")
+                else:
+                    self.text_input.reinforce_button.setToolTip("提示词强化")
+
+    def _convert_error_to_user_friendly(self, error_message: str) -> str:
+        """
+        将技术性错误消息转换为用户友好的提示 - V4.1 新增
+        Convert technical error messages to user-friendly prompts - V4.1 New
+        """
+        if not error_message:
+            return "优化过程中出现未知问题，请稍后重试"
+
+        # 处理常见的技术错误
+        if "[ERROR:AUTH]" in error_message or "API密钥无效" in error_message:
+            return "API密钥配置有误，请在设置中检查并更新您的API密钥"
+
+        if "[ERROR:RATE]" in error_message or "频率过高" in error_message:
+            return "请求过于频繁，请稍等片刻后再试"
+
+        if "[ERROR:TIMEOUT]" in error_message or "超时" in error_message:
+            return "网络连接超时，请检查网络连接后重试"
+
+        if "[配置错误]" in error_message or "导入失败" in error_message:
+            return "系统配置异常，请检查设置或重启应用"
+
+        if (
+            "[ERROR:MODEL]" in error_message
+            or "模型" in error_message
+            and "不存在" in error_message
+        ):
+            return "所选AI模型不可用，请在设置中选择其他模型"
+
+        if "[ERROR:SAFETY]" in error_message or "安全过滤" in error_message:
+            return "输入内容被安全过滤器拦截，请修改后重试"
+
+        # 处理优化失败的情况
+        if "[优化失败]" in error_message:
+            return "文本优化失败，请检查网络连接和API配置"
+
+        # 如果是其他错误，提供通用的友好提示
+        if error_message.startswith("[") and any(
+            keyword in error_message for keyword in ["错误", "失败", "异常"]
+        ):
+            return "优化过程中遇到问题，请稍后重试或检查设置"
+
+        # 返回原始消息（如果不是错误消息）
+        return error_message
+
+    def _show_optimization_message(self, message: str, success: bool = False):
+        """显示优化结果消息 - V4.1 增强用户体验"""
+        from PySide6.QtWidgets import QMessageBox
+
+        self.disable_auto_minimize = True
+        try:
+            # 转换错误消息为用户友好格式
+            if not success:
+                message = self._convert_error_to_user_friendly(message)
+
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("输入表达优化")
+            msg_box.setText(message)
+
+            if success:
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                # 成功时自动关闭对话框（2秒后）
+                QTimer.singleShot(2000, msg_box.accept)
+            else:
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+
+            msg_box.exec()
+        finally:
+            self.disable_auto_minimize = False
+
+    def _update_displayed_texts(self):
+        """更新界面显示的文本（包括优化按钮）"""
+        current_language = self.settings_manager.get_current_language()
+
+        # 更新现有按钮文本
+        if hasattr(self, "submit_button"):
+            self.submit_button.setText(
+                self.button_texts["submit_button"][current_language]
+            )
+
+        if hasattr(self, "canned_responses_button"):
+            self.canned_responses_button.setText(
+                self.button_texts["canned_responses_button"][current_language]
+            )
+            self.canned_responses_button.setToolTip(
+                self.tooltip_texts["canned_responses_button"][current_language]
+            )
+
+        if hasattr(self, "select_file_button"):
+            self.select_file_button.setText(
+                self.button_texts["select_file_button"][current_language]
+            )
+            self.select_file_button.setToolTip(
+                self.tooltip_texts["select_file_button"][current_language]
+            )
+
+        if hasattr(self, "screenshot_button"):
+            self.screenshot_button.setText(
+                self.button_texts["screenshot_button"][current_language]
+            )
+            self.screenshot_button.setToolTip(
+                self.tooltip_texts["screenshot_button"][current_language]
+            )
+
+        if hasattr(self, "open_terminal_button"):
+            self.open_terminal_button.setText(
+                self.button_texts["open_terminal_button"][current_language]
+            )
+            self.open_terminal_button.setToolTip(
+                self.tooltip_texts["open_terminal_button"][current_language]
+            )
+
+        if hasattr(self, "pin_window_button"):
+            self.pin_window_button.setText(
+                self.button_texts["pin_window_button"][current_language]
+            )
+
+        if hasattr(self, "settings_button"):
+            self.settings_button.setText(
+                self.button_texts["settings_button"][current_language]
+            )
+            self.settings_button.setToolTip(
+                self.tooltip_texts["settings_button"][current_language]
+            )
+
+        # V4.0 新增：更新优化按钮文本
+        if hasattr(self, "optimize_button"):
+            self.optimize_button.setText(
+                self.button_texts["optimize_button"][current_language]
+            )
+            self.optimize_button.setToolTip(
+                self.tooltip_texts["optimize_button"][current_language]
+            )
+
+        if hasattr(self, "enhance_button"):
+            self.enhance_button.setText(
+                self.button_texts["enhance_button"][current_language]
+            )
+            self.enhance_button.setToolTip(
+                self.tooltip_texts["enhance_button"][current_language]
+            )

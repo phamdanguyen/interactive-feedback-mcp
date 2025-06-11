@@ -12,7 +12,6 @@ from typing import List, Dict, Any, Optional
 from .option_strategy import OptionContext, OptionResult, StrategyChain
 from .option_strategies import (
     AIOptionsStrategy,
-    RuleEngineStrategy,
     FallbackOptionsStrategy,
 )
 from ..monitoring import get_metric_collector, PerformanceTimer
@@ -54,9 +53,8 @@ class OptionResolver:
         设置默认策略链
         Setup default strategy chain
         """
-        # 按优先级添加策略
+        # V4.0 简化：按优先级添加策略（移除规则引擎）
         self.strategy_chain.add_strategy(AIOptionsStrategy())
-        self.strategy_chain.add_strategy(RuleEngineStrategy())
         self.strategy_chain.add_strategy(FallbackOptionsStrategy())
 
     def _initialize_plugin_system(self) -> None:
@@ -477,9 +475,6 @@ class OptionResolver:
                 "strategy_usage": {
                     "ai_options": self.stats_collector.get_counter(
                         "strategy_usage_ai_options"
-                    ),
-                    "rule_engine": self.stats_collector.get_counter(
-                        "strategy_usage_rule_engine"
                     ),
                     "fallback_options": self.stats_collector.get_counter(
                         "strategy_usage_fallback_options"

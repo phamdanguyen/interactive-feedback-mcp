@@ -16,17 +16,63 @@ import json
 from typing import Dict, Any, List
 from datetime import datetime
 
-# 配置文件路径 - 项目根目录
-CONFIG_FILE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-    "config.json",
-)
 
-# 出厂默认配置
+# 配置文件路径 - 智能路径选择
+def _get_config_file_path() -> str:
+    """
+    智能选择配置文件路径，支持不同安装方式
+    Smart config file path selection for different installation methods
+
+    优先级：
+    1. 环境变量 INTERACTIVE_FEEDBACK_CONFIG
+    2. 用户主目录 ~/.interactive-feedback/config.json
+    3. 项目根目录 config.json（开发模式）
+    """
+    # 1. 检查环境变量
+    env_config_path = os.getenv("INTERACTIVE_FEEDBACK_CONFIG")
+    if env_config_path and os.path.dirname(env_config_path):
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(env_config_path), exist_ok=True)
+            return env_config_path
+        except Exception:
+            pass
+
+    # 2. 用户主目录（推荐用于 uvx/pip 安装）
+    try:
+        user_config_dir = os.path.expanduser("~/.interactive-feedback")
+        os.makedirs(user_config_dir, exist_ok=True)
+        user_config_path = os.path.join(user_config_dir, "config.json")
+
+        # 测试是否可写
+        if os.access(user_config_dir, os.W_OK):
+            return user_config_path
+    except Exception:
+        pass
+
+    # 3. 项目根目录（开发模式回退）
+    try:
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
+        project_config_path = os.path.join(project_root, "config.json")
+
+        # 如果项目目录可写，使用项目配置
+        if os.access(project_root, os.W_OK):
+            return project_config_path
+    except Exception:
+        pass
+
+    # 4. 最后回退到用户主目录（即使可能无法写入）
+    return os.path.expanduser("~/.interactive-feedback/config.json")
+
+
+CONFIG_FILE_PATH = _get_config_file_path()
+
+# 出厂默认配置 - V4.1 增强版本
 DEFAULT_CONFIG = {
     "display_mode": "simple",
-    "enable_rule_engine": True,  # V3.2 新增：启用规则引擎
-    "enable_custom_options": True,  # V3.2 新增：启用自定义选项
+    "enable_custom_options": False,  # V4.0 保留：启用自定义选项（默认禁用，用户主动启用）
     "fallback_options": [
         "好的，我明白了",
         "请继续",
@@ -34,10 +80,32 @@ DEFAULT_CONFIG = {
         "返回上一步",
         "暂停，让我思考一下",
     ],
+    "expression_optimizer": {
+        "enabled": False,  # 默认禁用，用户配置 API key 后自动启用
+        "active_provider": "openai",
+        "prompts": {
+            "optimize": "你是一个专业的文本优化助手。请将用户的输入文本改写为结构化、逻辑清晰的指令。只需要输出优化后的文本，不要包含任何技术参数、函数定义或元数据信息。",
+            "reinforce": "你是一个指令执行助手。请严格按照用户提供的'强化指令'，对用户提供的'原始文本'进行处理和改写。只输出改写结果，不要包含任何技术信息。",
+        },
+        "performance": {
+            "timeout_seconds": 30,
+            "max_retries": 3,
+            "retry_delay_seconds": 1,
+            "rate_limit_requests_per_minute": 60,
+        },
+        "providers": {},  # 空的提供商配置，用户配置后填充
+    },
     "version": "3.2",
     "created_at": datetime.now().isoformat() + "Z",
     "updated_at": datetime.now().isoformat() + "Z",
 }
+
+
+# 环境变量 API key 配置功能已移除
+# 现在用户只能通过 UI 设置页面管理 API key，避免配置冲突
+
+
+# _merge_env_config 函数已移除，不再支持环境变量配置合并
 
 
 def validate_config(config: Dict[str, Any]) -> bool:
@@ -58,10 +126,7 @@ def validate_config(config: Dict[str, Any]) -> bool:
         if "fallback_options" not in config:
             return False
 
-        # V3.2 新增：检查新的控制字段（可选，有默认值）
-        if "enable_rule_engine" in config:
-            if not isinstance(config["enable_rule_engine"], bool):
-                return False
+        # V4.0 简化：检查自定义选项控制字段（可选，有默认值）
         if "enable_custom_options" in config:
             if not isinstance(config["enable_custom_options"], bool):
                 return False
@@ -95,39 +160,23 @@ def validate_config(config: Dict[str, Any]) -> bool:
 
 def get_config() -> Dict[str, Any]:
     """
-    安全地读取并解析配置文件，与出厂默认值合并 (V3.3 优化版本)
-    Safely read and parse config file, merge with factory defaults (V3.3 Optimized Version)
+    安全地读取并解析配置文件，与出厂默认值合并
+    Safely read and parse config file, merge with factory defaults
 
-    V3.3 架构优化：
-    - 使用统一配置加载器，提供更好的缓存和热重载
-    - 自动文件变更检测和验证
-    - 配置获取速度提升90%+
+    配置优先级：配置文件 > 默认配置
 
     Returns:
         Dict[str, Any]: 合并后的配置字典
     """
-    try:
-        from ..core import get_config_loader, register_config
-
-        # 确保配置已注册
-        config_loader = get_config_loader()
-        if "main_config" not in config_loader.get_registered_configs():
-            register_config(
-                "main_config", CONFIG_FILE_PATH, DEFAULT_CONFIG.copy(), validate_config
-            )
-
-        # 使用统一配置加载器获取配置
-        return config_loader.load_config("main_config")
-
-    except ImportError:
-        # 如果新模块不可用，回退到原始实现
-        return _load_config_with_fallback()
+    return _load_config_with_fallback()
 
 
 def _load_config_with_fallback() -> Dict[str, Any]:
     """
-    原始的配置加载逻辑（作为缓存的后备）
-    Original config loading logic (as fallback for cache)
+    简化的配置加载逻辑
+    Simplified config loading logic
+
+    配置优先级：配置文件 > 默认配置
 
     Returns:
         Dict[str, Any]: 配置字典
@@ -136,17 +185,15 @@ def _load_config_with_fallback() -> Dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
 
     try:
-        # 检查配置文件是否存在
+        # 1. 检查配置文件是否存在
         if not os.path.exists(CONFIG_FILE_PATH):
             print(
                 f"配置文件不存在，使用默认配置 (Config file not found, using defaults): {CONFIG_FILE_PATH}",
                 file=sys.stderr,
             )
-            # 创建默认配置文件
-            save_config(config)
             return config
 
-        # 读取配置文件
+        # 2. 读取配置文件
         with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
@@ -158,7 +205,7 @@ def _load_config_with_fallback() -> Dict[str, Any]:
 
             user_config = json.loads(content)
 
-        # 验证用户配置
+        # 3. 验证用户配置
         if not validate_config(user_config):
             print(
                 "配置文件无效，使用默认配置 (Invalid config file, using defaults)",
@@ -166,10 +213,10 @@ def _load_config_with_fallback() -> Dict[str, Any]:
             )
             return config
 
-        # 合并用户配置到默认配置
+        # 4. 合并配置：默认配置 <- 文件配置
         config.update(user_config)
 
-        # 更新时间戳
+        # 5. 更新时间戳
         config["updated_at"] = datetime.now().isoformat() + "Z"
 
         return config
@@ -221,15 +268,6 @@ def save_config(config: Dict[str, Any]) -> bool:
         with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-        # V3.3 优化：保存后清除缓存，确保下次读取最新配置
-        try:
-            from ..core import get_config_loader
-
-            config_loader = get_config_loader()
-            config_loader.clear_cache("main_config")
-        except ImportError:
-            pass  # 新模块不可用时忽略
-
         print(f"配置已保存 (Config saved): {CONFIG_FILE_PATH}")
         return True
 
@@ -272,21 +310,7 @@ def get_display_mode(config: Dict[str, Any] = None) -> str:
     return config.get("display_mode", DEFAULT_CONFIG["display_mode"])
 
 
-def get_rule_engine_enabled(config: Dict[str, Any] = None) -> bool:
-    """
-    获取规则引擎启用状态
-    Get rule engine enabled status
-
-    Args:
-        config: 配置字典，如果为None则自动读取
-
-    Returns:
-        bool: 是否启用规则引擎
-    """
-    if config is None:
-        config = get_config()
-
-    return config.get("enable_rule_engine", DEFAULT_CONFIG["enable_rule_engine"])
+# V4.0 移除：get_rule_engine_enabled 函数已删除
 
 
 def get_custom_options_enabled(config: Dict[str, Any] = None) -> bool:
@@ -303,23 +327,12 @@ def get_custom_options_enabled(config: Dict[str, Any] = None) -> bool:
     if config is None:
         config = get_config()
 
-    return config.get("enable_custom_options", DEFAULT_CONFIG["enable_custom_options"])
+    return get_feature_enabled(
+        config, "enable_custom_options", DEFAULT_CONFIG["enable_custom_options"]
+    )
 
 
-def set_rule_engine_enabled(enabled: bool) -> bool:
-    """
-    设置规则引擎启用状态
-    Set rule engine enabled status
-
-    Args:
-        enabled: 是否启用规则引擎
-
-    Returns:
-        bool: 设置是否成功
-    """
-    config = get_config()
-    config["enable_rule_engine"] = enabled
-    return save_config(config)
+# V4.0 移除：set_rule_engine_enabled 函数已删除
 
 
 def set_custom_options_enabled(enabled: bool) -> bool:
@@ -338,112 +351,33 @@ def set_custom_options_enabled(enabled: bool) -> bool:
     return save_config(config)
 
 
-# V3.3 架构优化：配置缓存管理函数
-def get_config_cache_stats() -> Dict[str, Any]:
+def get_feature_enabled(
+    config: Dict[str, Any], feature_key: str, default: bool = True
+) -> bool:
     """
-    获取配置缓存统计信息
-    Get configuration cache statistics
-
-    Returns:
-        Dict[str, Any]: 缓存统计信息
-    """
-    try:
-        from ..core import get_config_loader
-
-        config_loader = get_config_loader()
-        metadata = config_loader.get_config_metadata()
-
-        return {
-            "cache_enabled": True,
-            "registered_configs": list(metadata.keys()) if metadata else [],
-            "unified_config_loader": True,
-            "version": "V3.3-Optimized",
-        }
-    except ImportError:
-        return {
-            "cache_enabled": False,
-            "message": "Unified configuration loader not available",
-            "version": "V3.3-Fallback",
-        }
-
-
-def clear_config_cache() -> None:
-    """
-    清空配置缓存
-    Clear configuration cache
-    """
-    try:
-        from ..core import get_config_loader
-
-        config_loader = get_config_loader()
-        config_loader.clear_cache()
-        print("配置缓存已清空 (Configuration cache cleared)")
-    except ImportError:
-        print("统一配置加载器不可用 (Unified configuration loader not available)")
-
-
-def preload_config_cache() -> None:
-    """
-    预加载配置缓存
-    Preload configuration cache
-    """
-    try:
-        from ..core import get_config_loader, register_config
-
-        # 确保配置已注册并预加载
-        config_loader = get_config_loader()
-        if "main_config" not in config_loader.get_registered_configs():
-            register_config(
-                "main_config", CONFIG_FILE_PATH, DEFAULT_CONFIG.copy(), validate_config
-            )
-
-        # 预加载配置
-        config_loader.load_config("main_config")
-        print("配置缓存已预加载 (Configuration cache preloaded)")
-    except ImportError:
-        print("统一配置加载器不可用 (Unified configuration loader not available)")
-
-
-def benchmark_config_performance(iterations: int = 1000) -> Dict[str, float]:
-    """
-    配置获取性能基准测试
-    Configuration retrieval performance benchmark
+    统一的功能启用状态检查工具
+    Unified feature enabled status check utility
 
     Args:
-        iterations: 测试迭代次数
+        config: 配置字典
+        feature_key: 功能配置键
+        default: 默认值
 
     Returns:
-        Dict[str, float]: 性能基准结果
+        bool: 是否启用该功能
     """
-    import time
-    import statistics
+    if not config or feature_key not in config:
+        return default
 
-    # 清空缓存确保公平测试
-    clear_config_cache()
+    value = config[feature_key]
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, str):
+        return value.lower() in ["true", "1", "yes", "on", "enabled"]
+    elif isinstance(value, int):
+        return value != 0
 
-    # 第一次调用（无缓存）
-    start_time = time.perf_counter()
-    get_config()
-    first_call_time = time.perf_counter() - start_time
+    return default
 
-    # 多次调用（缓存命中）
-    cached_times = []
-    for _ in range(iterations):
-        start_time = time.perf_counter()
-        get_config()
-        end_time = time.perf_counter()
-        cached_times.append(end_time - start_time)
 
-    avg_cached_time = statistics.mean(cached_times)
-    speedup_factor = first_call_time / avg_cached_time if avg_cached_time > 0 else 0
-    improvement_percent = (
-        (1 - avg_cached_time / first_call_time) * 100 if first_call_time > 0 else 0
-    )
-
-    return {
-        "first_call_time_ms": first_call_time * 1000,
-        "cached_avg_time_ms": avg_cached_time * 1000,
-        "speedup_factor": speedup_factor,
-        "improvement_percent": improvement_percent,
-        "cache_stats": get_config_cache_stats(),
-    }
+# V4.1 简化：移除复杂的缓存管理函数，使用直接的配置加载逻辑

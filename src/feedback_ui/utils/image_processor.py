@@ -6,13 +6,15 @@ from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtGui import QPixmap, Qt  # Qt 已在之前添加
 from PySide6.QtWidgets import QMessageBox
 
-from .constants import MAX_IMAGE_BYTES, MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, ContentItem
-from .object_pool import get_byte_array_pool, get_buffer_pool, PooledResource
-from .resource_manager import (
-    managed_image_processing,
-    managed_qbuffer,
-    managed_qbytearray,
+from .constants import (
+    MAX_IMAGE_BYTES,
+    MAX_IMAGE_HEIGHT,
+    MAX_IMAGE_WIDTH,
+    IMAGE_QUALITY,
+    IMAGE_SCALE_FACTOR,
+    ContentItem,
 )
+from .resource_manager import managed_image_processing
 
 
 def process_single_image(pixmap_to_save: QPixmap) -> dict[str, Any] | None:
@@ -57,115 +59,126 @@ def _process_image_with_managed_resources(
     pixmap: QPixmap, resources: dict
 ) -> dict[str, Any] | None:
     """
-    使用托管资源处理图像 (V3.2 资源管理优化版本)
-    Process image using managed resources (V3.2 Resource Management Optimized Version)
+    使用托管资源处理图像 (简化版本 - 100%质量，超过2MB时缩小尺寸)
+    Process image using managed resources (Simplified - 100% quality, scale down if > 2MB)
     """
     save_format = "JPEG"
     mime_type = "image/jpeg"
-    qualities_to_try = [80, 70, 60, 50, 40]
-
+    current_pixmap = pixmap
     byte_array = resources["byte_array"]
-    buffer = resources["buffer"]
 
-    for quality in qualities_to_try:
+    # 最多尝试10次缩放（防止无限循环）
+    max_attempts = 10
+    attempt = 0
+
+    while attempt < max_attempts:
         # 重置资源状态
         byte_array.clear()
-        buffer.setData(byte_array)
+
+        # 正确创建QBuffer - 直接关联byte_array
+        buffer = QBuffer(byte_array)
 
         # 尝试保存图像
         if buffer.open(QIODevice.OpenModeFlag.WriteOnly):
             try:
-                if pixmap.save(buffer, save_format, quality):
+                if current_pixmap.save(buffer, save_format, IMAGE_QUALITY):
                     buffer.close()
 
                     # 检查大小是否符合要求
                     if byte_array.size() <= MAX_IMAGE_BYTES:
                         return _create_image_result(
-                            pixmap, byte_array, save_format, mime_type, quality
+                            current_pixmap,
+                            byte_array,
+                            save_format,
+                            mime_type,
+                            IMAGE_QUALITY,
                         )
+                    else:
+                        # 超过大小限制，缩小图片
+                        new_width = int(current_pixmap.width() * IMAGE_SCALE_FACTOR)
+                        new_height = int(current_pixmap.height() * IMAGE_SCALE_FACTOR)
+
+                        # 防止图片过小
+                        if new_width < 32 or new_height < 32:
+                            break
+
+                        current_pixmap = current_pixmap.scaled(
+                            new_width,
+                            new_height,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                        attempt += 1
+                        continue
             except Exception:
                 pass
             finally:
                 if buffer.isOpen():
                     buffer.close()
 
-    # 所有质量都失败
-    _show_image_error("无法将图像保存为合适的大小")
-    return None
+        break
 
-
-def _process_image_with_pools(
-    pixmap: QPixmap, byte_array_pool, buffer_pool
-) -> dict[str, Any] | None:
-    """
-    使用对象池处理图像 (保留用于兼容性)
-    Process image using object pools (kept for compatibility)
-    """
-    save_format = "JPEG"
-    mime_type = "image/jpeg"
-    qualities_to_try = [80, 70, 60, 50, 40]
-
-    # 使用池化资源
-    with (
-        PooledResource(byte_array_pool) as byte_array,
-        PooledResource(buffer_pool) as buffer,
-    ):
-
-        for quality in qualities_to_try:
-            # 重置资源状态
-            byte_array.clear()
-            buffer.setData(byte_array)
-
-            # 尝试保存图像
-            if buffer.open(QIODevice.OpenModeFlag.WriteOnly):
-                try:
-                    if pixmap.save(buffer, save_format, quality):
-                        buffer.close()
-
-                        # 检查大小是否符合要求
-                        if byte_array.size() <= MAX_IMAGE_BYTES:
-                            return _create_image_result(
-                                pixmap, byte_array, save_format, mime_type, quality
-                            )
-                except Exception:
-                    pass
-                finally:
-                    if buffer.isOpen():
-                        buffer.close()
-
-    # 所有质量都失败
-    _show_image_error("无法将图像保存为合适的大小")
+    # 无法满足大小要求
+    _show_image_error("无法将图像压缩到合适的大小")
     return None
 
 
 def _process_image_fallback(pixmap: QPixmap) -> dict[str, Any] | None:
     """
-    回退处理方法（不使用对象池）
-    Fallback processing method (without object pools)
+    回退处理方法（不使用对象池，简化版本）
+    Fallback processing method (without object pools, simplified)
     """
-    byte_array = QByteArray()
-    buffer = QBuffer(byte_array)
     save_format = "JPEG"
     mime_type = "image/jpeg"
-    qualities_to_try = [80, 70, 60, 50, 40]
+    current_pixmap = pixmap
 
-    for quality in qualities_to_try:
-        byte_array.clear()
+    # 最多尝试10次缩放（防止无限循环）
+    max_attempts = 10
+    attempt = 0
+
+    while attempt < max_attempts:
+        byte_array = QByteArray()
+        buffer = QBuffer(byte_array)
+
         if buffer.open(QIODevice.OpenModeFlag.WriteOnly):
             try:
-                if pixmap.save(buffer, save_format, quality):
+                if current_pixmap.save(buffer, save_format, IMAGE_QUALITY):
                     buffer.close()
+
                     if byte_array.size() <= MAX_IMAGE_BYTES:
                         return _create_image_result(
-                            pixmap, byte_array, save_format, mime_type, quality
+                            current_pixmap,
+                            byte_array,
+                            save_format,
+                            mime_type,
+                            IMAGE_QUALITY,
                         )
+                    else:
+                        # 超过大小限制，缩小图片
+                        new_width = int(current_pixmap.width() * IMAGE_SCALE_FACTOR)
+                        new_height = int(current_pixmap.height() * IMAGE_SCALE_FACTOR)
+
+                        # 防止图片过小
+                        if new_width < 32 or new_height < 32:
+                            break
+
+                        current_pixmap = current_pixmap.scaled(
+                            new_width,
+                            new_height,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                        attempt += 1
+                        continue
             except Exception:
                 pass
             finally:
                 if buffer.isOpen():
                     buffer.close()
 
-    _show_image_error("无法将图像保存为合适的大小")
+        break
+
+    _show_image_error("无法将图像压缩到合适的大小")
     return None
 
 

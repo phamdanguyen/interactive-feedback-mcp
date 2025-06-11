@@ -133,16 +133,73 @@ QPushButton#delete_canned_item_button:hover { background-color: #f44336; }
 QPushButton#delete_canned_item_button:pressed { background-color: #b71c1c; }
 
 QPushButton#pin_window_active {
-    background-color: rgba(80, 80, 80, 0.5); 
-    color: white; 
+    background-color: rgba(80, 80, 80, 0.5);
+    color: white;
     border: 1px solid #606060;
-    padding: 5px 10px; 
+    padding: 5px 10px;
     min-height: 32px;
-    min-width: 100px; 
+    min-width: 100px;
     max-height: 32px;
 }
 QPushButton#pin_window_active:hover { background-color: rgba(85, 85, 85, 0.6); border: 1px solid #676767; }
 QPushButton#pin_window_active:pressed { background-color: rgba(69, 69, 69, 0.6); }
+
+/* V4.0 新增：输入表达优化按钮样式 */
+QPushButton#optimization_button {
+    background-color: rgba(45, 85, 135, 0.8); /* 蓝色调，表示AI功能 */
+    color: white;
+    border: 1px solid #4A90E2;
+    padding: 5px 12px;
+    min-height: 32px;
+    min-width: 90px;
+    max-height: 32px;
+    font-weight: 500;
+}
+QPushButton#optimization_button:hover {
+    background-color: rgba(55, 95, 145, 0.9);
+    border: 1px solid #5BA0F2;
+}
+QPushButton#optimization_button:pressed {
+    background-color: rgba(35, 75, 125, 0.9);
+    border: 1px solid #3A80D2;
+}
+QPushButton#optimization_button:disabled {
+    background-color: rgba(60, 60, 60, 0.5);
+    color: #999999;
+    border: 1px solid #555555;
+}
+
+/* V4.0 新增：输入框内的优化图标按钮样式 */
+QPushButton#optimization_icon_button {
+    background-color: rgba(45, 85, 135, 0.9);
+    color: white;
+    border: 1px solid #4A90E2;
+    border-radius: 16px; /* 圆形按钮 */
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}
+QPushButton#optimization_icon_button:hover {
+    background-color: rgba(55, 95, 145, 1.0);
+    border: 1px solid #5BA0F2;
+}
+QPushButton#optimization_icon_button:pressed {
+    background-color: rgba(35, 75, 125, 1.0);
+    border: 1px solid #3A80D2;
+}
+QPushButton#optimization_icon_button:disabled {
+    background-color: rgba(60, 60, 60, 0.7);
+    color: #999999;
+    border: 1px solid #555555;
+}
+
+/* 优化按钮容器样式 */
+QWidget#optimization_container {
+    background-color: transparent;
+}
 
 /* QTextEdit and FeedbackTextEdit from feedback_text_edit.py */
 QTextEdit, FeedbackTextEdit {

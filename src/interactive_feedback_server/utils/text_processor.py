@@ -165,46 +165,7 @@ class TextProcessor:
 
         return tuple(keywords)
 
-    def get_text_features(self, text: str) -> Dict[str, any]:
-        """
-        获取文本特征
-        Get text features
-
-        Args:
-            text: 输入文本
-
-        Returns:
-            Dict[str, any]: 文本特征字典
-        """
-        normalized_text = self.normalize_text(text)
-
-        if not normalized_text:
-            return {
-                "length": 0,
-                "word_count": 0,
-                "has_question": False,
-                "has_chinese": False,
-                "has_english": False,
-                "keywords": tuple(),
-            }
-
-        # 基本特征
-        word_count = len(normalized_text.split())
-        has_question = "?" in text or "？" in text
-        has_chinese = bool(self._chinese_pattern.search(text))
-        has_english = bool(self._english_pattern.search(text))
-
-        # 关键词
-        keywords = self.extract_keywords(text)
-
-        return {
-            "length": len(normalized_text),
-            "word_count": word_count,
-            "has_question": has_question,
-            "has_chinese": has_chinese,
-            "has_english": has_english,
-            "keywords": keywords,
-        }
+    # V4.1 移除：get_text_features方法未在输入优化功能中使用
 
 
 class OptimizedMatcher:
@@ -289,32 +250,7 @@ class OptimizedMatcher:
 
         return None
 
-    def find_all_matches(self, text: str) -> List[Tuple[str, str, List[str]]]:
-        """
-        查找所有匹配
-        Find all matches
-
-        Args:
-            text: 输入文本
-
-        Returns:
-            List[Tuple[str, str, List[str]]]: 所有匹配的列表
-        """
-        if not text:
-            return []
-
-        text_lower = text.lower()
-        matches = []
-
-        for category, config in self.patterns.items():
-            for trigger in config["triggers"]:
-                if trigger in text_lower:
-                    matches.append((trigger, category, config["options"]))
-
-        # 按触发词长度和优先级排序
-        matches.sort(key=lambda x: (-len(x[0]), self._category_priority.get(x[1], 999)))
-
-        return matches
+    # V4.1 移除：find_all_matches方法未在输入优化功能中使用
 
 
 # 全局实例
@@ -350,18 +286,7 @@ def clear_text_processing_cache():
         _optimized_matcher.find_best_match.cache_clear()
 
 
-def get_text_processing_stats() -> Dict[str, any]:
-    """获取文本处理统计信息"""
-    processor = get_text_processor()
-    matcher = get_optimized_matcher()
-
-    return {
-        "normalize_cache_info": processor.normalize_text.cache_info()._asdict(),
-        "keywords_cache_info": processor.extract_keywords.cache_info()._asdict(),
-        "matcher_cache_info": matcher.find_best_match.cache_info()._asdict(),
-        "total_patterns": len(matcher.patterns),
-        "trigger_lengths": list(matcher._sorted_lengths),
-    }
+# V4.1 移除：get_text_processing_stats函数未在输入优化功能中使用
 
 
 # 便捷函数

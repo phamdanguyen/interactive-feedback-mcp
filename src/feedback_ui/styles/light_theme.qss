@@ -135,13 +135,72 @@ QPushButton#pin_window_active {
     background-color: #d0d0d0; /* A noticeable but harmonious grey */
     color: #000000; /* Black text for strong contrast on grey */
     border: 1px solid #a0a0a0; /* A darker grey border */
-    padding: 5px 10px; 
+    padding: 5px 10px;
     min-height: 32px;
-    min-width: 100px; 
+    min-width: 100px;
     max-height: 32px;
 }
 QPushButton#pin_window_active:hover { background-color: #c8c8c8; }
 QPushButton#pin_window_active:pressed { background-color: #b8b8b8; }
+
+/* V4.0 新增：输入表达优化按钮样式 - 浅色主题 */
+QPushButton#optimization_button {
+    background-color: #e3f2fd; /* 浅蓝色背景，表示AI功能 */
+    color: #1565c0; /* 深蓝色文字 */
+    border: 1px solid #90caf9;
+    padding: 5px 12px;
+    min-height: 32px;
+    min-width: 90px;
+    max-height: 32px;
+    font-weight: 500;
+}
+QPushButton#optimization_button:hover {
+    background-color: #bbdefb;
+    border: 1px solid #64b5f6;
+    color: #0d47a1;
+}
+QPushButton#optimization_button:pressed {
+    background-color: #90caf9;
+    border: 1px solid #42a5f5;
+    color: #0d47a1;
+}
+QPushButton#optimization_button:disabled {
+    background-color: #f5f5f5;
+    color: #bdbdbd;
+    border: 1px solid #e0e0e0;
+}
+
+/* V4.0 新增：输入框内的优化图标按钮样式 - 浅色主题 */
+QPushButton#optimization_icon_button {
+    background-color: #1976d2;
+    color: white;
+    border: 1px solid #1565c0;
+    border-radius: 16px; /* 圆形按钮 */
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}
+QPushButton#optimization_icon_button:hover {
+    background-color: #1565c0;
+    border: 1px solid #0d47a1;
+}
+QPushButton#optimization_icon_button:pressed {
+    background-color: #0d47a1;
+    border: 1px solid #01579b;
+}
+QPushButton#optimization_icon_button:disabled {
+    background-color: #e0e0e0;
+    color: #bdbdbd;
+    border: 1px solid #cccccc;
+}
+
+/* 优化按钮容器样式 */
+QWidget#optimization_container {
+    background-color: transparent;
+}
 
 QTextEdit, FeedbackTextEdit {
     background-color: #ffffff; 

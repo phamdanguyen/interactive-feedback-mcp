@@ -743,3 +743,45 @@ class FeedbackTextEdit(QTextEdit):
 
         # 确保光标可见
         self.ensureCursorVisible()
+
+    def replace_text_with_undo_support(self, new_text: str):
+        """
+        替换文本内容，同时保留撤销历史
+        Replace text content while preserving undo history
+
+        Args:
+            new_text: 新的文本内容
+        """
+        # 使用QTextCursor选择全部文本并替换，这样可以保留撤销历史
+        cursor = self.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.insertText(new_text)
+        self.setTextCursor(cursor)
+
+        # 使缓存失效，确保文件引用正确更新
+        self._invalidate_reference_cache()
+
+        # 触发语法高亮更新
+        if hasattr(self, "highlighter"):
+            self.highlighter.rehighlight()
+
+    def activate_input_focus(self):
+        """
+        激活输入框焦点和光标
+        Activate input focus and cursor
+        """
+        # 确保窗口获得焦点
+        if parent_widget := self.window():
+            parent_widget.activateWindow()
+            parent_widget.raise_()
+
+        # 设置焦点
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+
+        # 移动光标到文本末尾
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.setTextCursor(cursor)
+
+        # 确保光标可见并闪烁
+        self.ensureCursorVisible()

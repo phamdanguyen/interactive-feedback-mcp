@@ -346,3 +346,33 @@ class SettingsManager(QObject):
         )
         self.settings.endGroup()
         self.settings.sync()
+
+    # --- Audio Settings (音频设置) ---
+    def get_audio_enabled(self) -> bool:
+        """获取音频是否启用"""
+        return self.settings.value("audio/enabled", True, type=bool)
+
+    def set_audio_enabled(self, enabled: bool):
+        """设置音频是否启用"""
+        self.settings.setValue("audio/enabled", enabled)
+        self.settings.sync()
+
+    def get_audio_volume(self) -> float:
+        """获取音频音量 (0.0-1.0)"""
+        volume = self.settings.value("audio/volume", 0.5, type=float)
+        return max(0.0, min(1.0, volume))  # 确保在有效范围内
+
+    def set_audio_volume(self, volume: float):
+        """设置音频音量 (0.0-1.0)"""
+        volume = max(0.0, min(1.0, volume))  # 确保在有效范围内
+        self.settings.setValue("audio/volume", volume)
+        self.settings.sync()
+
+    def get_notification_sound_path(self) -> str:
+        """获取提示音文件路径"""
+        return self.settings.value("audio/notification_sound_path", "")
+
+    def set_notification_sound_path(self, path: str):
+        """设置提示音文件路径"""
+        self.settings.setValue("audio/notification_sound_path", path)
+        self.settings.sync()

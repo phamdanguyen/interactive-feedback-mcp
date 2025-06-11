@@ -18,6 +18,36 @@ from ..utils.settings_manager import SettingsManager
 from ..utils.style_manager import apply_theme
 
 
+def _setup_project_path():
+    """设置项目路径到sys.path，避免重复代码"""
+    import sys
+    import os
+
+    project_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    return project_root
+
+
+def _get_collapsible_button_style():
+    """获取可折叠按钮的通用样式"""
+    return """
+        QPushButton {
+            text-align: left;
+            padding: 4px 8px;
+            border: none;
+            background-color: transparent;
+            font-size: 10pt;
+            color: gray;
+        }
+        QPushButton:hover {
+            background-color: rgba(128, 128, 128, 0.1);
+        }
+    """
+
+
 class TerminalItemWidget(QWidget):
     """终端项组件 - 封装终端名称、单选按钮和浏览按钮，防止布局相互影响"""
 
@@ -223,11 +253,7 @@ class SettingsDialog(QDialog):
                 "zh_CN": "智能生成选项 + 用户自定义后备",
                 "en_US": "Smart option generation + custom fallback",
             },
-            # V3.2 新增：功能开关
-            "enable_rule_engine": {
-                "zh_CN": "启用规则引擎",
-                "en_US": "Enable Rule Engine",
-            },
+            # V4.0 简化：自定义选项开关
             "enable_custom_options": {
                 "zh_CN": "启用自定义选项",
                 "en_US": "Enable Custom Options",
@@ -243,6 +269,66 @@ class SettingsDialog(QDialog):
             "option_label": {"zh_CN": "选项", "en_US": "Option"},
             "expand_options": {"zh_CN": "展开选项设置", "en_US": "Expand Options"},
             "collapse_options": {"zh_CN": "收起选项设置", "en_US": "Collapse Options"},
+            # V4.0 新增：输入表达优化设置
+            "optimization_group": {
+                "zh_CN": "输入表达优化",
+                "en_US": "Input Expression Optimization",
+            },
+            "enable_optimization": {
+                "zh_CN": "启用优化功能",
+                "en_US": "Enable Optimization",
+            },
+            "optimization_provider": {"zh_CN": "LLM提供商", "en_US": "LLM Provider"},
+            "openai_provider": {"zh_CN": "OpenAI", "en_US": "OpenAI"},
+            "gemini_provider": {"zh_CN": "Google Gemini", "en_US": "Google Gemini"},
+            "deepseek_provider": {"zh_CN": "DeepSeek", "en_US": "DeepSeek"},
+            "huoshan_provider": {"zh_CN": "火山引擎", "en_US": "Huoshan"},
+            "api_key_label": {"zh_CN": "API密钥:", "en_US": "API Key:"},
+            "api_key_placeholder": {"zh_CN": "请输入API密钥", "en_US": "Enter API key"},
+            "test_connection": {"zh_CN": "测试连接", "en_US": "Test Connection"},
+            "connection_success": {
+                "zh_CN": "连接成功！",
+                "en_US": "Connection successful!",
+            },
+            "connection_failed": {"zh_CN": "连接失败", "en_US": "Connection failed"},
+            # V4.1 新增：自定义提示词设置
+            "expand_prompts": {
+                "zh_CN": "展开提示词设置",
+                "en_US": "Expand Prompt Settings",
+            },
+            "collapse_prompts": {
+                "zh_CN": "收起提示词设置",
+                "en_US": "Collapse Prompt Settings",
+            },
+            "optimize_prompt_label": {
+                "zh_CN": "优化提示词:",
+                "en_US": "Optimize Prompt:",
+            },
+            "reinforce_prompt_label": {
+                "zh_CN": "增强提示词:",
+                "en_US": "Reinforce Prompt:",
+            },
+            "prompt_placeholder": {
+                "zh_CN": "输入自定义提示词...",
+                "en_US": "Enter custom prompt...",
+            },
+            # 音频设置相关文本
+            "audio_group": {"zh_CN": "音频设置", "en_US": "Audio Settings"},
+            "enable_audio": {
+                "zh_CN": "启用提示音",
+                "en_US": "Enable Notification Sound",
+            },
+            "audio_volume": {"zh_CN": "音量:", "en_US": "Volume:"},
+            "custom_sound_file": {
+                "zh_CN": "自定义音频文件:",
+                "en_US": "Custom Sound File:",
+            },
+            "browse_sound": {"zh_CN": "浏览...", "en_US": "Browse..."},
+            "test_sound": {"zh_CN": "测试", "en_US": "Test"},
+            "sound_file_filter": {
+                "zh_CN": "音频文件 (*.wav *.mp3 *.ogg *.flac *.aac);;WAV文件 (*.wav);;MP3文件 (*.mp3);;所有文件 (*.*)",
+                "en_US": "Audio Files (*.wav *.mp3 *.ogg *.flac *.aac);;WAV Files (*.wav);;MP3 Files (*.mp3);;All Files (*.*)",
+            },
         }
 
         self._setup_ui()
@@ -253,7 +339,9 @@ class SettingsDialog(QDialog):
     def _setup_ui(self):
         self._setup_theme_layout_group()  # 整合主题和布局
         self._setup_language_font_group()  # 整合语言和字体
+        self._setup_audio_group()  # 新增：音频设置
         self._setup_interaction_group()  # V3.2 新增
+        self._setup_optimization_group()  # V4.0 新增：输入表达优化
         self._setup_terminal_group()
 
         # 添加 OK 和 Cancel 按钮 - 自定义布局实现左右对称
@@ -407,6 +495,81 @@ class SettingsDialog(QDialog):
         self.language_font_group.setLayout(layout)
         self.layout.addWidget(self.language_font_group)
 
+    def _setup_audio_group(self):
+        """设置音频配置区域"""
+        self.audio_group = QGroupBox("")  # 稍后设置文本
+        audio_layout = QVBoxLayout()
+
+        # 初始化音频管理器引用（避免重复导入）
+        try:
+            from ..utils.audio_manager import get_audio_manager
+
+            self._audio_manager = get_audio_manager()
+        except Exception:
+            self._audio_manager = None
+
+        # 第一行：启用提示音开关
+        from ..utils.ui_factory import create_toggle_radio_button
+
+        current_audio_enabled = self.settings_manager.get_audio_enabled()
+        self.enable_audio_radio = create_toggle_radio_button(
+            "", current_audio_enabled, self._on_audio_enabled_changed
+        )
+        audio_layout.addWidget(self.enable_audio_radio)
+
+        # 第二行：音量控制
+        volume_layout = QHBoxLayout()
+
+        self.audio_volume_label = QLabel("")  # 稍后设置文本
+        self.audio_volume_label.setStyleSheet("font-size: 10pt;")
+
+        from PySide6.QtWidgets import QSlider
+        from PySide6.QtCore import Qt
+
+        self.audio_volume_slider = QSlider()
+        self.audio_volume_slider.setOrientation(Qt.Orientation.Horizontal)
+        self.audio_volume_slider.setRange(0, 100)
+        current_volume = int(self.settings_manager.get_audio_volume() * 100)
+        self.audio_volume_slider.setValue(current_volume)
+        self.audio_volume_slider.valueChanged.connect(self._on_audio_volume_changed)
+
+        # 音量数值显示
+        self.audio_volume_value = QLabel(f"{current_volume}%")
+        self.audio_volume_value.setStyleSheet("font-size: 10pt; min-width: 35px;")
+
+        volume_layout.addWidget(self.audio_volume_label)
+        volume_layout.addWidget(self.audio_volume_slider)
+        volume_layout.addWidget(self.audio_volume_value)
+        audio_layout.addLayout(volume_layout)
+
+        # 第三行：自定义音频文件
+        file_layout = QHBoxLayout()
+
+        self.custom_sound_label = QLabel("")  # 稍后设置文本
+        self.custom_sound_label.setStyleSheet("font-size: 10pt;")
+
+        self.custom_sound_edit = QLineEdit()
+        self.custom_sound_edit.setStyleSheet("font-size: 10pt; padding: 4px;")
+        current_sound_path = self.settings_manager.get_notification_sound_path()
+        if current_sound_path:
+            self.custom_sound_edit.setText(current_sound_path)
+        self.custom_sound_edit.textChanged.connect(self._on_custom_sound_changed)
+
+        self.browse_sound_button = QPushButton("")  # 稍后设置文本
+        self.browse_sound_button.clicked.connect(self._browse_sound_file)
+
+        self.test_sound_button = QPushButton("")  # 稍后设置文本
+        self.test_sound_button.clicked.connect(self._test_sound)
+
+        file_layout.addWidget(self.custom_sound_label)
+        file_layout.addWidget(self.custom_sound_edit)
+        file_layout.addWidget(self.browse_sound_button)
+        file_layout.addWidget(self.test_sound_button)
+        audio_layout.addLayout(file_layout)
+
+        self.audio_group.setLayout(audio_layout)
+        self.layout.addWidget(self.audio_group)
+
     def _setup_interaction_group(self):
         """V3.2 新增：设置交互模式配置区域 - 简洁布局"""
         self.interaction_group = QGroupBox("")  # 稍后设置文本
@@ -444,38 +607,305 @@ class SettingsDialog(QDialog):
         self.interaction_group.setLayout(interaction_layout)
         self.layout.addWidget(self.interaction_group)
 
-    def _setup_feature_toggles(self, parent_layout, config):
-        """V3.2 新增：设置功能开关 - 启用规则引擎和自定义选项"""
-        # 获取功能状态和UI工厂 - 合并导入
-        from src.interactive_feedback_server.utils import safe_get_feature_states
+    def _setup_optimization_group(self):
+        """V4.0 新增：设置输入表达优化配置区域"""
+        self.optimization_group = QGroupBox("")  # 稍后设置文本
+        optimization_layout = QVBoxLayout()
+
+        # 获取当前优化配置
+        try:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import get_config
+
+            config = get_config()
+            optimizer_config = config.get("expression_optimizer", {})
+        except Exception:
+            # 如果无法获取配置，使用默认值
+            try:
+                from src.interactive_feedback_server.llm.constants import (
+                    DEFAULT_OPTIMIZER_CONFIG,
+                )
+
+                optimizer_config = DEFAULT_OPTIMIZER_CONFIG.copy()
+            except ImportError:
+                # 如果导入失败，使用硬编码的默认值
+                optimizer_config = {
+                    "enabled": False,
+                    "active_provider": "openai",
+                    "providers": {
+                        "openai": {
+                            "api_key": "",
+                            "model": "gpt-4o-mini",
+                            "base_url": "https://api.openai.com/v1",
+                        },
+                        "gemini": {"api_key": "", "model": "gemini-2.0-flash"},
+                        "deepseek": {
+                            "api_key": "",
+                            "base_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat",
+                        },
+                        "volcengine": {
+                            "api_key": "",
+                            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+                            "model": "deepseek-v3-250324",
+                        },
+                    },
+                }
+
+        # 第一行：启用优化功能开关
         from ..utils.ui_factory import create_toggle_radio_button
 
-        rule_engine_enabled, custom_options_enabled = safe_get_feature_states(config)
+        self.enable_optimization_radio = create_toggle_radio_button(
+            "", optimizer_config.get("enabled", False), self._on_optimization_toggled
+        )
+        optimization_layout.addWidget(self.enable_optimization_radio)
+
+        # 第二行：LLM提供商选择
+        provider_layout = QHBoxLayout()
+
+        self.openai_radio = QRadioButton("")  # 稍后设置文本
+        self.gemini_radio = QRadioButton("")  # 稍后设置文本
+        self.deepseek_radio = QRadioButton("")  # 稍后设置文本
+        self.huoshan_radio = QRadioButton("")  # 稍后设置文本
+
+        # 设置当前选中的提供商
+        active_provider = optimizer_config.get("active_provider", "openai")
+        if active_provider == "openai":
+            self.openai_radio.setChecked(True)
+        elif active_provider == "gemini":
+            self.gemini_radio.setChecked(True)
+        elif active_provider == "deepseek":
+            self.deepseek_radio.setChecked(True)
+        elif active_provider == "volcengine":
+            self.huoshan_radio.setChecked(True)
+
+        # 连接信号
+        self.openai_radio.toggled.connect(
+            lambda checked: self._on_provider_changed("openai", checked)
+        )
+        self.gemini_radio.toggled.connect(
+            lambda checked: self._on_provider_changed("gemini", checked)
+        )
+        self.deepseek_radio.toggled.connect(
+            lambda checked: self._on_provider_changed("deepseek", checked)
+        )
+        self.huoshan_radio.toggled.connect(
+            lambda checked: self._on_provider_changed("volcengine", checked)
+        )
+
+        provider_layout.addWidget(self.openai_radio)
+        provider_layout.addWidget(self.gemini_radio)
+        provider_layout.addWidget(self.deepseek_radio)
+        provider_layout.addWidget(self.huoshan_radio)
+        optimization_layout.addLayout(provider_layout)
+
+        # 第三行：API密钥输入和测试
+        api_layout = QHBoxLayout()
+
+        self.api_key_label = QLabel("")  # 稍后设置文本
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_edit.setPlaceholderText("")  # 稍后设置文本
+        self.api_key_edit.textChanged.connect(self._on_api_key_changed)
+
+        self.test_connection_button = QPushButton("")  # 稍后设置文本
+        self.test_connection_button.clicked.connect(self._test_api_connection)
+
+        # 加载当前API密钥
+        current_provider_config = optimizer_config.get("providers", {}).get(
+            active_provider, {}
+        )
+        current_api_key = current_provider_config.get("api_key", "")
+        if current_api_key and not current_api_key.startswith("YOUR_"):
+            self.api_key_edit.setText(current_api_key)
+
+        api_layout.addWidget(self.api_key_label)
+        api_layout.addWidget(self.api_key_edit)
+        api_layout.addWidget(self.test_connection_button)
+        optimization_layout.addLayout(api_layout)
+
+        # V4.1 新增：可展开的提示词自定义区域
+        self._setup_prompt_customization(optimization_layout, optimizer_config)
+
+        self.optimization_group.setLayout(optimization_layout)
+        self.layout.addWidget(self.optimization_group)
+
+    def _setup_prompt_customization(self, parent_layout, optimizer_config):
+        """V4.1 新增：设置可展开的提示词自定义区域"""
+        # 创建展开/收起按钮
+        self.prompts_toggle_button = QPushButton("")  # 稍后设置文本
+        self.prompts_toggle_button.setCheckable(True)
+        self.prompts_toggle_button.setChecked(False)  # 默认收起
+        self.prompts_toggle_button.clicked.connect(self._toggle_prompt_options)
+
+        # 使用通用的按钮样式
+        self.prompts_toggle_button.setStyleSheet(_get_collapsible_button_style())
+
+        parent_layout.addWidget(self.prompts_toggle_button)
+
+        # 获取当前提示词配置
+        current_prompts = optimizer_config.get("prompts", {})
+
+        # 创建可折叠的提示词容器
+        self.prompts_container = QWidget()
+        self.prompts_container.setVisible(False)  # 默认隐藏
+        prompts_layout = QVBoxLayout(self.prompts_container)
+        prompts_layout.setContentsMargins(15, 5, 0, 5)  # 左侧缩进
+        prompts_layout.setSpacing(8)  # 适当间距
+
+        # 优化提示词设置
+        optimize_layout = QHBoxLayout()
+        self.optimize_prompt_label = QLabel("")  # 稍后设置文本
+        self.optimize_prompt_label.setStyleSheet("font-size: 10pt; font-weight: bold;")
+        self.optimize_prompt_label.setFixedWidth(80)  # 固定标签宽度
+
+        self.optimize_prompt_edit = QLineEdit()
+        self.optimize_prompt_edit.setPlaceholderText("")  # 稍后设置文本
+        self.optimize_prompt_edit.setStyleSheet("font-size: 10pt; padding: 4px;")
+
+        # 设置当前值
+        optimize_prompt = current_prompts.get("optimize", "")
+        if optimize_prompt:
+            self.optimize_prompt_edit.setText(optimize_prompt)
+
+        self.optimize_prompt_edit.textChanged.connect(self._on_optimize_prompt_changed)
+
+        optimize_layout.addWidget(self.optimize_prompt_label)
+        optimize_layout.addWidget(self.optimize_prompt_edit)
+        prompts_layout.addLayout(optimize_layout)
+
+        # 增强提示词设置
+        reinforce_layout = QHBoxLayout()
+        self.reinforce_prompt_label = QLabel("")  # 稍后设置文本
+        self.reinforce_prompt_label.setStyleSheet("font-size: 10pt; font-weight: bold;")
+        self.reinforce_prompt_label.setFixedWidth(80)  # 固定标签宽度
+
+        self.reinforce_prompt_edit = QLineEdit()
+        self.reinforce_prompt_edit.setPlaceholderText("")  # 稍后设置文本
+        self.reinforce_prompt_edit.setStyleSheet("font-size: 10pt; padding: 4px;")
+
+        # 设置当前值
+        reinforce_prompt = current_prompts.get("reinforce", "")
+        if reinforce_prompt:
+            self.reinforce_prompt_edit.setText(reinforce_prompt)
+
+        self.reinforce_prompt_edit.textChanged.connect(
+            self._on_reinforce_prompt_changed
+        )
+
+        reinforce_layout.addWidget(self.reinforce_prompt_label)
+        reinforce_layout.addWidget(self.reinforce_prompt_edit)
+        prompts_layout.addLayout(reinforce_layout)
+
+        parent_layout.addWidget(self.prompts_container)
+
+    def _toggle_prompt_options(self):
+        """切换提示词设置区域的显示/隐藏"""
+        is_expanded = self.prompts_toggle_button.isChecked()
+        self.prompts_container.setVisible(is_expanded)
+
+        # 更新按钮文本
+        current_lang = self.current_language
+        if is_expanded:
+            self.prompts_toggle_button.setText(
+                f"▼ {self.texts['collapse_prompts'][current_lang]}"
+            )
+        else:
+            self.prompts_toggle_button.setText(
+                f"▶ {self.texts['expand_prompts'][current_lang]}"
+            )
+
+        # 强制重新计算最小尺寸并调整
+        self.setMinimumSize(0, 0)  # 清除最小尺寸限制
+        self.adjustSize()  # 重新计算合适的尺寸
+
+        # 如果是收起状态，强制收缩到内容大小
+        if not is_expanded:
+            from PySide6.QtWidgets import QApplication
+
+            QApplication.processEvents()  # 处理布局更新
+            self.resize(self.sizeHint())  # 调整到推荐尺寸
+
+    def _get_optimizer_config_safely(self):
+        """
+        安全获取优化器配置 - V4.1 新增
+        Safely get optimizer configuration - V4.1 New
+        """
+        try:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import get_config
+
+            config = get_config()
+            if "expression_optimizer" not in config:
+                # 创建默认配置
+                config["expression_optimizer"] = {
+                    "enabled": False,
+                    "active_provider": "openai",
+                    "providers": {},
+                    "prompts": {},
+                }
+
+            return config
+        except Exception as e:
+            print(f"获取配置失败: {e}")
+            return None
+
+    def _save_config_safely(self, config, operation_name="配置保存"):
+        """
+        安全保存配置 - V4.1 新增
+        Safely save configuration - V4.1 New
+        """
+        try:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import save_config
+
+            save_config(config)
+            return True
+        except Exception as e:
+            print(f"{operation_name}失败: {e}")
+            return False
+
+    def _save_prompt_config(self, prompt_type: str, value: str):
+        """通用的提示词保存方法 - V4.1 优化"""
+        config = self._get_optimizer_config_safely()
+        if not config:
+            return
+
+        # 确保prompts字段存在
+        if "prompts" not in config["expression_optimizer"]:
+            config["expression_optimizer"]["prompts"] = {}
+
+        # 更新提示词
+        config["expression_optimizer"]["prompts"][prompt_type] = value.strip()
+        self._save_config_safely(config, f"{prompt_type}提示词保存")
+
+    def _on_optimize_prompt_changed(self):
+        """优化提示词改变时的处理"""
+        self._save_prompt_config("optimize", self.optimize_prompt_edit.text())
+
+    def _on_reinforce_prompt_changed(self):
+        """增强提示词改变时的处理"""
+        self._save_prompt_config("reinforce", self.reinforce_prompt_edit.text())
+
+    def _setup_feature_toggles(self, parent_layout, config):
+        """V4.0 简化：设置自定义选项开关"""
+        # 获取功能状态和UI工厂
+        from src.interactive_feedback_server.utils import get_custom_options_enabled
+        from ..utils.ui_factory import create_toggle_radio_button
+
+        custom_options_enabled = get_custom_options_enabled(config)
 
         toggles_layout = QHBoxLayout()
 
-        self.enable_rule_engine_radio = create_toggle_radio_button(
-            "", rule_engine_enabled, self._on_rule_engine_toggled
-        )
         self.enable_custom_options_radio = create_toggle_radio_button(
             "", custom_options_enabled, self._on_custom_options_toggled
         )
 
-        toggles_layout.addWidget(self.enable_rule_engine_radio)
         toggles_layout.addWidget(self.enable_custom_options_radio)
 
         parent_layout.addLayout(toggles_layout)
 
-    def _on_rule_engine_toggled(self, checked: bool):
-        """规则引擎开关切换处理"""
-        try:
-            from src.interactive_feedback_server.utils import set_rule_engine_enabled
-
-            set_rule_engine_enabled(checked)
-        except Exception as e:
-            from src.interactive_feedback_server.utils import handle_config_error
-
-            handle_config_error("设置规则引擎状态", e)
+    # V4.0 移除：_on_rule_engine_toggled 函数已删除
 
     def _on_custom_options_toggled(self, checked: bool):
         """自定义选项开关切换处理"""
@@ -871,6 +1301,27 @@ class SettingsDialog(QDialog):
                 if key in self.texts:
                     label.setText(self.texts[key][current_lang])
 
+        # 更新音频设置组
+        if hasattr(self, "audio_group"):
+            self.audio_group.setTitle(self.texts["audio_group"][current_lang])
+
+        if hasattr(self, "enable_audio_radio"):
+            self.enable_audio_radio.setText(self.texts["enable_audio"][current_lang])
+
+        if hasattr(self, "audio_volume_label"):
+            self.audio_volume_label.setText(self.texts["audio_volume"][current_lang])
+
+        if hasattr(self, "custom_sound_label"):
+            self.custom_sound_label.setText(
+                self.texts["custom_sound_file"][current_lang]
+            )
+
+        if hasattr(self, "browse_sound_button"):
+            self.browse_sound_button.setText(self.texts["browse_sound"][current_lang])
+
+        if hasattr(self, "test_sound_button"):
+            self.test_sound_button.setText(self.texts["test_sound"][current_lang])
+
         # 更新终端设置组标题和标签
         if hasattr(self, "terminal_group"):
             self.terminal_group.setTitle(self.texts["terminal_group"][current_lang])
@@ -897,12 +1348,7 @@ class SettingsDialog(QDialog):
         if hasattr(self, "full_mode_radio"):
             self.full_mode_radio.setText(self.texts["full_mode"][current_lang])
 
-        # V3.2 新增：更新功能开关单选按钮文本
-        if hasattr(self, "enable_rule_engine_radio"):
-            self.enable_rule_engine_radio.setText(
-                self.texts["enable_rule_engine"][current_lang]
-            )
-
+        # V4.0 简化：更新自定义选项开关文本
         if hasattr(self, "enable_custom_options_radio"):
             self.enable_custom_options_radio.setText(
                 self.texts["enable_custom_options"][current_lang]
@@ -924,6 +1370,74 @@ class SettingsDialog(QDialog):
         if hasattr(self, "fallback_option_labels"):
             for i, label in enumerate(self.fallback_option_labels):
                 label.setText(f"{self.texts['option_label'][current_lang]} {i+1}:")
+
+        # V4.0 新增：更新优化功能设置文本
+        if hasattr(self, "optimization_group"):
+            self.optimization_group.setTitle(
+                self.texts["optimization_group"][current_lang]
+            )
+
+        if hasattr(self, "enable_optimization_radio"):
+            self.enable_optimization_radio.setText(
+                self.texts["enable_optimization"][current_lang]
+            )
+
+        if hasattr(self, "openai_radio"):
+            self.openai_radio.setText(self.texts["openai_provider"][current_lang])
+
+        if hasattr(self, "gemini_radio"):
+            self.gemini_radio.setText(self.texts["gemini_provider"][current_lang])
+
+        if hasattr(self, "deepseek_radio"):
+            self.deepseek_radio.setText(self.texts["deepseek_provider"][current_lang])
+
+        if hasattr(self, "huoshan_radio"):
+            self.huoshan_radio.setText(self.texts["huoshan_provider"][current_lang])
+
+        if hasattr(self, "api_key_label"):
+            self.api_key_label.setText(self.texts["api_key_label"][current_lang])
+
+        if hasattr(self, "api_key_edit"):
+            self.api_key_edit.setPlaceholderText(
+                self.texts["api_key_placeholder"][current_lang]
+            )
+
+        if hasattr(self, "test_connection_button"):
+            self.test_connection_button.setText(
+                self.texts["test_connection"][current_lang]
+            )
+
+        # V4.1 新增：更新提示词设置文本
+        if hasattr(self, "prompts_toggle_button"):
+            is_expanded = self.prompts_toggle_button.isChecked()
+            if is_expanded:
+                self.prompts_toggle_button.setText(
+                    f"▼ {self.texts['collapse_prompts'][current_lang]}"
+                )
+            else:
+                self.prompts_toggle_button.setText(
+                    f"▶ {self.texts['expand_prompts'][current_lang]}"
+                )
+
+        if hasattr(self, "optimize_prompt_label"):
+            self.optimize_prompt_label.setText(
+                self.texts["optimize_prompt_label"][current_lang]
+            )
+
+        if hasattr(self, "reinforce_prompt_label"):
+            self.reinforce_prompt_label.setText(
+                self.texts["reinforce_prompt_label"][current_lang]
+            )
+
+        if hasattr(self, "optimize_prompt_edit"):
+            self.optimize_prompt_edit.setPlaceholderText(
+                self.texts["prompt_placeholder"][current_lang]
+            )
+
+        if hasattr(self, "reinforce_prompt_edit"):
+            self.reinforce_prompt_edit.setPlaceholderText(
+                self.texts["prompt_placeholder"][current_lang]
+            )
 
         # 更新按钮文本
         if hasattr(self, "ok_button"):
@@ -975,3 +1489,226 @@ class SettingsDialog(QDialog):
 
     def reject(self):
         super().reject()
+
+    # V4.0 新增：输入表达优化功能的事件处理方法
+    def _on_optimization_toggled(self, checked: bool):
+        """优化功能开关切换处理 - V4.1 简化"""
+        config = self._get_optimizer_config_safely()
+        if not config:
+            return
+
+        config["expression_optimizer"]["enabled"] = checked
+
+        if self._save_config_safely(config, "优化功能开关"):
+            # 通知主窗口更新按钮可见性
+            app = QApplication.instance()
+            if app:
+                for widget in app.topLevelWidgets():
+                    if widget.__class__.__name__ == "FeedbackUI":
+                        if hasattr(widget, "_update_optimization_buttons_visibility"):
+                            widget._update_optimization_buttons_visibility()
+                        break
+
+    def _on_provider_changed(self, provider: str, checked: bool):
+        """LLM提供商切换处理 - V4.1 简化"""
+        if not checked:
+            return
+
+        config = self._get_optimizer_config_safely()
+        if not config:
+            return
+
+        config["expression_optimizer"]["active_provider"] = provider
+
+        if self._save_config_safely(config, "提供商切换"):
+            # 更新API密钥输入框
+            provider_config = config["expression_optimizer"]["providers"].get(
+                provider, {}
+            )
+            current_api_key = provider_config.get("api_key", "")
+
+            if current_api_key and not current_api_key.startswith("YOUR_"):
+                self.api_key_edit.setText(current_api_key)
+            else:
+                self.api_key_edit.setText("")
+
+    def _on_api_key_changed(self, text: str):
+        """API密钥改变处理 - V4.1 简化"""
+        config = self._get_optimizer_config_safely()
+        if not config:
+            return
+
+        # 获取当前选中的提供商
+        active_provider = config["expression_optimizer"]["active_provider"]
+
+        # 确保providers字段存在
+        if "providers" not in config["expression_optimizer"]:
+            config["expression_optimizer"]["providers"] = {}
+
+        # 确保当前提供商配置存在
+        if active_provider not in config["expression_optimizer"]["providers"]:
+            config["expression_optimizer"]["providers"][active_provider] = {}
+
+        # 更新API密钥
+        config["expression_optimizer"]["providers"][active_provider][
+            "api_key"
+        ] = text.strip()
+        self._save_config_safely(config, "API密钥保存")
+
+    def _convert_test_error_to_friendly(self, error_message: str) -> str:
+        """
+        将测试错误转换为用户友好的提示 - V4.1 新增
+        Convert test errors to user-friendly messages - V4.1 New
+        """
+        if not error_message:
+            return "连接测试失败，请检查配置"
+
+        # 处理常见错误
+        if "API密钥" in error_message or "api_key" in error_message.lower():
+            return "API密钥无效或未配置，请检查并重新输入"
+
+        if "网络" in error_message or "timeout" in error_message.lower():
+            return "网络连接超时，请检查网络连接"
+
+        if "模型" in error_message or "model" in error_message.lower():
+            return "所选模型不可用，请尝试其他模型"
+
+        if "配置" in error_message or "config" in error_message.lower():
+            return "配置信息有误，请检查设置"
+
+        return f"连接测试失败: {error_message}"
+
+    def _test_api_connection(self):
+        """测试API连接 - V4.1 增强用户体验"""
+        from PySide6.QtWidgets import QMessageBox, QProgressDialog
+
+        # 显示进度对话框
+        progress = QProgressDialog("正在测试连接...", "取消", 0, 0, self)
+        progress.setWindowTitle("API连接测试")
+        progress.setModal(True)
+        progress.show()
+
+        try:
+            config = self._get_optimizer_config_safely()
+            if not config:
+                progress.close()
+                QMessageBox.warning(self, "测试结果", "无法获取配置信息")
+                return
+
+            _setup_project_path()
+            from src.interactive_feedback_server.llm.factory import get_llm_provider
+
+            optimizer_config = config.get("expression_optimizer", {})
+
+            # 获取provider并测试
+            provider, message = get_llm_provider(optimizer_config)
+
+            current_lang = self.current_language
+
+            if provider:
+                # 测试配置验证
+                is_valid, validation_message = provider.validate_config()
+
+                progress.close()
+
+                if is_valid:
+                    success_msg = "✅ " + self.texts["connection_success"][current_lang]
+                    QMessageBox.information(self, "测试结果", success_msg)
+                else:
+                    friendly_msg = self._convert_test_error_to_friendly(
+                        validation_message
+                    )
+                    QMessageBox.warning(self, "测试结果", f"❌ {friendly_msg}")
+            else:
+                progress.close()
+                friendly_msg = self._convert_test_error_to_friendly(message)
+                QMessageBox.warning(self, "测试结果", f"❌ {friendly_msg}")
+
+        except Exception as e:
+            progress.close()
+            friendly_msg = self._convert_test_error_to_friendly(str(e))
+            QMessageBox.critical(self, "测试错误", f"❌ {friendly_msg}")
+
+    # --- 音频设置相关方法 (Audio Settings Methods) ---
+    def _on_audio_enabled_changed(self, enabled: bool):
+        """音频启用状态改变处理"""
+        self.settings_manager.set_audio_enabled(enabled)
+
+        # 更新音频管理器状态
+        if self._audio_manager:
+            self._audio_manager.set_enabled(enabled)
+
+    def _on_audio_volume_changed(self, value: int):
+        """音量改变处理"""
+        volume = value / 100.0  # 转换为0.0-1.0范围
+        self.settings_manager.set_audio_volume(volume)
+
+        # 更新显示的音量值
+        self.audio_volume_value.setText(f"{value}%")
+
+        # 更新音频管理器音量
+        if self._audio_manager:
+            self._audio_manager.set_volume(volume)
+
+    def _on_custom_sound_changed(self):
+        """自定义音频文件路径改变处理"""
+        path = self.custom_sound_edit.text().strip()
+        self.settings_manager.set_notification_sound_path(path)
+
+        # 验证音频文件
+        if path and self._audio_manager:
+            is_valid, message = self._audio_manager.validate_audio_file(path)
+            if not is_valid:
+                # 设置警告样式
+                self.custom_sound_edit.setStyleSheet(
+                    "font-size: 10pt; padding: 4px; border: 1px solid orange;"
+                )
+                self.custom_sound_edit.setToolTip(f"⚠️ {message}")
+            else:
+                # 恢复正常样式
+                self._reset_sound_edit_style()
+        else:
+            # 清空路径时恢复正常样式
+            self._reset_sound_edit_style()
+
+    def _reset_sound_edit_style(self):
+        """重置音频文件输入框样式"""
+        self.custom_sound_edit.setStyleSheet("font-size: 10pt; padding: 4px;")
+        self.custom_sound_edit.setToolTip("")
+
+    def _browse_sound_file(self):
+        """浏览音频文件"""
+        from PySide6.QtWidgets import QFileDialog
+
+        current_lang = self.current_language
+        filter_text = self.texts["sound_file_filter"][current_lang]
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择音频文件" if current_lang == "zh_CN" else "Select Audio File",
+            "",
+            filter_text,
+        )
+
+        if file_path:
+            self.custom_sound_edit.setText(file_path)
+            self._on_custom_sound_changed()
+
+    def _test_sound(self):
+        """测试音频播放"""
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self._audio_manager or not self._audio_manager.is_enabled():
+            QMessageBox.warning(self, "音频测试", "音频功能未启用或不可用")
+            return
+
+        # 获取自定义音频文件路径
+        custom_path = self.custom_sound_edit.text().strip()
+
+        # 播放音频
+        success = self._audio_manager.play_notification_sound(
+            custom_path if custom_path else None
+        )
+
+        if not success:
+            QMessageBox.warning(self, "音频测试", "音频播放失败，请检查文件路径和格式")

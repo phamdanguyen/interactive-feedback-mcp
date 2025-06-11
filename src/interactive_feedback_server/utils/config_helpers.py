@@ -15,7 +15,6 @@ from .config_manager import (
     get_config,
     get_display_mode,
     get_fallback_options,
-    get_rule_engine_enabled,
     get_custom_options_enabled,
     DEFAULT_CONFIG,
 )
@@ -48,25 +47,26 @@ def safe_get_feature_states(
     config: Optional[Dict[str, Any]] = None
 ) -> Tuple[bool, bool]:
     """
-    安全获取功能开关状态
-    Safely get feature toggle states
+    安全获取功能开关状态 - V4.0 简化版本
+    Safely get feature toggle states - V4.0 Simplified Version
 
     Args:
         config: 可选的配置字典，如果为None则自动获取
 
     Returns:
-        Tuple[bool, bool]: (规则引擎启用状态, 自定义选项启用状态)
+        Tuple[bool, bool]: (规则引擎启用状态[已移除，始终False], 自定义选项启用状态)
     """
     try:
         if config is None:
             config, _ = safe_get_config()
 
-        rule_engine_enabled = get_rule_engine_enabled(config)
+        # V4.0 简化：规则引擎已移除，始终返回False
+        rule_engine_enabled = False
         custom_options_enabled = get_custom_options_enabled(config)
         return rule_engine_enabled, custom_options_enabled
     except Exception as e:
         print(f"获取功能开关状态失败，使用默认值: {e}")
-        return True, True  # 默认都启用
+        return False, False  # 默认都禁用，与DEFAULT_CONFIG保持一致
 
 
 def safe_get_fallback_options(config: Optional[Dict[str, Any]] = None) -> list:

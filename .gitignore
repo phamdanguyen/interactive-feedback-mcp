@@ -40,6 +40,7 @@ todolist.md
 todo.md
 .cursor/rules/
 custom_http_transport_mcp.md
+config.json
 # Private individual user cursor rules
 .cursor/rules/_*.mdc
 .cursor/
@@ -47,5 +48,6 @@ docs/
 issues/
 xnote/
 todo.md
+
 
 
