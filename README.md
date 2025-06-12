@@ -1,4 +1,4 @@
-# [alt text](1a7ef-zmno1-001.ico) Interactive Feedback MCP
+# ![Interactive Feedback MCP](./1a7ef-zmno1-001.png) Interactive Feedback MCP
 
 一个简单的 [MCP Server](https://modelcontextprotocol.io/)，用于在AI辅助开发工具（如 [Cursor](https://www.cursor.com)、[Cline](https://cline.bot) 、 [Windsurf](https://windsurf.com)）和[Augment]插件中实现人机协作工作流。该服务器允许您轻松地直接向AI代理提供反馈，让AI与您之间更好地协作。
 
