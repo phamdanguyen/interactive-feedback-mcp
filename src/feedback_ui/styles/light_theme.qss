@@ -143,31 +143,30 @@ QPushButton#pin_window_active {
 QPushButton#pin_window_active:hover { background-color: #c8c8c8; }
 QPushButton#pin_window_active:pressed { background-color: #b8b8b8; }
 
-/* V4.0 新增：输入表达优化按钮样式 - 浅色主题 */
+/* V4.0 新增：输入表达优化按钮样式 - 浅色主题，主题感知 */
 QPushButton#optimization_button {
-    background-color: #e3f2fd; /* 浅蓝色背景，表示AI功能 */
-    color: #1565c0; /* 深蓝色文字 */
-    border: 1px solid #90caf9;
+    background-color: #f8f8f8;
+    color: #333333;
+    border: 2px solid #cccccc;
     padding: 5px 12px;
     min-height: 32px;
     min-width: 90px;
     max-height: 32px;
     font-weight: 500;
+    border-radius: 16px;
 }
 QPushButton#optimization_button:hover {
-    background-color: #bbdefb;
-    border: 1px solid #64b5f6;
-    color: #0d47a1;
+    background-color: #eeeeee;
+    border: 2px solid #bbbbbb;
 }
 QPushButton#optimization_button:pressed {
-    background-color: #90caf9;
-    border: 1px solid #42a5f5;
-    color: #0d47a1;
+    background-color: #e0e0e0;
+    border: 2px solid #aaaaaa;
 }
 QPushButton#optimization_button:disabled {
     background-color: #f5f5f5;
     color: #bdbdbd;
-    border: 1px solid #e0e0e0;
+    border: 2px solid #e0e0e0;
 }
 
 /* V4.0 新增：输入框内的优化图标按钮样式 - 浅色主题 */

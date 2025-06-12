@@ -47,6 +47,14 @@ class ThemeColors:
         "splitter_base": "#444444",
         "splitter_hover": "#555555",
         "splitter_pressed": "#333333",
+        # 优化按钮颜色
+        "optimization_button_bg": "#404040",
+        "optimization_button_text": "#ffffff",
+        "optimization_button_border": "#555555",
+        "optimization_button_hover_bg": "#505050",
+        "optimization_button_hover_border": "#666666",
+        "optimization_button_pressed_bg": "#303030",
+        "optimization_button_pressed_border": "#444444",
     }
 
     # 浅色主题颜色
@@ -89,6 +97,14 @@ class ThemeColors:
         "splitter_base": "#cccccc",
         "splitter_hover": "#dddddd",
         "splitter_pressed": "#bbbbbb",
+        # 优化按钮颜色
+        "optimization_button_bg": "#f8f8f8",
+        "optimization_button_text": "#333333",
+        "optimization_button_border": "#cccccc",
+        "optimization_button_hover_bg": "#eeeeee",
+        "optimization_button_hover_border": "#bbbbbb",
+        "optimization_button_pressed_bg": "#e0e0e0",
+        "optimization_button_pressed_border": "#aaaaaa",
     }
 
     @classmethod
@@ -135,4 +151,18 @@ class ThemeColors:
             "base_color": colors["splitter_base"],
             "hover_color": colors["splitter_hover"],
             "pressed_color": colors["splitter_pressed"],
+        }
+
+    @classmethod
+    def get_optimization_button_colors(cls, theme_name: str) -> dict:
+        """获取优化按钮相关的颜色配置"""
+        colors = cls.get_theme_colors(theme_name)
+        return {
+            "bg_color": colors["optimization_button_bg"],
+            "text_color": colors["optimization_button_text"],
+            "border_color": colors["optimization_button_border"],
+            "hover_bg": colors["optimization_button_hover_bg"],
+            "hover_border": colors["optimization_button_hover_border"],
+            "pressed_bg": colors["optimization_button_pressed_bg"],
+            "pressed_border": colors["optimization_button_pressed_border"],
         }

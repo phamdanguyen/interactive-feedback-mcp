@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "2.4.0"
+version = "2.5.0"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
@@ -31,7 +31,6 @@ dependencies = [
     "psutil>=7.0.0",
     "pyside6[multimedia]>=6.8.2.1",
     "pyperclip>=1.8.2",
-    "pyautogui>=0.9.53",
     "Pillow>=9.0.0",
     'pywin32>=228; sys_platform == "win32"',
     "openai>=1.0.0",

@@ -137,14 +137,11 @@ class FeedbackUI(QMainWindow):
 
         self._apply_pin_state_on_load()
 
-        # 延迟设置分割器样式，确保在窗口显示后应用
-        QTimer.singleShot(100, self._ensure_splitter_visibility)
-
         # 初始化时更新界面文本显示
         self._update_displayed_texts()
 
-        # V4.0 新增：更新优化按钮可见性
-        QTimer.singleShot(200, self._update_optimization_buttons_visibility)
+        # 立即执行初始化，避免窗口显示后的布局变化
+        self._perform_delayed_initialization()
 
         # 为主窗口安装事件过滤器，以实现点击背景聚焦输入框的功能
         self.installEventFilter(self)
@@ -157,6 +154,56 @@ class FeedbackUI(QMainWindow):
 
         # V4.1 新增：创建加载覆盖层
         self._setup_loading_overlay()
+
+    def _perform_delayed_initialization(self):
+        """合并的延迟初始化操作，减少布局闪烁"""
+        try:
+            # 首先应用字体设置，避免后续样式变化
+            self._apply_initial_font_settings()
+
+            # 设置分割器样式，确保在窗口显示后应用
+            self._ensure_splitter_visibility()
+        except Exception as e:
+            print(f"DEBUG: 延迟初始化时出错: {e}", file=sys.stderr)
+
+    def _apply_initial_font_settings(self):
+        """应用初始字体设置，避免布局闪烁"""
+        try:
+            app = QApplication.instance()
+            if app:
+                from .utils.style_manager import apply_theme
+
+                current_theme = self.settings_manager.get_current_theme()
+                apply_theme(app, current_theme)
+
+                # 直接应用所有样式更新
+                self._apply_all_style_updates()
+
+        except Exception as e:
+            print(f"DEBUG: 应用初始字体设置时出错: {e}", file=sys.stderr)
+
+    def _apply_all_style_updates(self):
+        """统一应用所有样式更新的方法"""
+        current_theme = self.settings_manager.get_current_theme()
+
+        # 重新应用分割器样式，确保颜色与主题一致
+        if hasattr(self, "main_splitter"):
+            self._force_splitter_style()
+
+        # 更新输入框字体大小，与提示文字保持一致
+        if hasattr(self, "text_input") and self.text_input:
+            self.text_input.update_font_size()
+
+        # 更新复选框样式，确保主题切换时颜色正确
+        self._update_all_checkbox_styles()
+
+        # 更新优化按钮样式，确保主题切换时颜色正确
+        self._update_optimization_buttons_styles()
+
+        # V4.1 新增：更新加载覆盖层主题
+        if hasattr(self, "loading_overlay"):
+            is_dark_theme = current_theme == "dark"
+            self.loading_overlay.set_theme(is_dark_theme)
 
     def _setup_audio_manager(self):
         """设置音频管理器"""
@@ -266,9 +313,6 @@ class FeedbackUI(QMainWindow):
 
         self.window_pinned = self.settings_manager.get_main_window_pinned()
         self._load_canned_responses_from_settings()
-
-        # 加载字体大小设置
-        self.update_font_sizes()
 
     def _set_default_window_geometry(self, width: int, height: int):
         """设置默认的窗口几何信息"""
@@ -776,6 +820,13 @@ class FeedbackUI(QMainWindow):
             for checkbox in self.option_checkboxes:
                 self._apply_checkbox_theme_style(checkbox)
 
+    def _update_optimization_buttons_styles(self):
+        """更新优化按钮的样式（主题切换时调用）"""
+        if hasattr(self, "optimize_button"):
+            self._apply_optimization_button_style(self.optimize_button)
+        if hasattr(self, "enhance_button"):
+            self._apply_optimization_button_style(self.enhance_button)
+
     def _setup_dynamic_option_spacing(self):
         """设置动态选项间距功能"""
         # 立即执行，因为已经延迟调用了这个方法
@@ -894,7 +945,7 @@ class FeedbackUI(QMainWindow):
         super().resizeEvent(event)
         # 延迟更新选项间距，避免频繁计算
         if hasattr(self, "resize_timer"):
-            self.resize_timer.start(200)  # 200ms延迟
+            self.resize_timer.start(300)  # 300ms延迟，避免与初始化定时器冲突
 
     def _on_window_resized(self):
         """窗口大小变化后的处理"""
@@ -964,9 +1015,7 @@ class FeedbackUI(QMainWindow):
         self.terminal_preview_window = None
         self._setup_simple_terminal_preview()
 
-        bottom_layout.addWidget(self.open_terminal_button)
-
-        # 截图按钮（在启用终端按钮后，固定窗口按钮前）
+        # 截图按钮（在启用终端按钮前，固定窗口按钮前）
         self.screenshot_button = QPushButton(
             self.button_texts["screenshot_button"][current_language]
         )
@@ -975,6 +1024,8 @@ class FeedbackUI(QMainWindow):
             self.tooltip_texts["screenshot_button"][current_language]
         )
         bottom_layout.addWidget(self.screenshot_button)
+
+        bottom_layout.addWidget(self.open_terminal_button)
 
         self.pin_window_button = QPushButton(
             self.button_texts["pin_window_button"][current_language]
@@ -1010,31 +1061,8 @@ class FeedbackUI(QMainWindow):
         self.optimize_button.setToolTip(
             self.tooltip_texts["optimize_button"][current_language]
         )
-        # 设置半圆形样式和一半宽度，高度与其他按钮一致
-        self.optimize_button.setStyleSheet(
-            """
-            QPushButton#optimization_button {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 32px;
-                max-height: 32px;
-                border-radius: 16px;
-                background-color: #2D5587;
-                color: white;
-                border: 2px solid #4A90E2;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton#optimization_button:hover {
-                background-color: #375F91;
-                border-color: #5BA0F2;
-            }
-            QPushButton#optimization_button:pressed {
-                background-color: #1F3F67;
-                border-color: #3A80D2;
-            }
-        """
-        )
+        # 应用主题感知的样式
+        self._apply_optimization_button_style(self.optimize_button)
         layout.addWidget(self.optimize_button)
 
         # 增强按钮
@@ -1045,36 +1073,73 @@ class FeedbackUI(QMainWindow):
         self.enhance_button.setToolTip(
             self.tooltip_texts["enhance_button"][current_language]
         )
-        # 设置半圆形样式和一半宽度，高度与其他按钮一致
-        self.enhance_button.setStyleSheet(
-            """
-            QPushButton#optimization_button {
+        # 应用主题感知的样式
+        self._apply_optimization_button_style(self.enhance_button)
+        layout.addWidget(self.enhance_button)
+
+        # 初始化时立即设置正确的可见性，避免后续布局变化
+        self._set_initial_optimization_buttons_visibility()
+
+    def _apply_optimization_button_style(self, button: QPushButton):
+        """为优化按钮应用主题感知的样式"""
+        from .utils.theme_colors import ThemeColors
+
+        current_theme = self.settings_manager.get_current_theme()
+        colors = ThemeColors.get_optimization_button_colors(current_theme)
+
+        button_style = f"""
+            QPushButton#optimization_button {{
                 min-width: 30px;
                 max-width: 30px;
                 min-height: 32px;
                 max-height: 32px;
                 border-radius: 16px;
-                background-color: #2D5587;
-                color: white;
-                border: 2px solid #4A90E2;
+                background-color: {colors['bg_color']};
+                color: {colors['text_color']};
+                border: 2px solid {colors['border_color']};
                 font-size: 11px;
                 font-weight: bold;
-            }
-            QPushButton#optimization_button:hover {
-                background-color: #375F91;
-                border-color: #5BA0F2;
-            }
-            QPushButton#optimization_button:pressed {
-                background-color: #1F3F67;
-                border-color: #3A80D2;
-            }
+            }}
+            QPushButton#optimization_button:hover {{
+                background-color: {colors['hover_bg']};
+                border-color: {colors['hover_border']};
+            }}
+            QPushButton#optimization_button:pressed {{
+                background-color: {colors['pressed_bg']};
+                border-color: {colors['pressed_border']};
+            }}
         """
-        )
-        layout.addWidget(self.enhance_button)
+        button.setStyleSheet(button_style)
 
-        # 初始隐藏按钮
-        self.optimize_button.setVisible(False)
-        self.enhance_button.setVisible(False)
+    def _get_optimization_enabled_status(self) -> bool:
+        """获取优化功能启用状态的统一方法"""
+        try:
+            # 检查优化功能是否启用
+            import sys
+            import os
+
+            # 添加项目根目录到路径
+            project_root = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+
+            from src.interactive_feedback_server.utils import get_config
+
+            config = get_config()
+            optimizer_config = config.get("expression_optimizer", {})
+            return optimizer_config.get("enabled", False)
+
+        except Exception as e:
+            print(f"DEBUG: 获取优化功能状态失败: {e}", file=sys.stderr)
+            return False
+
+    def _set_initial_optimization_buttons_visibility(self):
+        """初始化时设置优化按钮的可见性，避免后续布局变化"""
+        enabled = self._get_optimization_enabled_status()
+        self.optimize_button.setVisible(enabled)
+        self.enhance_button.setVisible(enabled)
 
     def _create_github_link_area(self, parent_layout: QVBoxLayout):
         """Creates the GitHub link at the bottom."""
@@ -1637,12 +1702,8 @@ class FeedbackUI(QMainWindow):
         self.close()
 
     def run_ui_and_get_result(self) -> FeedbackResult:
-        self.show()
-        self.activateWindow()
-        self.text_input.setFocus()
-
-        # 播放提示音
-        self._play_notification_sound()
+        # 延迟显示窗口，确保所有初始化完成
+        QTimer.singleShot(10, self._show_window_when_ready)
 
         app_instance = QApplication.instance()
         if app_instance:
@@ -1651,6 +1712,17 @@ class FeedbackUI(QMainWindow):
         # 直接返回 self.output_result，它在 __init__ 中已初始化为空结果
         # 如果用户有提交内容，它已在 _prepare_and_submit_feedback 中被更新
         return self.output_result
+
+    def _show_window_when_ready(self):
+        """在窗口完全准备好后显示"""
+        self.show()
+        self.activateWindow()
+
+        # 延迟设置焦点，确保窗口完全显示
+        QTimer.singleShot(50, self._set_initial_focus)
+
+        # 播放提示音
+        self._play_notification_sound()
 
     def _play_notification_sound(self):
         """播放提示音"""
@@ -2459,54 +2531,17 @@ class FeedbackUI(QMainWindow):
             current_theme = self.settings_manager.get_current_theme()
             apply_theme(app, current_theme)
 
-            # 主题切换后重新应用分割器样式，确保颜色与新主题一致
-            if hasattr(self, "main_splitter"):
-                QTimer.singleShot(50, self._force_splitter_style)
+            # 使用单个定时器统一处理所有样式更新，避免布局闪烁
+            QTimer.singleShot(50, self._update_all_styles_after_theme_change)
 
-            # 更新输入框字体大小，与提示文字保持一致
-            if hasattr(self, "text_input") and self.text_input:
-                QTimer.singleShot(10, self.text_input.update_font_size)
-
-            # 更新复选框样式，确保主题切换时颜色正确
-            QTimer.singleShot(100, self._update_all_checkbox_styles)
-
-            # V4.1 新增：更新加载覆盖层主题
-            if hasattr(self, "loading_overlay"):
-                is_dark_theme = current_theme == "dark"
-                self.loading_overlay.set_theme(is_dark_theme)
+    def _update_all_styles_after_theme_change(self):
+        """主题切换后统一更新所有样式，避免多个定时器导致的布局闪烁"""
+        try:
+            self._apply_all_style_updates()
+        except Exception as e:
+            print(f"DEBUG: 主题切换后样式更新时出错: {e}", file=sys.stderr)
 
     # V4.0 新增：输入表达优化功能
-    def _update_optimization_buttons_visibility(self):
-        """根据配置更新优化按钮的可见性"""
-        # V4.0 更新：使用底部栏优化按钮
-        if hasattr(self, "optimize_button") and hasattr(self, "enhance_button"):
-            try:
-                # 检查优化功能是否启用
-                import sys
-                import os
-
-                # 添加项目根目录到路径
-                project_root = os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                )
-                if project_root not in sys.path:
-                    sys.path.insert(0, project_root)
-
-                from src.interactive_feedback_server.utils import get_config
-
-                config = get_config()
-                optimizer_config = config.get("expression_optimizer", {})
-                enabled = optimizer_config.get("enabled", False)
-
-                # 更新按钮可见性
-                self.optimize_button.setVisible(enabled)
-                self.enhance_button.setVisible(enabled)
-
-            except Exception as e:
-                print(f"DEBUG: 更新优化按钮可见性失败: {e}", file=sys.stderr)
-                self.optimize_button.setVisible(False)
-                self.enhance_button.setVisible(False)
-
     def _optimize_text(self):
         """一键优化当前输入文本"""
         current_text = self.text_input.toPlainText().strip()
