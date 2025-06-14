@@ -24,39 +24,88 @@ from pydantic import (
     Field,
 )  # Field 由 FastMCP 内部使用 (Field is used internally by FastMCP)
 
-from .utils import get_config, resolve_final_options
-
-# 移除重复的提示词定义，统一使用config_manager中的定义
+from .utils import get_config, resolve_final_options, get_display_mode
 
 # 错误消息常量
 ERROR_MESSAGES = {
-    "no_valid_content": "[错误] AI必须提供message或full_response参数中的至少一个有效内容",
+    "missing_both_params": "[错误] AI必须同时提供message和full_response两个参数，不能为空",
     "no_user_feedback": "[用户未提供反馈]",
 }
 
 
-def get_display_mode_fast():
+def _is_valid_param(param: Optional[str]) -> bool:
+    """检查参数是否有效（非空且非纯空白）"""
+    return param and param.strip()
+
+
+def _process_ui_output(ui_output_dict: Dict[str, Any]) -> List[Union[str, Image]]:
     """
-    快速读取显示模式，确保获取最新配置
-    使用与UI界面相同的配置文件路径选择逻辑
+    处理UI输出内容，提取文本、图片和文件引用
+
+    Args:
+        ui_output_dict: UI返回的输出字典
 
     Returns:
-        str: "simple" 或 "full"
+        List[Union[str, Image]]: 处理后的内容列表
     """
-    try:
-        import json
-        import os
-        from .utils.config_manager import CONFIG_FILE_PATH
+    processed_content: List[Union[str, Image]] = []
 
-        if os.path.exists(CONFIG_FILE_PATH):
-            with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            return config.get("display_mode", "simple")
+    if not (
+        ui_output_dict
+        and "content" in ui_output_dict
+        and isinstance(ui_output_dict["content"], list)
+    ):
+        return processed_content
+
+    for item in ui_output_dict.get("content", []):
+        if not isinstance(item, dict):
+            print(f"警告: 无效的内容项格式: {item}", file=sys.stderr)
+            continue
+
+        item_type = item.get("type")
+        if item_type == "text":
+            text_content = item.get("text", "")
+            if text_content:
+                processed_content.append(text_content)
+        elif item_type == "image":
+            _process_image_item(item, processed_content)
+        elif item_type == "file_reference":
+            _process_file_reference_item(item, processed_content)
         else:
-            return "simple"
-    except Exception as e:
-        print(f"读取配置文件失败: {e}，使用默认模式", file=sys.stderr)
-        return "simple"
+            print(f"警告: 未知的内容项类型: {item_type}", file=sys.stderr)
+
+    return processed_content
+
+
+def _process_image_item(
+    item: Dict[str, Any], processed_content: List[Union[str, Image]]
+) -> None:
+    """处理图片项"""
+    base64_data = item.get("data")
+    mime_type = item.get("mimeType")
+    if base64_data and mime_type:
+        try:
+            image_format_str = mime_type.split("/")[-1].lower()
+            if image_format_str == "jpeg":
+                image_format_str = "jpg"
+
+            image_bytes = base64.b64decode(base64_data)
+            mcp_image = Image(data=image_bytes, format=image_format_str)
+            processed_content.append(mcp_image)
+        except Exception as e:
+            print(f"错误: 处理图像失败: {e}", file=sys.stderr)
+            processed_content.append(f"[图像处理失败: {mime_type or 'unknown type'}]")
+
+
+def _process_file_reference_item(
+    item: Dict[str, Any], processed_content: List[Union[str, Image]]
+) -> None:
+    """处理文件引用项"""
+    display_name = item.get("display_name", "")
+    file_path = item.get("path", "")
+    if display_name and file_path:
+        file_info = f"引用文件: {display_name} [路径: {file_path}]"
+        processed_content.append(file_info)
 
 
 def get_system_prompts():
@@ -191,150 +240,69 @@ def launch_feedback_ui(
 def interactive_feedback(
     message: Optional[str] = Field(
         default=None,
-        description="[SIMPLE mode only] Concise question or prompt processed by AI from its complete response (精简模式专用：AI从完整回复中处理出的简洁问题或提示)",
+        description="[SIMPLE mode] Concise question for user input (AI must display full response in chat first)",
     ),
     full_response: Optional[str] = Field(
         default=None,
-        description="[FULL mode only] AI's original complete response content from the chat dialog (完整模式专用：AI在对话中的原始完整回复内容)",
+        description="[FULL mode] AI's complete response content (AI must display this in chat first)",
     ),
     predefined_options: Optional[List[str]] = Field(
-        default=None, description="Predefined options for the user (用户的预定义选项)"
+        default=None, description="Predefined options for user selection"
     ),
 ) -> Tuple[Union[str, Image], ...]:  # 返回字符串和/或 fastmcp.Image 对象的元组
     """
-    Requests interactive feedback from the user via a GUI.
-    Processes the UI's output to return a tuple compatible with FastMCP,
-    allowing for mixed text and image content to be sent back to Cursor.
+    Requests user input via GUI after AI displays complete response in chat.
 
-    CRITICAL USAGE FLOW:
-    1. AI MUST first complete its full response in the chat dialog
-    2. Call this tool with appropriate parameters (tool automatically detects user's display mode)
-    3. Tool shows content in UI window based on user's display mode
-    4. Tool returns user's feedback to continue the conversation
+    USAGE FLOW:
+    1. AI displays complete response in chat dialog
+    2. AI calls this tool to collect user input
+    3. Tool returns user feedback only
 
-    This tool is for REQUESTING USER INPUT, not for displaying AI responses.
-    AI responses should always appear in the chat dialog first.
+    This tool collects user input, not for displaying AI responses.
+    AI responses must appear in chat dialog before calling this tool.
 
-    AUTOMATIC MODE DETECTION:
-    - Tool automatically detects user's display mode preference
-    - SIMPLE mode: Uses 'message' parameter (AI-processed concise question)
-    - FULL mode: Uses 'full_response' parameter (AI's original complete response)
-    - SMART FALLBACK: If primary parameter is empty, automatically uses the available parameter
-    - Error only when both parameters are empty
+    PARAMETER REQUIREMENTS:
+    - AI MUST provide BOTH 'message' and 'full_response' parameters
+    - Both parameters cannot be empty or whitespace-only
+    - MCP service will automatically select which content to display based on user's display_mode setting
 
-    RECOMMENDED USAGE PATTERN:
+    USAGE PATTERN:
 
-    # AI can pass both parameters, tool will automatically select the correct one
+    # Step 1: AI displays complete response in chat
+    # Step 2: AI calls tool with BOTH parameters
     interactive_feedback(
-        message="你希望我实现这些更改吗？",  # For simple mode users
-        full_response="我分析了你的代码，发现了3个问题：\n1. 内存泄漏...\n2. 性能瓶颈...",  # For full mode users
+        message="你希望我实现这些更改吗？",  # Required: concise question
+        full_response="我分析了你的代码，发现了3个问题...",  # Required: complete response
         predefined_options=["修复方案A", "修复方案B", "让我想想"]
     )
 
-    # Or AI can pass only the relevant parameter if known
-    # For simple mode:
-    interactive_feedback(
-        message="你希望我实现这些更改吗？",
-        predefined_options=["是的", "不是"]
-    )
-
-    # For full mode:
-    interactive_feedback(
-        full_response="我分析了你的代码，发现了3个问题...",
-        predefined_options=["修复方案A", "修复方案B"]
-    )
-
-    AI RESPONSIBILITIES:
-    - SIMPLE mode: AI should provide processed concise question/prompt in 'message'
-    - FULL mode: AI should provide original complete response content in 'full_response'
-    - RECOMMENDED: Pass both parameters to ensure compatibility with all user preferences
-    - SMART FALLBACK: Tool will automatically use available parameter if primary is empty
-
-    Enhancement: Automatic mode detection with smart fallback logic.
+    Note: MCP service automatically selects appropriate content based on user's display mode configuration.
     """
 
-    # 获取用户显示模式
-    display_mode = get_display_mode_fast()
+    # 严格的双参数验证：AI必须同时提供两个有效参数
+    if not _is_valid_param(message) or not _is_valid_param(full_response):
+        return (ERROR_MESSAGES["missing_both_params"],)
 
-    # 智能参数选择逻辑：根据用户模式优先选择，支持智能回退
-    def _is_valid_param(param: Optional[str]) -> bool:
-        """检查参数是否有效（非空且非纯空白）"""
-        return param and param.strip()
-
-    # 根据显示模式确定参数优先级
-    primary_param, fallback_param = (
-        (full_response, message) if display_mode == "full" else (message, full_response)
-    )
-
-    # 智能选择：优先使用主要参数，如果为空则回退到备用参数
-    if _is_valid_param(primary_param):
-        prompt_to_display = primary_param
-    elif _is_valid_param(fallback_param):
-        prompt_to_display = fallback_param
-    else:
-        # 两个参数都为空，这是错误调用
-        return (ERROR_MESSAGES["no_valid_content"],)
-
-    # 延迟加载完整配置，只在需要时获取
+    # 获取配置（一次性读取，避免重复）
     config = get_config()
+    display_mode = get_display_mode(config)
+
+    # 根据用户配置的显示模式选择要展示的内容
+    prompt_to_display = full_response if display_mode == "full" else message
 
     # 解析最终选项
     final_options = resolve_final_options(
         ai_options=predefined_options, text=prompt_to_display, config=config
     )
 
-    # 转换为UI需要的格式
-    options_list_for_ui: Optional[List[str]] = None
-    if final_options:
-        options_list_for_ui = [str(item) for item in final_options if item is not None]
+    # 转换为UI需要的格式（final_options已经是字符串列表，无需转换）
+    options_list_for_ui = final_options if final_options else None
 
     # 启动UI并获取用户输入
     ui_output_dict = launch_feedback_ui(prompt_to_display, options_list_for_ui)
 
     # 处理UI输出内容
-    processed_mcp_content: List[Union[str, Image]] = []
-
-    if (
-        ui_output_dict
-        and "content" in ui_output_dict
-        and isinstance(ui_output_dict["content"], list)
-    ):
-        ui_content_list = ui_output_dict.get("content", [])
-        for item in ui_content_list:
-            if not isinstance(item, dict):
-                print(f"警告: 无效的内容项格式: {item}", file=sys.stderr)
-                continue
-
-            item_type = item.get("type")
-            if item_type == "text":
-                text_content = item.get("text", "")
-                if text_content:
-                    processed_mcp_content.append(text_content)
-            elif item_type == "image":
-                base64_data = item.get("data")
-                mime_type = item.get("mimeType")
-                if base64_data and mime_type:
-                    try:
-                        image_format_str = mime_type.split("/")[-1].lower()
-                        if image_format_str == "jpeg":
-                            image_format_str = "jpg"
-
-                        image_bytes = base64.b64decode(base64_data)
-                        mcp_image = Image(data=image_bytes, format=image_format_str)
-                        processed_mcp_content.append(mcp_image)
-                    except Exception as e:
-                        print(f"错误: 处理图像失败: {e}", file=sys.stderr)
-                        processed_mcp_content.append(
-                            f"[图像处理失败: {mime_type or 'unknown type'}]"
-                        )
-            elif item_type == "file_reference":
-                display_name = item.get("display_name", "")
-                file_path = item.get("path", "")
-                if display_name and file_path:
-                    file_info = f"引用文件: {display_name} [路径: {file_path}]"
-                    processed_mcp_content.append(file_info)
-            else:
-                print(f"警告: 未知的内容项类型: {item_type}", file=sys.stderr)
+    processed_mcp_content = _process_ui_output(ui_output_dict)
 
     if not processed_mcp_content:
         return (ERROR_MESSAGES["no_user_feedback"],)
