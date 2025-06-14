@@ -30,17 +30,17 @@
         "model": "gpt-4o-mini"
       },
       "gemini": {
-        "api_key": "AIzaSyDJ8RG1hMXCNWNlQ-uCzeCQCRq_RRx28Bc",
+        "api_key": "",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash"
       },
       "deepseek": {
-        "api_key": "sk-521fd82b9dfa41c18073aabf91c1c1ff",
+        "api_key": "",
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat"
       },
       "volcengine": {
-        "api_key": "ea172084-958f-45e0-a26c-f1f3166c67d3",
+        "api_key": "",
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
         "model": "deepseek-v3-250324"
       }
