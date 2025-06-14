@@ -106,24 +106,16 @@ class FallbackOptionsStrategy(BaseOptionStrategy):
         if not context.config:
             return []
 
-        # 检查多种可能的配置键
-        fallback_keys = [
-            "fallback_options",
-            "default_options",
-            "backup_options",
-            "last_resort_options",
-        ]
+        # 简化：只检查标准的fallback_options配置键
+        if "fallback_options" in context.config:
+            options = context.config["fallback_options"]
+            if isinstance(options, list):
+                # 使用公共过滤函数
+                from ..config_manager import filter_valid_options
 
-        for key in fallback_keys:
-            if key in context.config:
-                options = context.config[key]
-                if isinstance(options, list):
-                    # 过滤有效选项
-                    valid_options = [
-                        opt for opt in options if isinstance(opt, str) and opt.strip()
-                    ]
-                    if valid_options:
-                        return valid_options
+                valid_options = filter_valid_options(options)
+                if valid_options:
+                    return valid_options
 
         return []
 

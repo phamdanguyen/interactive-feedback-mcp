@@ -17,40 +17,17 @@ from typing import Dict, Any, List
 from datetime import datetime
 
 
-# 配置文件路径 - 智能路径选择
+# 配置文件路径 - 简化路径选择
 def _get_config_file_path() -> str:
     """
-    智能选择配置文件路径，支持不同安装方式
-    Smart config file path selection for different installation methods
+    简化的配置文件路径选择，支持开发模式和生产模式
+    Simplified config file path selection for development and production modes
 
     优先级：
-    1. 环境变量 INTERACTIVE_FEEDBACK_CONFIG
-    2. 用户主目录 ~/.interactive-feedback/config.json
-    3. 项目根目录 config.json（开发模式）
+    1. 项目根目录 config.json（开发模式优先）
+    2. 用户主目录 ~/.interactive-feedback/config.json（uvx安装）
     """
-    # 1. 检查环境变量
-    env_config_path = os.getenv("INTERACTIVE_FEEDBACK_CONFIG")
-    if env_config_path and os.path.dirname(env_config_path):
-        try:
-            # 确保目录存在
-            os.makedirs(os.path.dirname(env_config_path), exist_ok=True)
-            return env_config_path
-        except Exception:
-            pass
-
-    # 2. 用户主目录（推荐用于 uvx/pip 安装）
-    try:
-        user_config_dir = os.path.expanduser("~/.interactive-feedback")
-        os.makedirs(user_config_dir, exist_ok=True)
-        user_config_path = os.path.join(user_config_dir, "config.json")
-
-        # 测试是否可写
-        if os.access(user_config_dir, os.W_OK):
-            return user_config_path
-    except Exception:
-        pass
-
-    # 3. 项目根目录（开发模式回退）
+    # 1. 项目根目录（开发模式优先）
     try:
         project_root = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -63,8 +40,14 @@ def _get_config_file_path() -> str:
     except Exception:
         pass
 
-    # 4. 最后回退到用户主目录（即使可能无法写入）
-    return os.path.expanduser("~/.interactive-feedback/config.json")
+    # 2. 用户主目录（uvx安装回退）
+    try:
+        user_config_dir = os.path.expanduser("~/.interactive-feedback")
+        os.makedirs(user_config_dir, exist_ok=True)
+        return os.path.join(user_config_dir, "config.json")
+    except Exception:
+        # 最后的回退选项
+        return os.path.expanduser("~/.interactive-feedback/config.json")
 
 
 CONFIG_FILE_PATH = _get_config_file_path()
@@ -142,14 +125,13 @@ def validate_config(config: Dict[str, Any]) -> bool:
         if len(fallback_options) != 5:
             return False
 
-        # 验证每个选项
+        # 验证每个选项（允许占位符存在）
         for option in fallback_options:
             if not isinstance(option, str):
                 return False
-            if len(option.strip()) == 0:
-                return False
             if len(option) > 50:  # 字符长度限制
                 return False
+            # 允许占位符和空字符串存在，由过滤函数处理
 
         return True
 
@@ -276,21 +258,66 @@ def save_config(config: Dict[str, Any]) -> bool:
         return False
 
 
+# 占位符常量定义
+PLACEHOLDER_VALUES = ["请输入选项", "null"]
+
+
+def filter_valid_options(options: List[str]) -> List[str]:
+    """
+    过滤有效选项，移除占位符和空值
+    Filter valid options, remove placeholders and empty values
+
+    Args:
+        options: 原始选项列表
+
+    Returns:
+        List[str]: 过滤后的有效选项列表
+    """
+    filtered_options = []
+    for option in options:
+        if isinstance(option, str):
+            option = option.strip()
+            if option and option not in PLACEHOLDER_VALUES:
+                filtered_options.append(option)
+    return filtered_options
+
+
 def get_fallback_options(config: Dict[str, Any] = None) -> List[str]:
     """
-    获取后备选项列表
-    Get fallback options list
+    获取后备选项列表（过滤空选项）
+    Get fallback options list (filter empty options)
 
     Args:
         config: 配置字典，如果为None则自动读取
 
     Returns:
-        List[str]: 后备选项列表
+        List[str]: 后备选项列表（已过滤空选项）
     """
     if config is None:
         config = get_config()
 
-    return config.get("fallback_options", DEFAULT_CONFIG["fallback_options"])
+    options = config.get("fallback_options", DEFAULT_CONFIG["fallback_options"])
+    return filter_valid_options(options)
+
+
+def safe_get_fallback_options(config: Dict[str, Any] = None) -> List[str]:
+    """
+    安全获取后备选项列表（确保至少有一个有效选项）
+    Safely get fallback options list (ensure at least one valid option)
+
+    Args:
+        config: 配置字典，如果为None则自动读取
+
+    Returns:
+        List[str]: 后备选项列表（确保非空）
+    """
+    options = get_fallback_options(config)
+
+    # 如果没有有效选项，返回默认选项
+    if not options:
+        return DEFAULT_CONFIG["fallback_options"]
+
+    return options
 
 
 def get_display_mode(config: Dict[str, Any] = None) -> str:

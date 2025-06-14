@@ -1138,6 +1138,9 @@ class SettingsDialog(QDialog):
 
         custom_options_enabled = get_custom_options_enabled(config)
 
+        # 记录初始状态，用于关闭时保存
+        self._custom_options_enabled = custom_options_enabled
+
         toggles_layout = QHBoxLayout()
 
         self.enable_custom_options_radio = create_toggle_radio_button(
@@ -1151,15 +1154,9 @@ class SettingsDialog(QDialog):
     # V4.0 移除：_on_rule_engine_toggled 函数已删除
 
     def _on_custom_options_toggled(self, checked: bool):
-        """自定义选项开关切换处理"""
-        try:
-            from src.interactive_feedback_server.utils import set_custom_options_enabled
-
-            set_custom_options_enabled(checked)
-        except Exception as e:
-            from src.interactive_feedback_server.utils import handle_config_error
-
-            handle_config_error("设置自定义选项状态", e)
+        """自定义选项开关切换处理 - 简化版本"""
+        # 只记录状态，在关闭时统一保存
+        self._custom_options_enabled = checked
 
     def _setup_simple_fallback_options(self, parent_layout, config):
         """设置可折叠的后备选项区域 - 简洁设计"""
@@ -1188,10 +1185,10 @@ class SettingsDialog(QDialog):
 
         parent_layout.addWidget(self.fallback_toggle_button)
 
-        # 获取当前选项 - 使用优化后的辅助函数
-        from src.interactive_feedback_server.utils import safe_get_fallback_options
+        # 获取当前选项 - 使用过滤后的有效选项
+        from src.interactive_feedback_server.utils import get_fallback_options
 
-        current_options = safe_get_fallback_options(config)
+        current_options = get_fallback_options(config)
 
         # 创建可折叠的选项容器
         self.fallback_options_container = QWidget()
@@ -1199,6 +1196,8 @@ class SettingsDialog(QDialog):
         options_layout = QVBoxLayout(self.fallback_options_container)
         options_layout.setContentsMargins(15, 5, 0, 5)  # 左侧缩进
         options_layout.setSpacing(3)  # 紧凑间距
+
+        # 移除复杂的状态指示器，采用简单的关闭时保存方案
 
         self.fallback_option_edits = []
         self.fallback_option_labels = []
@@ -1220,8 +1219,7 @@ class SettingsDialog(QDialog):
             if i < len(current_options):
                 option_edit.setText(current_options[i])
 
-            # 连接信号
-            option_edit.textChanged.connect(self._on_fallback_option_changed)
+            # 移除实时保存信号，改为关闭时统一保存
             self.fallback_option_edits.append(option_edit)
 
             option_layout.addWidget(option_label)
@@ -1274,33 +1272,31 @@ class SettingsDialog(QDialog):
 
                 handle_config_error("保存显示模式", e)
 
-    def _on_fallback_option_changed(self):
-        """V3.2 新增：后备选项改变时的处理"""
+    def _save_fallback_options(self):
+        """保存后备选项 - 使用null占位符标记空选项"""
         try:
             from src.interactive_feedback_server.utils import get_config, save_config
 
-            # 收集所有选项
+            # 收集所有选项，空选项用"null"占位符
             options = []
             for edit in self.fallback_option_edits:
                 text = edit.text().strip()
-                if text:  # 只添加非空选项
+                if text:
                     options.append(text)
                 else:
-                    options.append("请输入选项")  # 空选项的默认值
+                    options.append("null")  # 空选项用null占位符
 
-            # 确保有5个选项
+            # 确保有5个选项（保持配置结构完整）
             while len(options) < 5:
-                options.append("请输入选项")
+                options.append("null")
 
             # 保存配置
             config = get_config()
-            config["fallback_options"] = options[:5]  # 只取前5个
+            config["fallback_options"] = options[:5]  # 保存5个选项
             save_config(config)
 
         except Exception as e:
-            from src.interactive_feedback_server.utils import handle_config_error
-
-            handle_config_error("保存后备选项", e)
+            print(f"保存后备选项失败: {e}")
 
     def switch_theme(self, theme_name: str, checked: bool):
         # The 'checked' boolean comes directly from the toggled signal.
@@ -1564,6 +1560,23 @@ class SettingsDialog(QDialog):
         super().changeEvent(event)
 
     def accept(self):
+        """关闭设置页面时统一保存所有配置"""
+        try:
+            # 保存自定义选项开关状态
+            if hasattr(self, "_custom_options_enabled"):
+                from src.interactive_feedback_server.utils import (
+                    set_custom_options_enabled,
+                )
+
+                set_custom_options_enabled(self._custom_options_enabled)
+
+            # 保存后备选项（过滤空选项）
+            if hasattr(self, "fallback_option_edits"):
+                self._save_fallback_options()
+
+        except Exception as e:
+            print(f"保存设置失败: {e}")
+
         super().accept()
 
     def _update_font_size(self, font_type: str, size: int):

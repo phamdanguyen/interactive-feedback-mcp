@@ -26,23 +26,19 @@ from pydantic import (
 
 from .utils import get_config, resolve_final_options
 
-# 默认系统提示词
-DEFAULT_SYSTEM_PROMPTS = {
-    "optimize": "你是一个专业的文本优化助手。请将用户的输入文本改写为结构化、逻辑清晰的指令。只需要输出优化后的文本，不要包含任何技术参数、函数定义或元数据信息。",
-    "reinforce": "你是一个指令执行助手。请严格按照用户提供的'强化指令'，对用户提供的'原始文本'进行处理和改写。只输出改写结果，不要包含任何技术信息。",
-}
+# 移除重复的提示词定义，统一使用config_manager中的定义
 
 # 错误消息常量
 ERROR_MESSAGES = {
-    "simple_mode_missing_message": "[错误：精简模式需要message参数。AI应该传递处理后的简洁问题或提示。]",
-    "full_mode_missing_response": "[错误：完整模式需要full_response参数。AI应该传递原始完整回复内容。]",
+    "no_valid_content": "[错误] AI必须提供message或full_response参数中的至少一个有效内容",
     "no_user_feedback": "[用户未提供反馈]",
 }
 
 
 def get_display_mode_fast():
     """
-    快速直接读取显示模式，无缓存，确保获取最新配置
+    快速读取显示模式，确保获取最新配置
+    使用与UI界面相同的配置文件路径选择逻辑
 
     Returns:
         str: "simple" 或 "full"
@@ -50,23 +46,23 @@ def get_display_mode_fast():
     try:
         import json
         import os
+        from .utils.config_manager import CONFIG_FILE_PATH
 
-        # 直接读取配置文件
-        config_path = "config.json"
-        if os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as f:
+        if os.path.exists(CONFIG_FILE_PATH):
+            with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
             return config.get("display_mode", "simple")
         else:
             return "simple"
-    except Exception:
+    except Exception as e:
+        print(f"读取配置文件失败: {e}，使用默认模式", file=sys.stderr)
         return "simple"
 
 
 def get_system_prompts():
     """
-    获取系统提示词（优先从配置读取，否则使用默认值）
-    Get system prompts (read from config first, fallback to defaults)
+    获取系统提示词（从配置读取，使用config_manager中的默认值）
+    Get system prompts (read from config, use defaults from config_manager)
 
     Returns:
         dict: 包含optimize和reinforce提示词的字典
@@ -74,15 +70,33 @@ def get_system_prompts():
     try:
         config = get_config()
         optimizer_config = config.get("expression_optimizer", {})
-        custom_prompts = optimizer_config.get("prompts", {})
-
-        # 合并自定义提示词和默认提示词
-        prompts = DEFAULT_SYSTEM_PROMPTS.copy()
-        prompts.update(custom_prompts)
-
-        return prompts
+        return optimizer_config.get("prompts", {})
     except Exception:
-        return DEFAULT_SYSTEM_PROMPTS.copy()
+        # 回退到config_manager中的默认配置
+        from .utils.config_manager import DEFAULT_CONFIG
+
+        return DEFAULT_CONFIG["expression_optimizer"]["prompts"]
+
+
+def format_prompt_for_mode(
+    original_text: str, mode: str, reinforcement_prompt: str = None
+) -> str:
+    """
+    根据模式格式化提示词
+    Format prompt based on mode
+
+    Args:
+        original_text: 原始文本
+        mode: 优化模式
+        reinforcement_prompt: 强化指令（可选）
+
+    Returns:
+        str: 格式化后的提示词
+    """
+    if mode == "reinforce" and reinforcement_prompt:
+        return f"强化指令: '{reinforcement_prompt}'\n\n原始文本: '{original_text}'"
+    else:
+        return original_text
 
 
 print(f"Server.py 启动 - Python解释器路径: {sys.executable}")
@@ -205,7 +219,8 @@ def interactive_feedback(
     - Tool automatically detects user's display mode preference
     - SIMPLE mode: Uses 'message' parameter (AI-processed concise question)
     - FULL mode: Uses 'full_response' parameter (AI's original complete response)
-    - Wrong parameter for mode will return error message
+    - SMART FALLBACK: If primary parameter is empty, automatically uses the available parameter
+    - Error only when both parameters are empty
 
     RECOMMENDED USAGE PATTERN:
 
@@ -233,36 +248,37 @@ def interactive_feedback(
     - SIMPLE mode: AI should provide processed concise question/prompt in 'message'
     - FULL mode: AI should provide original complete response content in 'full_response'
     - RECOMMENDED: Pass both parameters to ensure compatibility with all user preferences
+    - SMART FALLBACK: Tool will automatically use available parameter if primary is empty
 
-    Enhancement: Automatic mode detection with optimized execution order.
+    Enhancement: Automatic mode detection with smart fallback logic.
     """
 
     # 获取用户显示模式
     display_mode = get_display_mode_fast()
 
+    # 智能参数选择逻辑：根据用户模式优先选择，支持智能回退
+    def _is_valid_param(param: Optional[str]) -> bool:
+        """检查参数是否有效（非空且非纯空白）"""
+        return param and param.strip()
+
+    # 根据显示模式确定参数优先级
+    primary_param, fallback_param = (
+        (full_response, message) if display_mode == "full" else (message, full_response)
+    )
+
+    # 智能选择：优先使用主要参数，如果为空则回退到备用参数
+    if _is_valid_param(primary_param):
+        prompt_to_display = primary_param
+    elif _is_valid_param(fallback_param):
+        prompt_to_display = fallback_param
+    else:
+        # 两个参数都为空，这是错误调用
+        return (ERROR_MESSAGES["no_valid_content"],)
+
     # 延迟加载完整配置，只在需要时获取
-    config = None
+    config = get_config()
 
-    # 根据用户模式严格匹配参数
-    if display_mode == "full":
-        # 完整模式：必须有full_response参数
-        if full_response and full_response.strip():  # 检查非空内容
-            prompt_to_display = full_response
-        else:
-            # 完整模式但没有有效的full_response，这是错误调用
-            return (ERROR_MESSAGES["full_mode_missing_response"],)
-    else:  # simple mode
-        # 精简模式：必须有message参数
-        if message and message.strip():  # 检查非空内容
-            prompt_to_display = message
-        else:
-            # 精简模式但没有有效的message，这是错误调用
-            return (ERROR_MESSAGES["simple_mode_missing_message"],)
-
-    # 三层回退选项逻辑
-    if config is None:
-        config = get_config()  # 只在需要时加载完整配置
-
+    # 解析最终选项
     final_options = resolve_final_options(
         ai_options=predefined_options, text=prompt_to_display, config=config
     )
@@ -377,29 +393,16 @@ def optimize_user_input(
         else:
             return f"[错误] 无效的优化模式: {mode}。支持的模式: 'optimize', 'reinforce'"
 
-        # 检查是否启用性能管理
-        performance_config = config.get("performance", {})
-        if performance_config.get("cache_enabled", True):
-            # 使用性能管理器
-            manager = get_optimization_manager(config)
+        # 简化逻辑：默认使用性能管理器（包含缓存功能）
+        manager = get_optimization_manager(config)
 
-            result = manager.optimize_with_cache(
-                provider=provider,
-                text=original_text,
-                mode=mode,
-                system_prompt=system_prompt,
-                reinforcement=reinforcement_prompt or "",
-            )
-        else:
-            # 直接调用provider
-            if mode == "reinforce":
-                prompt = (
-                    f"强化指令: '{reinforcement_prompt}'\n\n原始文本: '{original_text}'"
-                )
-            else:
-                prompt = original_text
-
-            result = provider.generate(prompt, system_prompt)
+        result = manager.optimize_with_cache(
+            provider=provider,
+            text=original_text,
+            mode=mode,
+            system_prompt=system_prompt,
+            reinforcement=reinforcement_prompt or "",
+        )
 
         # 检查是否是错误信息
         if result.startswith("[ERROR"):

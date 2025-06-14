@@ -156,10 +156,10 @@ class OptimizationManager:
 
         # 直接调用provider（同步）
         try:
-            if reinforcement:
-                prompt = f"强化指令: '{reinforcement}'\n\n原始文本: '{text}'"
-            else:
-                prompt = text
+            # 使用统一的提示词格式化函数
+            from ..cli import format_prompt_for_mode
+
+            prompt = format_prompt_for_mode(text, mode, reinforcement)
 
             # 简化的重试机制：只重试一次
             max_retries = 1

@@ -46,6 +46,7 @@ __all__ = [
     "validate_config",
     "get_display_mode",
     "get_fallback_options",
+    "filter_valid_options",  # 新增：公共过滤函数
     # V4.1 简化：自定义选项开关
     "get_custom_options_enabled",
     "set_custom_options_enabled",

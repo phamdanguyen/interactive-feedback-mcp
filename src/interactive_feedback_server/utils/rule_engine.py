@@ -125,7 +125,7 @@ def resolve_final_options(
     # 导入配置管理器（避免循环导入）
     from .config_manager import (
         get_config,
-        get_fallback_options,
+        safe_get_fallback_options,
         get_custom_options_enabled,
     )
 
@@ -147,7 +147,7 @@ def resolve_final_options(
     custom_options_enabled = get_custom_options_enabled(config)
     if custom_options_enabled:
         try:
-            fallback_options = get_fallback_options(config)
+            fallback_options = safe_get_fallback_options(config)
             if fallback_options and len(fallback_options) > 0:
                 return fallback_options
         except Exception:

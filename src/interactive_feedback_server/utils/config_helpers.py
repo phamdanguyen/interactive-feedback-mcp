@@ -71,8 +71,8 @@ def safe_get_feature_states(
 
 def safe_get_fallback_options(config: Optional[Dict[str, Any]] = None) -> list:
     """
-    安全获取后备选项 (V3.3 优化版本)
-    Safely get fallback options (V3.3 Optimized Version)
+    安全获取后备选项 - 简化版本，直接使用config_manager
+    Safely get fallback options - simplified version using config_manager
 
     Args:
         config: 可选的配置字典，如果为None则自动获取
@@ -81,16 +81,13 @@ def safe_get_fallback_options(config: Optional[Dict[str, Any]] = None) -> list:
         list: 后备选项列表
     """
     try:
-        if config is None:
-            config, _ = safe_get_config()
-
-        fallback_options = get_fallback_options(config)
-
-        # 使用智能列表操作优化
-        return smart_extend([], fallback_options) if fallback_options else []
+        # 直接使用config_manager的函数，避免重复逻辑
+        return get_fallback_options(config)
     except Exception as e:
         print(f"获取后备选项失败，使用默认值: {e}")
-        return smart_extend([], DEFAULT_CONFIG["fallback_options"])
+        from .config_manager import filter_valid_options
+
+        return filter_valid_options(DEFAULT_CONFIG["fallback_options"])
 
 
 def handle_config_error(

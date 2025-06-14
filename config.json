@@ -2,18 +2,15 @@
   "display_mode": "full",
   "enable_custom_options": true,
   "fallback_options": [
-    "好的",
+    "好",
     "请继续",
     "需要更多信息",
-    "返回上一步",
-    "暂停，让我思考一下"
+    "null",
+    "null"
   ],
-  "version": "3.2",
-  "created_at": "2025-06-10T12:51:16.371417Z",
-  "updated_at": "2025-06-11T22:50:40.584025Z",
   "expression_optimizer": {
     "enabled": true,
-    "active_provider": "openai",
+    "active_provider": "gemini",
     "prompts": {
       "optimize": "你是一个专业的文本优化助手。请将用户的输入文本改写为结构化、逻辑清晰的指令。只需要输出优化后的文本，不要包含任何技术参数、函数定义或元数据信息。",
       "reinforce": "你是一个指令执行助手。请严格按照用户提供的'强化指令'，对用户提供的'原始文本'进行处理和改写。只输出改写结果，不要包含任何技术信息。"
@@ -33,20 +30,23 @@
         "model": "gpt-4o-mini"
       },
       "gemini": {
-        "api_key": "",
+        "api_key": "AIzaSyDJ8RG1hMXCNWNlQ-uCzeCQCRq_RRx28Bc",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash"
       },
       "deepseek": {
-        "api_key": "",
+        "api_key": "sk-521fd82b9dfa41c18073aabf91c1c1ff",
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat"
       },
       "volcengine": {
-        "api_key": "",
+        "api_key": "ea172084-958f-45e0-a26c-f1f3166c67d3",
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
         "model": "deepseek-v3-250324"
       }
     }
-  }
+  },
+  "version": "3.2",
+  "created_at": "2025-06-10T12:51:16.371417Z",
+  "updated_at": "2025-06-14T12:33:07.848105Z"
 }
