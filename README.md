@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/noopstudios-interactive-feedback-mcp-badge.png)](https://mseep.ai/app/noopstudios-interactive-feedback-mcp)
+
 # Interactive Feedback MCP
 
 Developed by Fábio Ferreira ([@fabiomlferreira](https://x.com/fabiomlferreira)).
