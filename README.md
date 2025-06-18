@@ -1,6 +1,6 @@
 # ![Interactive Feedback MCP](./1a7ef-zmno1-001.png) Interactive Feedback MCP
 
-一个简单的 [MCP Server](https://modelcontextprotocol.io/)，用于在AI辅助开发工具（如 [Cursor](https://www.cursor.com)、[Cline](https://cline.bot) 、 [Windsurf](https://windsurf.com)）和[Augment]插件中实现人机协作工作流。该服务器允许您轻松地直接向AI代理提供反馈，让AI与您之间更好地协作。
+一个功能完整的 [MCP Server](https://modelcontextprotocol.io/)，用于在AI辅助开发工具（如 [Cursor](https://www.cursor.com)、[Cline](https://cline.bot) 、 [Windsurf](https://windsurf.com)）和[Augment]插件中实现人机协作工作流。该服务器提供图形化交互界面、多媒体处理、对话历史记录、文本优化等丰富功能，让AI与您之间更好地协作。
 
 **详细信息请参阅：**
 *   [功能说明.md](./功能说明.md) - 了解本服务提供的各项功能。
@@ -74,6 +74,15 @@
 - **分割器拖拽：** 拖拽分割器手柄可以调整各区域的大小，双击分割器可重置为默认比例。
 - **状态保存：** 布局选择和分割器位置会自动保存，下次启动时恢复。
 
+### 对话历史记录
+- **自动记录：** 系统自动记录所有AI助手与用户的对话历史，按会话智能分组。
+- **历史查看：** 点击主界面的历史记录按钮打开对话历史窗口，查看所有历史会话。
+- **搜索过滤：** 在历史记录窗口顶部搜索框中输入关键词，实时过滤相关对话。
+- **详情展开：** 点击会话卡片可展开查看完整的对话内容，包括AI回复和用户反馈。
+- **窗口管理：** 历史记录窗口支持自由调整大小，系统会记住窗口尺寸，下次打开时自动恢复。
+- **清除操作：** 左下角"清除全部"按钮可一键删除所有历史记录，操作前会弹出确认对话框。
+- **智能限制：** 系统自动维护最多50组会话记录，超出时自动删除最旧的记录。
+
 ### 显示模式配置
 - **简单模式：** 显示AI处理后的简洁问题，适合快速交互。
 - **完整模式：** 显示AI的原始完整回复内容，适合详细查看。
@@ -103,6 +112,7 @@
     - **布局调整**：通过拖拽分割器调整界面布局
     - **文本优化**：通过优化和增强按钮处理输入文本
     - **窗口截图**：通过截图按钮进行矩形选择截图
+    - **对话历史**：查看历史对话记录、搜索过滤、清除管理
 - **返回给AI助手的数据格式：**
   该工具会返回一个包含结构化反馈内容的元组 (Tuple)。元组中的每个元素可以是字符串 (文本反馈或文件引用信息) 或 `fastmcp.Image` 对象 (图片反馈)。
   具体来说，从UI收集到的数据会转换成以下 `content` 项列表，并由 `server.py` 进一步处理成 FastMCP兼容的元组：
@@ -170,12 +180,23 @@ pip install interactive-feedback
 
 3.  **安装依赖：**
     *   进入仓库目录 (`cd interactive-feedback-mcp`)。
-    *   运行：
-        `uv pip install -r requirements.txt`
-    *   **图片支持的额外依赖：** 为了使图片粘贴正常工作，还需要以下包：
-        `pyperclip`, `Pillow`。
-        在Windows上，还需要 `pywin32`。
-        这些通常可以通过 `uv pip install pyperclip Pillow pywin32` (Windows) 或 `uv pip install pyperclip Pillow` (其他系统) 来安装。`requirements.txt` 已包含这些。
+    *   **推荐方式（现代）：**
+        ```bash
+        # 使用 uv（推荐）
+        uv pip install -e .
+
+        # 或使用 pip
+        pip install -e .
+        ```
+    *   **兼容方式：**
+        ```bash
+        # 使用 requirements.txt
+        uv pip install -r requirements.txt
+
+        # 如果需要开发工具
+        uv pip install -r requirements-dev.txt
+        ```
+    *   **说明：** 所有必要的依赖（包括 `pyperclip`, `Pillow`, `pywin32` 等）都已在 `pyproject.toml` 和 `requirements.txt` 中定义，会自动安装。
 
 ## ⚙️ 配置
 
