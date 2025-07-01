@@ -153,30 +153,27 @@ def merge_config_options(*option_lists: list, remove_duplicates: bool = True) ->
 
 def get_config_stats() -> Dict[str, Any]:
     """
-    获取配置系统统计信息 (V3.3 优化版本)
-    Get configuration system statistics (V3.3 Optimized Version)
+    获取配置系统统计信息 - 简化版本
+    Get configuration system statistics - simplified version
 
     Returns:
         Dict[str, Any]: 统计信息
     """
     try:
-        # 获取新的统一配置加载器统计
-        config_loader = get_config_loader()
-        metadata = config_loader.get_config_metadata()
+        # 使用主配置管理器的统计信息
+        config = get_config()
 
         return {
-            "registered_configs": list(metadata.keys()) if metadata else [],
             "default_config_size": len(DEFAULT_CONFIG),
+            "current_config_size": len(config),
             "optimization_enabled": True,
-            "unified_config_loader_available": True,
             "list_optimizer_available": True,
-            "version": "V3.3-Optimized",
+            "version": "V4.1-Simplified",
         }
     except Exception as e:
         return {
             "error": str(e),
             "optimization_enabled": False,
-            "unified_config_loader_available": False,
             "list_optimizer_available": False,
-            "version": "V3.3-Error",
+            "version": "V4.1-Error",
         }
