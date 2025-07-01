@@ -13,9 +13,11 @@ from .config_validator import get_config_validator
 
 class ConfigManager:
     """
-    配置管理器
+    LLM配置管理器 - 简化版本
+    LLM Configuration Manager - Simplified Version
 
-    负责配置的读取、写入、缓存和验证
+    委托给主配置管理器，专注于LLM相关的配置处理
+    Delegates to main config manager, focuses on LLM-related configuration handling
     """
 
     def __init__(self, config_file: str = "config.json"):
@@ -23,37 +25,32 @@ class ConfigManager:
         初始化配置管理器
 
         Args:
-            config_file: 配置文件路径
+            config_file: 配置文件路径（保留兼容性，实际使用主配置管理器）
         """
-        self.config_file = config_file
+        self.config_file = config_file  # 保留兼容性
         self.validator = get_config_validator()
+
+        # 使用主配置管理器
+        from ..utils.config_manager import get_config, save_config
+
+        self._get_config = get_config
+        self._save_config = save_config
 
     def _load_config_from_file(self) -> Dict[str, Any]:
         """
-        从文件加载配置，支持环境变量优先级
+        从文件加载配置 - 委托给主配置管理器
+        Load configuration from file - delegate to main config manager
 
         Returns:
             dict: 配置字典
         """
-        try:
-            # 使用主配置管理器的配置加载逻辑（包含环境变量支持）
-            from ..utils.config_manager import get_config
-
-            return get_config()
-        except Exception:
-            # 回退到原始文件读取逻辑
-            try:
-                if os.path.exists(self.config_file):
-                    with open(self.config_file, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                else:
-                    return {}
-            except Exception:
-                return {}
+        # 直接使用主配置管理器
+        return self._get_config()
 
     def _save_config_to_file(self, config: Dict[str, Any]) -> bool:
         """
-        保存配置到文件
+        保存配置到文件 - 委托给主配置管理器
+        Save configuration to file - delegate to main config manager
 
         Args:
             config: 配置字典
@@ -61,12 +58,8 @@ class ConfigManager:
         Returns:
             bool: 是否保存成功
         """
-        try:
-            with open(self.config_file, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
-            return True
-        except Exception:
-            return False
+        # 直接使用主配置管理器
+        return self._save_config(config)
 
     def get_config(self) -> Dict[str, Any]:
         """

@@ -64,11 +64,11 @@ class PerformanceSnapshot:
 
 class MetricCollector:
     """
-    指标收集器
-    Metric Collector
+    指标收集器 - 简化版本
+    Metric Collector - Simplified Version
 
-    收集和管理各种性能指标
-    Collects and manages various performance metrics
+    专注于系统性能监控，通用统计功能委托给统计收集器
+    Focuses on system performance monitoring, delegates general statistics to stats collector
     """
 
     def __init__(self, max_history: int = 1000):
@@ -80,10 +80,6 @@ class MetricCollector:
             max_history: 最大历史记录数
         """
         self.max_history = max_history
-        self._metrics: Dict[str, deque] = {}
-        self._counters: Dict[str, float] = {}
-        self._gauges: Dict[str, float] = {}
-        self._timers: Dict[str, List[float]] = {}
         self._lock = threading.RLock()
 
         # 系统指标收集
@@ -91,95 +87,61 @@ class MetricCollector:
         self._last_disk_io = None
         self._last_network_io = None
 
+        # 使用统一的统计收集器作为后端
+        from ..core import get_stats_collector
+
+        self._stats_collector = get_stats_collector()
+
     def increment_counter(
         self, name: str, value: float = 1.0, tags: Dict[str, str] = None
     ) -> None:
         """
-        增加计数器
-        Increment counter
+        增加计数器 - 委托给统计收集器
+        Increment counter - delegate to stats collector
 
         Args:
             name: 指标名称
             value: 增加值
             tags: 标签
         """
-        with self._lock:
-            if name not in self._counters:
-                self._counters[name] = 0.0
-            self._counters[name] += value
-
-            self._record_metric(
-                MetricData(
-                    name=name,
-                    metric_type=MetricType.COUNTER,
-                    value=self._counters[name],
-                    timestamp=time.time(),
-                    tags=tags or {},
-                )
-            )
+        # 委托给统一的统计收集器
+        self._stats_collector.increment(
+            name, value, category="performance_monitor", **(tags or {})
+        )
 
     def set_gauge(self, name: str, value: float, tags: Dict[str, str] = None) -> None:
         """
-        设置仪表值
-        Set gauge value
+        设置仪表值 - 委托给统计收集器
+        Set gauge value - delegate to stats collector
 
         Args:
             name: 指标名称
             value: 值
             tags: 标签
         """
-        with self._lock:
-            self._gauges[name] = value
-
-            self._record_metric(
-                MetricData(
-                    name=name,
-                    metric_type=MetricType.GAUGE,
-                    value=value,
-                    timestamp=time.time(),
-                    tags=tags or {},
-                )
-            )
+        # 委托给统一的统计收集器
+        self._stats_collector.set_gauge(
+            name, value, category="performance_monitor", **(tags or {})
+        )
 
     def record_timer(
         self, name: str, duration: float, tags: Dict[str, str] = None
     ) -> None:
         """
-        记录计时器
-        Record timer
+        记录计时器 - 委托给统计收集器
+        Record timer - delegate to stats collector
 
         Args:
             name: 指标名称
             duration: 持续时间(秒)
             tags: 标签
         """
-        with self._lock:
-            if name not in self._timers:
-                self._timers[name] = []
+        # 委托给统一的统计收集器
+        self._stats_collector.record_value(
+            name, duration, category="performance_timer", **(tags or {})
+        )
 
-            self._timers[name].append(duration)
-
-            # 保持最近的记录
-            if len(self._timers[name]) > self.max_history:
-                self._timers[name] = self._timers[name][-self.max_history :]
-
-            self._record_metric(
-                MetricData(
-                    name=name,
-                    metric_type=MetricType.TIMER,
-                    value=duration,
-                    timestamp=time.time(),
-                    tags=tags or {},
-                    unit="seconds",
-                )
-            )
-
-    def _record_metric(self, metric: MetricData) -> None:
-        """记录指标数据"""
-        if metric.name not in self._metrics:
-            self._metrics[metric.name] = deque(maxlen=self.max_history)
-
-        self._metrics[metric.name].append(metric)
+    # 已删除 _record_metric 方法，功能委托给统计收集器
 
     def collect_system_metrics(self) -> PerformanceSnapshot:
         """
@@ -266,32 +228,35 @@ class MetricCollector:
                 open_files=0,
             )
 
-    def get_metric_history(self, name: str, limit: int = None) -> List[MetricData]:
+    def get_metric_history(self, name: str, limit: int = None) -> List[Dict[str, Any]]:
         """
-        获取指标历史
-        Get metric history
+        获取指标历史 - 委托给统计收集器
+        Get metric history - delegate to stats collector
 
         Args:
             name: 指标名称
             limit: 限制数量
 
         Returns:
-            List[MetricData]: 指标历史
+            List[Dict[str, Any]]: 指标历史
         """
-        with self._lock:
-            if name not in self._metrics:
-                return []
-
-            history = list(self._metrics[name])
-            if limit:
-                history = history[-limit:]
-
-            return history
+        # 从统计收集器获取历史数据
+        history = self._stats_collector.get_history(name, limit)
+        return [
+            {
+                "name": entry.name,
+                "value": entry.value,
+                "timestamp": entry.timestamp,
+                "tags": entry.tags,
+                "category": entry.category,
+            }
+            for entry in history
+        ]
 
     def get_timer_stats(self, name: str) -> Dict[str, float]:
         """
-        获取计时器统计
-        Get timer statistics
+        获取计时器统计 - 委托给统计收集器
+        Get timer statistics - delegate to stats collector
 
         Args:
             name: 计时器名称
@@ -299,35 +264,10 @@ class MetricCollector:
         Returns:
             Dict[str, float]: 统计信息
         """
-        with self._lock:
-            if name not in self._timers or not self._timers[name]:
-                return {}
+        # 从统计收集器获取直方图统计
+        return self._stats_collector.get_histogram_stats(name)
 
-            durations = self._timers[name]
-            return {
-                "count": len(durations),
-                "min": min(durations),
-                "max": max(durations),
-                "mean": statistics.mean(durations),
-                "median": statistics.median(durations),
-                "p95": self._percentile(durations, 95),
-                "p99": self._percentile(durations, 99),
-            }
-
-    def _percentile(self, data: List[float], percentile: float) -> float:
-        """计算百分位数"""
-        if not data:
-            return 0.0
-
-        sorted_data = sorted(data)
-        index = (percentile / 100) * (len(sorted_data) - 1)
-
-        if index.is_integer():
-            return sorted_data[int(index)]
-        else:
-            lower = sorted_data[int(index)]
-            upper = sorted_data[int(index) + 1]
-            return lower + (upper - lower) * (index - int(index))
+    # 已删除 _percentile 方法，功能委托给统计收集器
 
     def get_system_stats(self, minutes: int = 5) -> Dict[str, Any]:
         """
@@ -377,26 +317,23 @@ class MetricCollector:
 
     def get_all_metrics_summary(self) -> Dict[str, Any]:
         """
-        获取所有指标摘要
-        Get all metrics summary
+        获取所有指标摘要 - 合并统计收集器和系统监控数据
+        Get all metrics summary - merge stats collector and system monitoring data
 
         Returns:
             Dict[str, Any]: 指标摘要
         """
-        with self._lock:
-            summary = {
-                "counters": dict(self._counters),
-                "gauges": dict(self._gauges),
-                "timers": {},
-                "system": self.get_system_stats(),
-                "collection_time": time.time(),
-            }
+        # 从统计收集器获取通用统计
+        stats_summary = self._stats_collector.get_all_stats()
 
-            # 添加计时器统计
-            for timer_name in self._timers:
-                summary["timers"][timer_name] = self.get_timer_stats(timer_name)
+        # 添加系统监控数据
+        summary = {
+            **stats_summary,
+            "system": self.get_system_stats(),
+            "collection_time": time.time(),
+        }
 
-            return summary
+        return summary
 
 
 class PerformanceTimer:
