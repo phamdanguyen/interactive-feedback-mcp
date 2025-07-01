@@ -92,52 +92,7 @@ class FeedbackResult(TypedDict):
     content: list[ContentItem]
 
 
-# --- 终端相关常量 (Terminal Constants) ---
-TERMINAL_POWERSHELL = "powershell"
-TERMINAL_GITBASH = "gitbash"
-TERMINAL_CMD = "cmd"
-
-DEFAULT_TERMINAL_TYPE = TERMINAL_POWERSHELL
-
-# 终端类型定义
-TERMINAL_TYPES = {
-    TERMINAL_POWERSHELL: {
-        "name": "PowerShell",
-        "display_name": "PowerShell (pwsh)",
-        "icon": "🔷",
-        "description": "Windows PowerShell 或 PowerShell Core",
-        "detection_commands": ["pwsh.exe", "powershell.exe"],
-        "detection_paths": [
-            r"C:\Program Files\PowerShell\7\pwsh.exe",
-            r"C:\Program Files\PowerShell\6\pwsh.exe",
-            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-        ],
-    },
-    TERMINAL_GITBASH: {
-        "name": "Git Bash",
-        "display_name": "Git Bash (bash)",
-        "icon": "🔶",
-        "description": "Git for Windows 提供的 Bash 环境",
-        "detection_commands": ["bash.exe"],
-        "detection_paths": [
-            r"C:\Program Files\Git\bin\bash.exe",
-            r"C:\Program Files (x86)\Git\bin\bash.exe",
-        ],
-    },
-    TERMINAL_CMD: {
-        "name": "Command Prompt",
-        "display_name": "Command Prompt (cmd)",
-        "icon": "⬛",
-        "description": "Windows 命令提示符",
-        "detection_commands": ["cmd.exe"],
-        "detection_paths": [r"C:\Windows\System32\cmd.exe"],
-    },
-}
-
-# 终端设置相关常量
-SETTINGS_GROUP_TERMINAL = "Terminal"
-SETTINGS_KEY_DEFAULT_TERMINAL = "default_terminal_type"
-SETTINGS_KEY_TERMINAL_PATH_PREFIX = "terminal_path_"
+# 已删除终端相关常量 - 终端功能已移除
 
 # 选项间距相关常量 (Option Spacing Constants)
 DEFAULT_OPTION_SPACING = 8  # 默认选项间距

@@ -289,63 +289,7 @@ class SettingsManager(QObject):
         self.settings.endGroup()
         self.settings.sync()
 
-    # --- Terminal Window Settings (终端窗口设置) ---
-    def get_terminal_window_geometry(self) -> QByteArray | None:
-        """获取终端窗口几何信息"""
-        self.settings.beginGroup("TerminalWindow")
-        geometry = self.settings.value("geometry", defaultValue=None)
-        self.settings.endGroup()
-        return geometry if isinstance(geometry, QByteArray) else None
-
-    def set_terminal_window_geometry(self, geometry: QByteArray):
-        """保存终端窗口几何信息"""
-        self.settings.beginGroup("TerminalWindow")
-        self.settings.setValue("geometry", geometry)
-        self.settings.endGroup()
-        self.settings.sync()
-
-    # --- Terminal Settings (终端设置) ---
-    def get_default_terminal_type(self) -> str:
-        """获取默认终端类型"""
-        from .constants import DEFAULT_TERMINAL_TYPE, SETTINGS_KEY_DEFAULT_TERMINAL
-
-        self.settings.beginGroup("Terminal")
-        terminal_type = self.settings.value(
-            SETTINGS_KEY_DEFAULT_TERMINAL, DEFAULT_TERMINAL_TYPE
-        )
-        self.settings.endGroup()
-        return terminal_type
-
-    def set_default_terminal_type(self, terminal_type: str):
-        """设置默认终端类型"""
-        from .constants import SETTINGS_KEY_DEFAULT_TERMINAL
-
-        self.settings.beginGroup("Terminal")
-        self.settings.setValue(SETTINGS_KEY_DEFAULT_TERMINAL, terminal_type)
-        self.settings.endGroup()
-        self.settings.sync()
-
-    def get_terminal_path(self, terminal_type: str) -> str:
-        """获取指定终端的自定义路径"""
-        from .constants import SETTINGS_KEY_TERMINAL_PATH_PREFIX
-
-        self.settings.beginGroup("Terminal")
-        path = self.settings.value(
-            f"{SETTINGS_KEY_TERMINAL_PATH_PREFIX}{terminal_type}", ""
-        )
-        self.settings.endGroup()
-        return path
-
-    def set_terminal_path(self, terminal_type: str, path: str):
-        """设置指定终端的自定义路径"""
-        from .constants import SETTINGS_KEY_TERMINAL_PATH_PREFIX
-
-        self.settings.beginGroup("Terminal")
-        self.settings.setValue(
-            f"{SETTINGS_KEY_TERMINAL_PATH_PREFIX}{terminal_type}", path
-        )
-        self.settings.endGroup()
-        self.settings.sync()
+    # 已删除终端相关设置方法
 
     # --- Audio Settings (音频设置) ---
     def get_audio_enabled(self) -> bool:

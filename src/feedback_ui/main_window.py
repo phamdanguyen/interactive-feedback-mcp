@@ -1002,18 +1002,7 @@ class FeedbackUI(QMainWindow):
         )
         bottom_layout.addWidget(self.select_file_button)
 
-        # 启用终端按钮
-        self.open_terminal_button = QPushButton(
-            self.button_texts["open_terminal_button"][current_language]
-        )
-        self.open_terminal_button.setObjectName("secondary_button")
-        self.open_terminal_button.setToolTip(
-            self.tooltip_texts["open_terminal_button"][current_language]
-        )
-
-        # 重构终端预览功能 - 简单直接的实现
-        self.terminal_preview_window = None
-        self._setup_simple_terminal_preview()
+        # 已删除终端按钮 - 终端功能已移除
 
         # 截图按钮（在启用终端按钮前，固定窗口按钮前）
         self.screenshot_button = QPushButton(
@@ -1025,7 +1014,7 @@ class FeedbackUI(QMainWindow):
         )
         bottom_layout.addWidget(self.screenshot_button)
 
-        bottom_layout.addWidget(self.open_terminal_button)
+        # 已删除终端按钮的布局添加
 
         self.pin_window_button = QPushButton(
             self.button_texts["pin_window_button"][current_language]
@@ -1183,7 +1172,7 @@ class FeedbackUI(QMainWindow):
         self.canned_responses_button.clicked.connect(self._show_canned_responses_dialog)
         self.select_file_button.clicked.connect(self._open_file_dialog)
         self.screenshot_button.clicked.connect(self._take_screenshot)
-        self.open_terminal_button.clicked.connect(self._open_terminal)
+        # 已删除终端按钮的事件连接
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
         # V4.0 新增：连接优化按钮事件
@@ -1191,48 +1180,7 @@ class FeedbackUI(QMainWindow):
         self.enhance_button.clicked.connect(self._reinforce_text)
         self.submit_button.clicked.connect(self._prepare_and_submit_feedback)
 
-    def _setup_simple_terminal_preview(self):
-        """设置简单的终端预览功能"""
-        print("DEBUG: 设置简单终端预览功能", file=sys.stderr)
-
-        # 创建自定义按钮类
-        class TerminalPreviewButton(QPushButton):
-            def __init__(self, text, parent_window):
-                super().__init__(text)
-                self.parent_window = parent_window
-
-            def enterEvent(self, event):
-                print("DEBUG: 终端按钮鼠标进入", file=sys.stderr)
-                super().enterEvent(event)
-                self.parent_window._show_simple_terminal_preview()
-
-            def leaveEvent(self, event):
-                print("DEBUG: 终端按钮鼠标离开", file=sys.stderr)
-                super().leaveEvent(event)
-                QTimer.singleShot(300, self.parent_window._hide_simple_terminal_preview)
-
-        # 简化方案：直接替换按钮的事件方法
-        original_enter = self.open_terminal_button.enterEvent
-        original_leave = self.open_terminal_button.leaveEvent
-
-        def new_enter(event):
-            print("DEBUG: 终端按钮鼠标进入", file=sys.stderr)
-            original_enter(event)
-            self._show_simple_terminal_preview()
-
-        def new_leave(event):
-            print("DEBUG: 终端按钮鼠标离开", file=sys.stderr)
-            original_leave(event)
-            # 使用实例变量存储计时器，以便可以取消
-            self.terminal_hide_timer = QTimer()
-            self.terminal_hide_timer.setSingleShot(True)
-            self.terminal_hide_timer.timeout.connect(self._hide_simple_terminal_preview)
-            self.terminal_hide_timer.start(300)
-
-        self.open_terminal_button.enterEvent = new_enter
-        self.open_terminal_button.leaveEvent = new_leave
-
-        print("DEBUG: 终端预览事件已绑定", file=sys.stderr)
+    # 已删除终端预览设置方法
 
     def event(self, event: QEvent) -> bool:
         if event.type() == QEvent.Type.WindowDeactivate:
@@ -1368,153 +1316,11 @@ class FeedbackUI(QMainWindow):
         except Exception as e:
             print(f"ERROR: 插入文件引用失败 {file_path}: {e}", file=sys.stderr)
 
-    def _open_terminal(self):
-        """打开默认类型的嵌入式终端窗口"""
-        # 获取默认终端类型
-        default_terminal_type = self.settings_manager.get_default_terminal_type()
-        self._open_terminal_with_type(default_terminal_type)
+    # 已删除终端打开方法
 
-    def _open_terminal_with_type(self, terminal_type: str):
-        """打开指定类型的嵌入式终端窗口"""
-        # 禁用自动最小化，防止终端启动时窗口最小化
-        self.disable_auto_minimize = True
+    # 已删除终端打开方法
 
-        try:
-            project_path = self._get_project_path()
-
-            # 导入嵌入式终端窗口
-            from .widgets.embedded_terminal_window import EmbeddedTerminalWindow
-
-            # 创建并显示嵌入式终端窗口（不设置父窗口，使其独立显示）
-            terminal_window = EmbeddedTerminalWindow(
-                working_directory=project_path, terminal_type=terminal_type, parent=None
-            )
-
-            # 保存终端窗口引用，防止被垃圾回收
-            if not hasattr(self, "_terminal_windows"):
-                self._terminal_windows = []
-            self._terminal_windows.append(terminal_window)
-
-            # 连接关闭信号，清理引用
-            terminal_window.destroyed.connect(
-                lambda: (
-                    self._terminal_windows.remove(terminal_window)
-                    if hasattr(self, "_terminal_windows")
-                    and terminal_window in self._terminal_windows
-                    else None
-                )
-            )
-
-            # 显示窗口并获取焦点
-            terminal_window.show_and_focus()
-
-        except Exception as e:
-            # 如果嵌入式终端失败，回退到原始方法
-            self._open_terminal_fallback()
-        finally:
-            # 延迟恢复自动最小化功能，给终端窗口足够时间完成启动
-            QTimer.singleShot(
-                1000, lambda: setattr(self, "disable_auto_minimize", False)
-            )
-
-    def _open_terminal_fallback(self):
-        """回退到原始的外部终端启动方法"""
-        try:
-            project_path = self._get_project_path()
-            print(f"DEBUG: 回退方法 - 项目路径: {project_path}", file=sys.stderr)
-
-            # 使用TerminalManager获取终端命令
-            from .utils.terminal_manager import get_terminal_manager
-
-            terminal_manager = get_terminal_manager()
-            terminal_command = terminal_manager.get_terminal_command("powershell")
-            print(
-                f"DEBUG: 回退方法 - 检测到的终端命令: {terminal_command}",
-                file=sys.stderr,
-            )
-
-            if not terminal_command:
-                print("ERROR: 回退方法 - 未找到可用的终端程序", file=sys.stderr)
-                return
-
-            # 启动终端进程
-            if os.name == "nt":  # Windows
-                print("DEBUG: 回退方法 - 在Windows系统上启动终端", file=sys.stderr)
-
-                if "pwsh" in terminal_command.lower():
-                    # PowerShell Core - 使用正确的参数
-                    cmd_args = [
-                        terminal_command,
-                        "-NoExit",
-                        "-Command",
-                        f'Set-Location "{project_path}"',
-                    ]
-                    print(
-                        f"DEBUG: 回退方法 - PowerShell Core 命令: {cmd_args}",
-                        file=sys.stderr,
-                    )
-                else:
-                    # Windows PowerShell - 使用正确的参数
-                    cmd_args = [
-                        terminal_command,
-                        "-NoExit",
-                        "-Command",
-                        f'Set-Location "{project_path}"',
-                    ]
-                    print(
-                        f"DEBUG: 回退方法 - Windows PowerShell 命令: {cmd_args}",
-                        file=sys.stderr,
-                    )
-
-                # 启动进程 - 确保创建新的控制台窗口
-                creation_flags = 0
-                if os.name == "nt":
-                    # Windows下创建新的控制台窗口
-                    creation_flags = subprocess.CREATE_NEW_CONSOLE
-
-                process = subprocess.Popen(
-                    cmd_args,
-                    cwd=project_path,
-                    shell=False,
-                    creationflags=creation_flags,
-                )
-                print(
-                    f"DEBUG: 回退方法 - 进程已启动，PID: {process.pid}", file=sys.stderr
-                )
-
-            else:
-                # Linux/macOS
-                print("DEBUG: 回退方法 - 在Linux/macOS系统上启动终端", file=sys.stderr)
-                if "gnome-terminal" in terminal_command:
-                    cmd_args = [terminal_command, "--working-directory", project_path]
-                elif "xterm" in terminal_command:
-                    cmd_args = [
-                        terminal_command,
-                        "-e",
-                        "bash",
-                        "-c",
-                        f'cd "{project_path}"; bash',
-                    ]
-                else:
-                    cmd_args = [terminal_command]
-
-                process = subprocess.Popen(cmd_args, cwd=project_path, shell=False)
-                print(
-                    f"DEBUG: 回退方法 - 进程已启动，PID: {process.pid}", file=sys.stderr
-                )
-
-            print(
-                f"INFO: 回退方法 - 已在路径 {project_path} 中启动终端", file=sys.stderr
-            )
-
-        except Exception as e:
-            print(f"ERROR: 回退方法启动终端失败: {e}", file=sys.stderr)
-            import traceback
-
-            print(
-                f"ERROR: 回退方法详细错误信息: {traceback.format_exc()}",
-                file=sys.stderr,
-            )
+    # 已删除终端回退方法
 
     def _get_project_path(self) -> str:
         """获取项目路径，优先使用当前工作目录"""
@@ -1971,15 +1777,7 @@ class FeedbackUI(QMainWindow):
                 )
             )
 
-        if hasattr(self, "open_terminal_button") and self.open_terminal_button:
-            self.open_terminal_button.setText(
-                self.button_texts["open_terminal_button"].get(language_code, "启用终端")
-            )
-            self.open_terminal_button.setToolTip(
-                self.tooltip_texts["open_terminal_button"].get(
-                    language_code, "在当前项目路径中打开PowerShell终端"
-                )
-            )
+        # 已删除终端按钮的语言更新
 
         if hasattr(self, "pin_window_button") and self.pin_window_button:
             # 保存当前按钮的样式类名
@@ -2303,221 +2101,10 @@ class FeedbackUI(QMainWindow):
         # 隐藏预览窗口（会自动恢复disable_auto_minimize）
         self._hide_canned_responses_preview()
 
-    # --- 终端预览功能 (Terminal Preview Functions) ---
-    def _on_terminal_button_enter(self, event):
-        """终端按钮鼠标进入事件 - 显示终端预览"""
-        # 显示终端预览窗口
-        try:
-            self._show_simple_terminal_preview()
-        except Exception:
-            pass  # 静默处理错误
+    # 已删除终端预览功能
 
-    def _on_terminal_button_leave(self, event):
-        """终端按钮鼠标离开事件 - 延迟隐藏终端预览"""
-        # 延迟隐藏预览窗口，给用户时间移动到预览窗口
-        QTimer.singleShot(200, self._delayed_hide_terminal_preview)
-
-    def _delayed_hide_terminal_preview(self):
-        """延迟隐藏终端预览窗口"""
-        self._hide_terminal_preview()
-
-    def _on_terminal_preview_window_enter(self, event):
-        """终端预览窗口鼠标进入事件 - 取消隐藏计时器"""
-        # 取消延迟隐藏
-        pass
-
-    def _on_terminal_preview_window_leave(self, event):
-        """终端预览窗口鼠标离开事件 - 隐藏预览窗口"""
-        # 立即隐藏预览窗口
-        self._hide_terminal_preview()
-
-    # --- 简单终端预览功能 (Simple Terminal Preview Functions) ---
-    def _show_simple_terminal_preview(self):
-        """显示简单的终端预览窗口"""
-        if self.terminal_preview_window:
-            self.terminal_preview_window.close()
-
-        # 预先设置自动最小化保护，防止预览窗口交互导致窗口最小化
-        self.disable_auto_minimize = True
-
-        # 创建预览窗口 - 参考常用语预览窗口的实现
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-        from PySide6.QtCore import Qt
-
-        self.terminal_preview_window = QWidget()
-        self.terminal_preview_window.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
-        )
-        self.terminal_preview_window.setAttribute(
-            Qt.WidgetAttribute.WA_ShowWithoutActivating
-        )
-
-        # 添加预览窗口的鼠标事件处理
-        def preview_enter_event(event):
-            # 取消隐藏计时器
-            if hasattr(self, "terminal_hide_timer") and self.terminal_hide_timer:
-                self.terminal_hide_timer.stop()
-                self.terminal_hide_timer = None
-
-        def preview_leave_event(event):
-            # 立即隐藏预览窗口
-            self._hide_simple_terminal_preview()
-
-        self.terminal_preview_window.enterEvent = preview_enter_event
-        self.terminal_preview_window.leaveEvent = preview_leave_event
-
-        # 获取主题颜色配置
-        from .utils.theme_colors import ThemeColors
-
-        current_theme = self.settings_manager.get_current_theme()
-        colors = ThemeColors.get_preview_colors(current_theme)
-
-        bg_color = colors["bg_color"]
-        border_color = colors["border_color"]
-        text_color = colors["text_color"]
-        item_bg = colors["item_bg"]
-        item_border = colors["item_border"]
-        item_hover_bg = colors["item_hover_bg"]
-        item_hover_border = colors["item_hover_border"]
-
-        # 创建主布局 - 完全参考常用语预览窗口
-        main_layout = QVBoxLayout(self.terminal_preview_window)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        # 创建滚动区域 - 参考常用语预览窗口
-        from PySide6.QtWidgets import QScrollArea
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        # 创建滚动内容
-        scroll_content = QWidget()
-        layout = QVBoxLayout(scroll_content)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(1)
-
-        # 添加3个终端选项 - 使用与常用语完全相同的样式
-        terminals = [
-            {"type": "powershell", "name": "🔷 PowerShell"},
-            {"type": "gitbash", "name": "🔶 Git Bash"},
-            {"type": "cmd", "name": "⬛ Command Prompt"},
-        ]
-
-        for terminal in terminals:
-            label = QLabel(terminal["name"])
-            label.setWordWrap(True)
-            label.setStyleSheet(
-                f"""
-                QLabel {{
-                    padding: 4px 10px;
-                    border-radius: 6px;
-                    background-color: {item_bg};
-                    color: {text_color};
-                    border: 1px solid {item_border};
-                    margin: 1px 0px;
-                }}
-                QLabel:hover {{
-                    background-color: {item_hover_bg};
-                    border-color: {item_hover_border};
-                    color: white;
-                }}
-            """
-            )
-            label.setCursor(Qt.CursorShape.PointingHandCursor)
-
-            # 添加点击事件
-            terminal_type = terminal["type"]
-            label.mousePressEvent = (
-                lambda event, t=terminal_type: self._on_simple_terminal_clicked(t)
-            )
-
-            layout.addWidget(label)
-
-        # 设置滚动内容
-        scroll_area.setWidget(scroll_content)
-        main_layout.addWidget(scroll_area)
-
-        # 设置滚动区域样式 - 完全参考常用语预览窗口
-        scroll_area.setStyleSheet(
-            f"""
-            QScrollArea {{
-                background-color: {bg_color};
-                border: none;
-                border-radius: 10px;
-            }}
-            QScrollBar:vertical {{
-                background-color: {bg_color};
-                width: 8px;
-                border-radius: 4px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {item_border};
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {item_hover_border};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-        """
-        )
-
-        # 设置窗口样式 - 完全参考常用语预览窗口
-        self.terminal_preview_window.setStyleSheet(
-            f"""
-            QWidget {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 10px;
-            }}
-        """
-        )
-
-        # 计算位置和大小 - 完全参考常用语预览窗口
-        button_pos = self.open_terminal_button.mapToGlobal(
-            self.open_terminal_button.rect().topLeft()
-        )
-        preview_width = 280  # 与常用语预览窗口相同宽度
-
-        # 计算高度：3个终端选项的高度
-        preview_height = 3 * 40 + 20  # 每个项目约40px高度，加上边距
-
-        # 在按钮上方显示
-        x = button_pos.x()
-        y = button_pos.y() - preview_height - 10
-
-        self.terminal_preview_window.setGeometry(x, y, preview_width, preview_height)
-
-        # 显示窗口
-        self.terminal_preview_window.show()
-
-    def _on_simple_terminal_clicked(self, terminal_type: str):
-        """简单终端预览项目被点击"""
-        # 隐藏预览窗口
-        self._hide_simple_terminal_preview()
-
-        # 注意：不需要在这里设置disable_auto_minimize，
-        # 因为_open_terminal_with_type()方法已经有了保护机制
-        self._open_terminal_with_type(terminal_type)
-
-    def _hide_simple_terminal_preview(self):
-        """隐藏简单终端预览窗口"""
-        if self.terminal_preview_window:
-            self.terminal_preview_window.close()
-            self.terminal_preview_window = None
-
-        # 恢复自动最小化功能
-        self.disable_auto_minimize = False
-
-    def _hide_terminal_preview(self):
-        """隐藏终端预览窗口（兼容性方法）"""
-        self._hide_simple_terminal_preview()
+    # 已删除简单终端预览功能 - 第一部分
+    # 已删除简单终端预览功能 - 剩余部分
 
     def update_font_sizes(self):
         """
