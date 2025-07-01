@@ -507,145 +507,9 @@ class OptimizationSettingsDialog(QDialog):
         config["expression_optimizer"]["prompts"][prompt_type] = value.strip()
         ConfigManager.save_config(config, f"{prompt_type}提示词保存")
 
+    # 已删除终端设置对话框类
 
-class TerminalSettingsDialog(QDialog):
-    """终端设置弹窗"""
-
-    def __init__(self, settings_manager, parent=None):
-        super().__init__(parent)
-        self.settings_manager = settings_manager
-        self.setWindowTitle("终端设置")
-        self.setModal(True)
-        self.resize(500, 400)
-        self._setup_ui()
-
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 获取终端管理器
-        from ..utils.terminal_manager import get_terminal_manager
-        from ..utils.constants import TERMINAL_TYPES
-
-        self.terminal_manager = get_terminal_manager()
-
-        # 默认终端选择标签
-        default_label = QLabel("默认终端:")
-        layout.addWidget(default_label)
-
-        # 创建按钮组确保互斥
-        self.terminal_button_group = QButtonGroup()
-
-        # 使用组件化的终端项
-        self.terminal_items = {}
-        current_default = self.settings_manager.get_default_terminal_type()
-
-        for terminal_type, terminal_info in TERMINAL_TYPES.items():
-            # 创建终端项组件
-            terminal_item = TerminalItemWidget(
-                terminal_type,
-                terminal_info,
-                self.terminal_manager,
-                self.settings_manager,
-                self,
-            )
-
-            # 添加到布局
-            layout.addWidget(terminal_item)
-
-            # 保存引用
-            self.terminal_items[terminal_type] = terminal_item
-
-            # 将单选按钮添加到按钮组
-            self.terminal_button_group.addButton(terminal_item.get_radio_button())
-
-            # 设置默认选中项
-            if terminal_type == current_default:
-                terminal_item.set_checked(True)
-
-        # 按钮
-        button_layout = QHBoxLayout()
-        ok_button = QPushButton("确定")
-        ok_button.clicked.connect(self.accept)
-        cancel_button = QPushButton("取消")
-        cancel_button.clicked.connect(self.reject)
-
-        button_layout.addWidget(ok_button)
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
-
-
-class TerminalItemWidget(QWidget):
-    """终端项组件 - 封装终端名称、单选按钮和浏览按钮，防止布局相互影响"""
-
-    def __init__(
-        self,
-        terminal_type: str,
-        terminal_info: dict,
-        terminal_manager,
-        settings_manager,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.terminal_type = terminal_type
-        self.terminal_info = terminal_info
-        self.terminal_manager = terminal_manager
-        self.settings_manager = settings_manager
-        self.parent_dialog = parent
-
-        # 设置固定高度，防止布局变化
-        self.setFixedHeight(60)
-
-        self._setup_ui()
-        self._load_current_path()
-
-    def _setup_ui(self):
-        """设置UI布局 - 稳定的组件化布局"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 2, 0, 2)
-        main_layout.setSpacing(3)
-
-        # 第一行：单选按钮 + 浏览按钮
-        first_row = QWidget()
-        first_row.setFixedHeight(25)  # 固定高度
-        first_row_layout = QHBoxLayout(first_row)
-        first_row_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 单选按钮
-        self.radio = QRadioButton(self.terminal_info["display_name"])
-        self.radio.toggled.connect(self._on_radio_changed)
-
-        # 浏览按钮
-        self.browse_button = QPushButton("浏览...")
-        self.browse_button.setFixedSize(50, 20)
-        self.browse_button.setStyleSheet(
-            "font-size: 8pt; padding: 2px; padding-top: -3px;"
-        )  # 向上调整文字位置
-        self.browse_button.clicked.connect(self._browse_path)
-
-        first_row_layout.addWidget(self.radio)
-        first_row_layout.addStretch()
-        first_row_layout.addWidget(self.browse_button)
-
-        # 第二行：路径输入框
-        second_row = QWidget()
-        second_row.setFixedHeight(25)  # 固定高度
-        second_row_layout = QHBoxLayout(second_row)
-        second_row_layout.setContentsMargins(20, 0, 0, 0)  # 左侧缩进
-
-        # 路径输入框
-        self.path_edit = QLineEdit()
-        self.path_edit.setReadOnly(False)
-        self.path_edit.setCursorPosition(0)
-        self.path_edit.textChanged.connect(self._on_path_changed)
-
-        # 设置样式
-        self._apply_theme_style()
-
-        second_row_layout.addWidget(self.path_edit)
-
-        main_layout.addWidget(first_row)
-        main_layout.addWidget(second_row)
+    # 已删除终端项组件类 - 第一部分
 
     def _load_current_path(self):
         """加载当前路径"""
@@ -723,6 +587,14 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(self.tr("设置"))
+
+        # Mac系统兼容性设置
+        self.setModal(True)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        # 调整窗口大小，确保有足够空间显示所有内容
+        self.resize(700, 650)
+        self.setMinimumSize(650, 600)
+
         self.settings_manager = SettingsManager(self)
         self.layout = QVBoxLayout(self)
 
@@ -1059,13 +931,11 @@ class SettingsDialog(QDialog):
             self._open_optimization_settings
         )
 
-        # 终端设置按钮
-        self.terminal_settings_button = QPushButton("终端")
-        self.terminal_settings_button.clicked.connect(self._open_terminal_settings)
+        # 已删除终端设置按钮
 
         layout.addWidget(self.audio_settings_button)
         layout.addWidget(self.optimization_settings_button)
-        layout.addWidget(self.terminal_settings_button)
+        # 已删除终端设置按钮的添加
 
         self.more_settings_group.setLayout(layout)
         self.layout.addWidget(self.more_settings_group)
@@ -1080,10 +950,7 @@ class SettingsDialog(QDialog):
         dialog = OptimizationSettingsDialog(self)
         dialog.exec()
 
-    def _open_terminal_settings(self):
-        """打开终端设置弹窗"""
-        dialog = TerminalSettingsDialog(self.settings_manager, self)
-        dialog.exec()
+    # 已删除终端设置方法
 
     def _setup_interaction_group(self):
         """V3.2 新增：设置交互模式配置区域 - 简洁布局"""
@@ -1229,31 +1096,41 @@ class SettingsDialog(QDialog):
         parent_layout.addWidget(self.fallback_options_container)
 
     def _toggle_fallback_options(self):
-        """切换后备选项区域的显示/隐藏"""
+        """切换后备选项区域的显示/隐藏 - 简洁优化版本"""
+        from PySide6.QtCore import QTimer
+
         is_expanded = self.fallback_toggle_button.isChecked()
-        self.fallback_options_container.setVisible(is_expanded)
+        current_width = self.width()
 
         # 更新按钮文本
         current_lang = self.current_language
-        if is_expanded:
-            self.fallback_toggle_button.setText(
-                f"▼ {self.texts['collapse_options'][current_lang]}"
-            )
-        else:
-            self.fallback_toggle_button.setText(
-                f"▶ {self.texts['expand_options'][current_lang]}"
-            )
+        button_text = (
+            f"▼ {self.texts['collapse_options'][current_lang]}"
+            if is_expanded
+            else f"▶ {self.texts['expand_options'][current_lang]}"
+        )
+        self.fallback_toggle_button.setText(button_text)
 
-        # 强制重新计算最小尺寸并调整
-        self.setMinimumSize(0, 0)  # 清除最小尺寸限制
-        self.adjustSize()  # 重新计算合适的尺寸
+        # 设置容器可见性并调整窗口大小
+        self.fallback_options_container.setVisible(is_expanded)
 
-        # 如果是收起状态，强制收缩到内容大小
-        if not is_expanded:
-            from PySide6.QtWidgets import QApplication
+        # 延迟调整窗口大小，避免闪动
+        QTimer.singleShot(
+            10, lambda: self._adjust_window_size(current_width, is_expanded)
+        )
 
-            QApplication.processEvents()  # 处理布局更新
-            self.resize(self.sizeHint())  # 调整到推荐尺寸
+    def _adjust_window_size(self, target_width, is_expanded):
+        """调整窗口大小以适应内容变化"""
+        # 激活布局计算并获取合适的高度
+        self.layout.activate()
+        target_height = self.sizeHint().height()
+
+        # 调整窗口大小，保持宽度不变
+        self.resize(target_width, target_height)
+
+        # 设置合理的最小高度
+        min_height = target_height if is_expanded else 600
+        self.setMinimumHeight(min_height)
 
     def _on_display_mode_changed(self, mode: str, checked: bool):
         """V3.2 新增：显示模式改变时的处理"""

@@ -1342,11 +1342,27 @@ class FeedbackUI(QMainWindow):
     # 移除重复的PowerShell检测代码，现在使用TerminalManager统一管理
 
     def open_settings_dialog(self):
-        """Opens the settings dialog."""
+        """Opens the settings dialog with Mac compatibility."""
         self.disable_auto_minimize = True
-        dialog = SettingsDialog(self)
-        dialog.exec()
-        self.disable_auto_minimize = False
+
+        try:
+            dialog = SettingsDialog(self)
+
+            # Mac系统兼容性：确保对话框正确显示
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+
+            # 执行对话框
+            result = dialog.exec()
+
+        except Exception as e:
+            print(f"ERROR: 设置对话框打开失败: {e}", file=sys.stderr)
+            import traceback
+
+            print(f"ERROR: 详细错误信息: {traceback.format_exc()}", file=sys.stderr)
+        finally:
+            self.disable_auto_minimize = False
 
     def _apply_window_flags(self):
         """应用窗口标志 - 统一的窗口标志设置方法"""
