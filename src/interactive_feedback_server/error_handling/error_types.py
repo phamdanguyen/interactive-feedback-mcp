@@ -67,9 +67,6 @@ class ErrorContext:
     timestamp: float  # 错误发生时间
     component: str  # 发生错误的组件
     operation: str  # 执行的操作
-    user_id: Optional[str] = None  # 用户ID
-    session_id: Optional[str] = None  # 会话ID
-    request_id: Optional[str] = None  # 请求ID
     additional_data: Optional[Dict[str, Any]] = None  # 额外数据
 
     def __post_init__(self):
@@ -284,9 +281,6 @@ class ExternalServiceError(SystemError):
 def create_error_context(
     component: str,
     operation: str,
-    user_id: str = None,
-    session_id: str = None,
-    request_id: str = None,
     **additional_data,
 ) -> ErrorContext:
     """
@@ -296,9 +290,6 @@ def create_error_context(
     Args:
         component: 组件名称
         operation: 操作名称
-        user_id: 用户ID
-        session_id: 会话ID
-        request_id: 请求ID
         **additional_data: 额外数据
 
     Returns:
@@ -308,9 +299,6 @@ def create_error_context(
         timestamp=time.time(),
         component=component,
         operation=operation,
-        user_id=user_id,
-        session_id=session_id,
-        request_id=request_id,
         additional_data=additional_data,
     )
 
