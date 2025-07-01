@@ -18,16 +18,7 @@ from .performance_monitor import (
     get_metric_collector,
 )
 
-from .performance_analyzer import (
-    PerformanceAnalyzer,
-    PerformanceReport,
-    PerformanceIssue,
-    PerformanceLevel,
-    IssueType,
-    get_performance_analyzer,
-)
-
-from .dashboard import MonitoringDashboard, get_monitoring_dashboard
+# 已删除未使用的性能分析器和监控仪表板模块
 
 __all__ = [
     # 性能监控
@@ -38,16 +29,6 @@ __all__ = [
     "PerformanceSnapshot",
     "timer_decorator",
     "get_metric_collector",
-    # 性能分析
-    "PerformanceAnalyzer",
-    "PerformanceReport",
-    "PerformanceIssue",
-    "PerformanceLevel",
-    "IssueType",
-    "get_performance_analyzer",
-    # 监控仪表板
-    "MonitoringDashboard",
-    "get_monitoring_dashboard",
 ]
 
 __version__ = "3.3.0"

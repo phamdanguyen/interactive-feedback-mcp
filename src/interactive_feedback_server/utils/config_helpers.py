@@ -19,7 +19,8 @@ from .config_manager import (
     DEFAULT_CONFIG,
 )
 from .list_optimizer import smart_extend, smart_merge
-from ..core import get_config_loader
+
+# 已删除未使用的统一配置加载器导入
 
 
 def safe_get_config() -> Tuple[Dict[str, Any], str]:

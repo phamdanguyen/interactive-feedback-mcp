@@ -27,15 +27,7 @@ from .stats_collector import (
     get_all_stats,
 )
 
-from .config_loader import (
-    UnifiedConfigLoader,
-    ConfigMetadata,
-    get_config_loader,
-    register_config,
-    load_config,
-    save_config,
-    get_config_value,
-)
+# 已删除未使用的统一配置加载器模块
 
 __all__ = [
     # 单例管理
@@ -53,14 +45,6 @@ __all__ = [
     "set_stat_gauge",
     "record_stat_value",
     "get_all_stats",
-    # 配置加载
-    "UnifiedConfigLoader",
-    "ConfigMetadata",
-    "get_config_loader",
-    "register_config",
-    "load_config",
-    "save_config",
-    "get_config_value",
 ]
 
 __version__ = "3.3.0"
