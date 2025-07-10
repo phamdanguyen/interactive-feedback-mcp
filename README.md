@@ -105,9 +105,9 @@
     - **窗口截图**：通过截图按钮进行矩形选择截图
 - **返回给AI助手的数据格式：**
   该工具会返回一个包含结构化反馈内容的元组 (Tuple)。元组中的每个元素可以是字符串 (文本反馈或文件引用信息) 或 `fastmcp.Image` 对象 (图片反馈)。
-  具体来说，从UI收集到的数据会转换成以下 `content` 项列表，并由 `server.py` 进一步处理成 FastMCP兼容的元组：
+  具体来说，从UI收集到的数据会转换成以下 `content` 项列表，并由 MCP 服务器进一步处理成 FastMCP兼容的元组：
   ```json
-  // UI返回给server.py的原始JSON结构示例
+  // UI返回给MCP服务器的原始JSON结构示例
   {
     "content": [
       {"type": "text", "text": "用户的文本反馈..."},
@@ -118,7 +118,7 @@
   }
   ```
   *   **文本内容** (`type: "text"`)：包含用户输入的文本和/或选中的预定义选项组合文本。
-  *   **图片内容** (`type: "image"`)：包含 Base64 编码后的图片数据和图片的 MIME 类型 (如 `image/jpeg`)。这些在 `server.py` 中会被转换为 `fastmcp.Image` 对象。
+  *   **图片内容** (`type: "image"`)：包含 Base64 编码后的图片数据和图片的 MIME 类型 (如 `image/jpeg`)。这些在 MCP 服务器中会被转换为 `fastmcp.Image` 对象。
   *   **文件引用** (`type: "file_reference"`)：包含用户拖拽或选择的文件的显示名 (如 `@filename.txt`) 和其在用户本地的完整路径。这些信息通常会作为文本字符串传递给AI助手。
 
   **注意：**
@@ -268,7 +268,7 @@ pip install interactive-feedback
         "--directory",
         "path/to/interactive-feedback-mcp",
         "run",
-        "server.py"
+        "interactive-feedback"
       ],
       "timeout": 600,
       "autoApprove": [
@@ -280,8 +280,8 @@ pip install interactive-feedback
 ```
 
 **关于 `command` 和 `args` 的说明:**
-- 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "python", "server.py"]`。
-- 如果您更倾向于直接使用系统Python（并已在全局或项目虚拟环境中安装了依赖），可以使用 `"command": "python", "args": ["server.py"]` (或python3)。
+- 如果 `uv` 在您的系统路径中，并且您希望 `uv` 管理虚拟环境和运行脚本，可以使用 `"command": "uv", "args": ["run", "interactive-feedback"]`。
+- 如果您更倾向于直接使用系统Python（并已在全局或项目虚拟环境中安装了依赖），可以使用 `"command": "interactive-feedback"` (需要先安装包)。
 - **`cwd` (Current Working Directory):** 强烈建议设置 `cwd` 为此项目的根目录，以确保脚本能正确找到其依赖文件。
 
 2.  将以下自定义规则添加到您的AI助手中 (例如，在 Cursor 的设置 -> Rules -> User Rules):
