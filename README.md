@@ -154,6 +154,8 @@ uvx interactive-feedback@latest
 pip install interactive-feedback
 ```
 
+**当前版本：** v2.5.5 - 修复了 uvx 安装模式下的兼容性问题和优化按钮布局
+
 ### 方式二：开发安装
 
 1.  **先决条件：**
