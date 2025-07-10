@@ -59,8 +59,12 @@ class ConfigManager:
     def get_optimizer_config():
         """安全获取优化器配置"""
         try:
-            _setup_project_path()
-            from src.interactive_feedback_server.utils import get_config
+            # 兼容包安装模式和开发模式的导入
+            try:
+                from interactive_feedback_server.utils import get_config
+            except ImportError:
+                _setup_project_path()
+                from src.interactive_feedback_server.utils import get_config
 
             config = get_config()
             if "expression_optimizer" not in config:
@@ -79,8 +83,12 @@ class ConfigManager:
     def save_config(config, operation_name="配置保存"):
         """安全保存配置"""
         try:
-            _setup_project_path()
-            from src.interactive_feedback_server.utils import save_config
+            # 兼容包安装模式和开发模式的导入
+            try:
+                from interactive_feedback_server.utils import save_config
+            except ImportError:
+                _setup_project_path()
+                from src.interactive_feedback_server.utils import save_config
 
             save_config(config)
             return True
@@ -457,8 +465,12 @@ class OptimizationSettingsDialog(QDialog):
                 QMessageBox.warning(self, "测试结果", "无法获取配置信息")
                 return
 
-            _setup_project_path()
-            from src.interactive_feedback_server.llm.factory import get_llm_provider
+            # 兼容包安装模式和开发模式的导入
+            try:
+                from interactive_feedback_server.llm.factory import get_llm_provider
+            except ImportError:
+                _setup_project_path()
+                from src.interactive_feedback_server.llm.factory import get_llm_provider
 
             optimizer_config = config.get("expression_optimizer", {})
 
@@ -958,7 +970,11 @@ class SettingsDialog(QDialog):
         interaction_layout = QVBoxLayout()
 
         # 获取当前配置和UI工厂 - 合并导入
-        from src.interactive_feedback_server.utils import safe_get_config
+        try:
+            from interactive_feedback_server.utils import safe_get_config
+        except ImportError:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import safe_get_config
         from ..utils.ui_factory import create_radio_button_pair
 
         config, current_mode = safe_get_config()
@@ -1000,7 +1016,11 @@ class SettingsDialog(QDialog):
     def _setup_feature_toggles(self, parent_layout, config):
         """V4.0 简化：设置自定义选项开关"""
         # 获取功能状态和UI工厂
-        from src.interactive_feedback_server.utils import get_custom_options_enabled
+        try:
+            from interactive_feedback_server.utils import get_custom_options_enabled
+        except ImportError:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import get_custom_options_enabled
         from ..utils.ui_factory import create_toggle_radio_button
 
         custom_options_enabled = get_custom_options_enabled(config)
@@ -1136,16 +1156,30 @@ class SettingsDialog(QDialog):
         """V3.2 新增：显示模式改变时的处理"""
         if checked:
             try:
-                from src.interactive_feedback_server.utils import (
-                    get_config,
-                    save_config,
-                )
+                # 兼容包安装模式和开发模式的导入
+                try:
+                    from interactive_feedback_server.utils import (
+                        get_config,
+                        save_config,
+                    )
+                except ImportError:
+                    _setup_project_path()
+                    from src.interactive_feedback_server.utils import (
+                        get_config,
+                        save_config,
+                    )
 
                 config = get_config()
                 config["display_mode"] = mode
                 save_config(config)
             except Exception as e:
-                from src.interactive_feedback_server.utils import handle_config_error
+                try:
+                    from interactive_feedback_server.utils import handle_config_error
+                except ImportError:
+                    _setup_project_path()
+                    from src.interactive_feedback_server.utils import (
+                        handle_config_error,
+                    )
 
                 handle_config_error("保存显示模式", e)
 

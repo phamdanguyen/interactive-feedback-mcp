@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "2.5.3"
+version = "2.5.5"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
@@ -44,6 +44,7 @@ Documentation = "https://github.com/pawaovo/interactive-feedback-mcp#readme"
 
 [project.scripts]
 interactive-feedback = "interactive_feedback_server.cli:main"
+feedback-server = "interactive_feedback_server.cli:main"
 feedback-ui = "feedback_ui.cli:main"
 
 [tool.setuptools.packages.find]

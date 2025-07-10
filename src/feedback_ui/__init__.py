@@ -16,6 +16,6 @@
 
 # For now, let's keep it minimal. Users of the package will import from submodules.
 # 目前，我们保持最小化。包的使用者将从子模块导入。
-__version__ = "2.5.1"  # (可选) 包版本 (Optional: package version)
+__version__ = "2.5.5"  # (可选) 包版本 (Optional: package version)
 
 # print(f"反馈UI包已加载 (Feedback UI package loaded) - version {__version__}")

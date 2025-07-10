@@ -179,20 +179,28 @@ def main():
         import sys
         import os
 
-        # 获取项目根目录
-        current_file = os.path.abspath(__file__)
-        feedback_ui_dir = os.path.dirname(current_file)  # src/feedback_ui
-        src_dir = os.path.dirname(feedback_ui_dir)  # src
-        project_root = os.path.dirname(src_dir)  # 项目根目录
+        # 兼容包安装模式和开发模式的导入
+        try:
+            # 首先尝试直接导入（适用于包安装模式）
+            from interactive_feedback_server.utils.rule_engine import (
+                resolve_final_options,
+            )
+            from interactive_feedback_server.utils.config_manager import get_config
+        except ImportError:
+            # 如果直接导入失败，尝试开发模式的路径解析
+            current_file = os.path.abspath(__file__)
+            feedback_ui_dir = os.path.dirname(current_file)  # src/feedback_ui
+            src_dir = os.path.dirname(feedback_ui_dir)  # src
+            project_root = os.path.dirname(src_dir)  # 项目根目录
 
-        # 添加到路径
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
+            # 添加到路径
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
 
-        from src.interactive_feedback_server.utils.rule_engine import (
-            resolve_final_options,
-        )
-        from src.interactive_feedback_server.utils.config_manager import get_config
+            from src.interactive_feedback_server.utils.rule_engine import (
+                resolve_final_options,
+            )
+            from src.interactive_feedback_server.utils.config_manager import get_config
 
         # 获取配置
         config = get_config()

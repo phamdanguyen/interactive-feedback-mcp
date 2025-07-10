@@ -827,6 +827,17 @@ class FeedbackUI(QMainWindow):
         if hasattr(self, "enhance_button"):
             self._apply_optimization_button_style(self.enhance_button)
 
+    def _update_optimization_buttons_visibility(self):
+        """更新优化按钮的可见性（设置变更时调用）"""
+        if hasattr(self, "optimize_button") and hasattr(self, "enhance_button"):
+            enabled = self._get_optimization_enabled_status()
+            self.optimize_button.setVisible(enabled)
+            self.enhance_button.setVisible(enabled)
+            # 重新应用样式以确保布局正确
+            if enabled:
+                self._apply_optimization_button_style(self.optimize_button)
+                self._apply_optimization_button_style(self.enhance_button)
+
     def _setup_dynamic_option_spacing(self):
         """设置动态选项间距功能"""
         # 立即执行，因为已经延迟调用了这个方法
@@ -1036,7 +1047,8 @@ class FeedbackUI(QMainWindow):
         # V4.0 新增：优化按钮
         self._create_optimization_buttons(bottom_layout, current_language)
 
-        bottom_layout.addStretch()  # Pushes buttons to the left
+        # 智能空间分配：减少右侧空白，但保持一定的弹性空间
+        bottom_layout.addStretch(1)  # 添加适度的弹性空间
 
         parent_layout.addWidget(bottom_bar_widget)
 
@@ -1078,16 +1090,18 @@ class FeedbackUI(QMainWindow):
 
         button_style = f"""
             QPushButton#optimization_button {{
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 32px;
-                max-height: 32px;
-                border-radius: 16px;
+                min-width: 95px;
+                max-width: 110px;
+                min-height: 42px;
+                max-height: 42px;
+                border-radius: 21px;
                 background-color: {colors['bg_color']};
                 color: {colors['text_color']};
                 border: 2px solid {colors['border_color']};
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: bold;
+                padding: 0px 16px;
+                margin: 0px 3px;
             }}
             QPushButton#optimization_button:hover {{
                 background-color: {colors['hover_bg']};
@@ -1114,7 +1128,11 @@ class FeedbackUI(QMainWindow):
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
 
-            from src.interactive_feedback_server.utils import get_config
+            # 兼容包安装模式和开发模式的导入
+            try:
+                from interactive_feedback_server.utils import get_config
+            except ImportError:
+                from src.interactive_feedback_server.utils import get_config
 
             config = get_config()
             optimizer_config = config.get("expression_optimizer", {})
@@ -2220,7 +2238,11 @@ class FeedbackUI(QMainWindow):
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
 
-            from src.interactive_feedback_server.cli import optimize_user_input
+            # 兼容包安装模式和开发模式的导入
+            try:
+                from interactive_feedback_server.cli import optimize_user_input
+            except ImportError:
+                from src.interactive_feedback_server.cli import optimize_user_input
 
             if mode == "reinforce" and reinforcement_prompt:
                 result = optimize_user_input(text, mode, reinforcement_prompt)
