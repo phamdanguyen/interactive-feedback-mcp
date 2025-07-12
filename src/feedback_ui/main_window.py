@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from .dialogs.select_canned_response_dialog import SelectCannedResponseDialog
 from .dialogs.settings_dialog import SettingsDialog
+from .utils.tooltip_formatter import TooltipFormatter
 
 # --- 从子模块导入 (Imports from submodules) ---
 from .utils.constants import (
@@ -993,8 +994,9 @@ class FeedbackUI(QMainWindow):
             self.button_texts["canned_responses_button"][current_language]
         )
         self.canned_responses_button.setObjectName("secondary_button")
-        self.canned_responses_button.setToolTip(
-            self.tooltip_texts["canned_responses_button"][current_language]
+        TooltipFormatter.set_tooltip_for_widget(
+            self.canned_responses_button,
+            self.tooltip_texts["canned_responses_button"][current_language],
         )
 
         # 为常用语按钮添加hover事件处理
@@ -1011,8 +1013,10 @@ class FeedbackUI(QMainWindow):
             self.button_texts["select_file_button"][current_language]
         )
         self.select_file_button.setObjectName("secondary_button")
-        self.select_file_button.setToolTip(
-            self.tooltip_texts["select_file_button"][current_language]
+        # 使用工具提示格式化器设置工具提示
+        TooltipFormatter.set_tooltip_for_widget(
+            self.select_file_button,
+            self.tooltip_texts["select_file_button"][current_language],
         )
         bottom_layout.addWidget(self.select_file_button)
 
@@ -1023,8 +1027,9 @@ class FeedbackUI(QMainWindow):
             self.button_texts["screenshot_button"][current_language]
         )
         self.screenshot_button.setObjectName("secondary_button")
-        self.screenshot_button.setToolTip(
-            self.tooltip_texts["screenshot_button"][current_language]
+        TooltipFormatter.set_tooltip_for_widget(
+            self.screenshot_button,
+            self.tooltip_texts["screenshot_button"][current_language],
         )
         bottom_layout.addWidget(self.screenshot_button)
 
@@ -1042,8 +1047,9 @@ class FeedbackUI(QMainWindow):
             self.button_texts["settings_button"][current_language]
         )
         self.settings_button.setObjectName("secondary_button")
-        self.settings_button.setToolTip(
-            self.tooltip_texts["settings_button"][current_language]
+        TooltipFormatter.set_tooltip_for_widget(
+            self.settings_button,
+            self.tooltip_texts["settings_button"][current_language],
         )
         bottom_layout.addWidget(self.settings_button)
 
@@ -1062,8 +1068,10 @@ class FeedbackUI(QMainWindow):
             self.button_texts["optimize_button"][current_language]
         )
         self.optimize_button.setObjectName("optimization_button")
-        self.optimize_button.setToolTip(
-            self.tooltip_texts["optimize_button"][current_language]
+        # 使用工具提示格式化器设置工具提示
+        TooltipFormatter.set_tooltip_for_widget(
+            self.optimize_button,
+            self.tooltip_texts["optimize_button"][current_language],
         )
         # 应用主题感知的样式
         self._apply_optimization_button_style(self.optimize_button)
@@ -1074,8 +1082,9 @@ class FeedbackUI(QMainWindow):
             self.button_texts["enhance_button"][current_language]
         )
         self.enhance_button.setObjectName("optimization_button")
-        self.enhance_button.setToolTip(
-            self.tooltip_texts["enhance_button"][current_language]
+        # 使用工具提示格式化器设置工具提示
+        TooltipFormatter.set_tooltip_for_widget(
+            self.enhance_button, self.tooltip_texts["enhance_button"][current_language]
         )
         # 应用主题感知的样式
         self._apply_optimization_button_style(self.enhance_button)
@@ -1419,8 +1428,9 @@ class FeedbackUI(QMainWindow):
         # 设置按钮样式和提示文本
         if self.window_pinned:
             self.pin_window_button.setObjectName("pin_window_active")
-            self.pin_window_button.setToolTip(
-                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
+            TooltipFormatter.set_tooltip_for_widget(
+                self.pin_window_button,
+                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)",
             )
         else:
             self.pin_window_button.setObjectName("secondary_button")

@@ -26,10 +26,12 @@ def apply_theme(app: QApplication, theme_name: str = "dark"):
         base_stylesheet = qss_file.readAll().data().decode("utf-8")
         qss_file.close()
     else:
-        print(f"错误：无法打开主题文件 {qss_path}")
-        # 如果主题文件加载失败，提供一个基础的回退样式
-        app.setStyleSheet("QWidget { background-color: #333; color: white; }")
-        return
+        print(f"错误：无法打开主题文件 {qss_path}，尝试从文件系统加载")
+        # 尝试从文件系统加载样式文件（uvx环境回退）
+        base_stylesheet = _load_theme_from_filesystem(theme_name)
+        if not base_stylesheet:
+            print(f"警告：无法加载主题文件，使用内置回退样式")
+            base_stylesheet = _get_fallback_stylesheet(theme_name)
 
     # 设置QPalette以确保复选框等控件使用正确的颜色
     _apply_theme_palette(app, theme_name)
@@ -57,6 +59,154 @@ QTextEdit, FeedbackTextEdit {{
     # 合并基础样式和动态字体样式
     final_stylesheet = base_stylesheet + "\n" + dynamic_font_style
     app.setStyleSheet(final_stylesheet)
+
+
+def _load_theme_from_filesystem(theme_name: str) -> str:
+    """从文件系统加载主题文件（uvx环境回退）"""
+    import os
+
+    # 尝试多个可能的路径
+    possible_paths = [
+        # 相对于当前模块的路径
+        os.path.join(
+            os.path.dirname(__file__), "..", "styles", f"{theme_name}_theme.qss"
+        ),
+        # 相对于包根目录的路径
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "feedback_ui",
+            "styles",
+            f"{theme_name}_theme.qss",
+        ),
+        # 绝对路径（如果在包中）
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "styles",
+            f"{theme_name}_theme.qss",
+        ),
+    ]
+
+    for path in possible_paths:
+        try:
+            abs_path = os.path.abspath(path)
+            if os.path.exists(abs_path):
+                with open(abs_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    print(f"成功从文件系统加载主题: {abs_path}")
+                    return content
+        except Exception as e:
+            print(f"尝试加载主题文件失败 {abs_path}: {e}")
+            continue
+
+    return ""
+
+
+def _get_fallback_stylesheet(theme_name: str) -> str:
+    """获取内置回退样式"""
+    if theme_name == "dark":
+        return """
+/* 深色主题回退样式 */
+* {
+    font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+    font-size: 13pt;
+    font-weight: 400;
+}
+
+QMainWindow, QDialog {
+    background-color: #2c2c2c;
+}
+
+QWidget {
+    background-color: #2c2c2c;
+    color: #f0f0f0;
+}
+
+SelectableLabel[class="prompt-label"] {
+    color: #f0f0f0;
+    padding: 2px;
+    word-wrap: break-word;
+}
+
+QTextEdit, FeedbackTextEdit {
+    background-color: #272727;
+    color: #ffffff;
+    border: 1px solid #555555;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 13pt;
+}
+
+QPushButton {
+    background-color: #3c3c3c;
+    color: #ffffff;
+    border: 1px solid #555555;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 12pt;
+}
+
+QPushButton:hover {
+    background-color: #4a4a4a;
+}
+
+QCheckBox {
+    color: #f0f0f0;
+    spacing: 8px;
+}
+"""
+    else:  # light theme
+        return """
+/* 浅色主题回退样式 */
+* {
+    font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
+    font-size: 13pt;
+    font-weight: 400;
+}
+
+QMainWindow, QDialog {
+    background-color: #f0f0f0;
+}
+
+QWidget {
+    background-color: #f0f0f0;
+    color: #111111;
+}
+
+SelectableLabel[class="prompt-label"] {
+    color: #111111;
+    padding: 2px;
+    word-wrap: break-word;
+}
+
+QTextEdit, FeedbackTextEdit {
+    background-color: #ffffff;
+    color: #111111;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 13pt;
+}
+
+QPushButton {
+    background-color: #ffffff;
+    color: #111111;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 12pt;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}
+
+QCheckBox {
+    color: #111111;
+    spacing: 8px;
+}
+"""
 
 
 def _apply_theme_palette(app: QApplication, theme_name: str):

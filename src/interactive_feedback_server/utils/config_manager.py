@@ -29,8 +29,13 @@ def _get_config_file_path() -> str:
     """
     # 检测是否在uvx环境中运行
     current_file_path = os.path.abspath(__file__)
-    is_uvx_environment = "uv" in current_file_path and (
-        "cache" in current_file_path or "archive" in current_file_path
+    is_uvx_environment = (
+        (
+            "uv" in current_file_path
+            and ("cache" in current_file_path or "archive" in current_file_path)
+        )
+        or ("AppData" in current_file_path and "uv" in current_file_path)
+        or ("archive-v0" in current_file_path)
     )
 
     # 如果在uvx环境中，直接使用用户主目录
@@ -220,8 +225,13 @@ def _load_config_with_fallback() -> Dict[str, Any]:
         if not os.path.exists(CONFIG_FILE_PATH):
             # 检测运行环境并提供友好提示
             current_file_path = os.path.abspath(__file__)
-            is_uvx_env = "uv" in current_file_path and (
-                "cache" in current_file_path or "archive" in current_file_path
+            is_uvx_env = (
+                (
+                    "uv" in current_file_path
+                    and ("cache" in current_file_path or "archive" in current_file_path)
+                )
+                or ("AppData" in current_file_path and "uv" in current_file_path)
+                or ("archive-v0" in current_file_path)
             )
             env_info = " (uvx环境)" if is_uvx_env else " (开发环境)"
 
