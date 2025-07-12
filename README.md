@@ -51,12 +51,7 @@
 - **快速插入：** 在预览窗口中点击常用语可直接插入到输入框，无需打开管理对话框。
 - **管理：** 点击"常用语"按钮打开管理对话框，可以添加、编辑、删除和排序常用语。
 
-### 原生终端操作
-- **hover预览：** 鼠标悬停在"终端"按钮上可预览可用的终端类型（PowerShell、Git Bash、Command Prompt）。
-- **快速启动：** 在预览窗口中点击终端类型可直接打开对应的原生终端窗口。
-- **直接输入：** 在终端输出区域内直接输入命令，完全模拟真实终端体验。
-- **智能交互：** 支持命令历史浏览、键盘导航、彩色输出等完整终端功能。
-- **工作目录：** 终端会自动设置项目根目录为工作目录，方便进行项目相关操作。
+
 
 ### 文本优化和增强
 - **一键优化：** 点击"优化"按钮将口语化输入转换为结构化指令，提高AI理解准确性。
@@ -99,7 +94,7 @@
     - **图片处理**：通过Ctrl+V粘贴或拖拽图片文件
     - **文件引用**：通过拖拽文件或点击"选择文件"按钮添加文件引用
     - **常用语**：通过hover预览或管理对话框快速插入预设短语
-    - **终端操作**：通过终端按钮打开嵌入式终端窗口
+
     - **布局调整**：通过拖拽分割器调整界面布局
     - **文本优化**：通过优化和增强按钮处理输入文本
     - **窗口截图**：通过截图按钮进行矩形选择截图
@@ -147,6 +142,9 @@
 ```bash
 # 直接运行，无需安装
 uvx interactive-feedback@latest
+
+# 如果首次安装失败（通常由于PySide6等大包下载超时），可以预安装：
+uv tool install interactive-feedback@latest
 ```
 
 **使用pip：**
@@ -154,7 +152,7 @@ uvx interactive-feedback@latest
 pip install interactive-feedback
 ```
 
-**当前版本：** v2.5.5 - 修复了 uvx 安装模式下的兼容性问题和优化按钮布局
+**当前版本：** v2.5.8.3 - 默认启用优化功能和完整模式，提升新用户体验
 
 ### 方式二：开发安装
 
@@ -191,7 +189,29 @@ pip install interactive-feedback
     "interactive-feedback": {
       "command": "uvx",
       "args": [
+        "tool",
+        "run",
         "interactive-feedback@latest"
+      ],
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
+    }
+  }
+}
+```
+
+**如果预安装了工具，可以简化配置（后续再改为"interactive-feedback@latest"）：**
+```json
+{
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "uvx",
+      "args": [
+        "tool",
+        "run",
+        "interactive-feedback"
       ],
       "timeout": 600,
       "autoApprove": [
@@ -212,6 +232,8 @@ pip install interactive-feedback
     "interactive-feedback": {
       "command": "uvx",
       "args": [
+        "tool",
+        "run",
         "interactive-feedback@latest"
       ],
       "timeout": 600,
@@ -325,9 +347,39 @@ pip install interactive-feedback
 
 如果在安装或配置过程中遇到问题，请参考以下解决方案：
 
-### uvx环境问题
+### uvx安装故障排除
 
-**问题**：MCP配置中使用 `"command": "uvx"` 时出现"命令未找到"错误。
+**问题1**：首次uvx安装失败，通常由于PySide6等大包下载超时。
+
+**解决方案**：
+1. **预安装工具**：
+   ```bash
+   uv tool install interactive-feedback@latest
+   ```
+
+2. **修改MCP配置**（预安装后）：
+   ```json
+   {
+     "mcpServers": {
+       "interactive-feedback": {
+         "command": "uvx",
+         "args": [
+           "tool",
+           "run",
+           "interactive-feedback"
+         ],
+         "timeout": 600,
+         "autoApprove": ["interactive_feedback"]
+       }
+     }
+   }
+   ```
+
+**配置方式区别**：
+- `@latest`：临时运行，每次都下载最新版本
+- 不带版本号：使用已安装的工具，启动更快
+
+**问题2**：MCP配置中使用 `"command": "uvx"` 时出现"命令未找到"错误。
 
 **解决方案**：
 

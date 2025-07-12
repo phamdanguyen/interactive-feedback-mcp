@@ -1,6 +1,7 @@
 {
   "display_mode": "full",
   "enable_custom_options": true,
+  "submit_method": "enter",
   "fallback_options": [
     "好",
     "请继续",
@@ -30,7 +31,7 @@
         "model": "gpt-4o-mini"
       },
       "gemini": {
-        "api_key": "AIzaSyDJ8RG1hMXCNWNlQ-uCzeCQCRq_RRx28Bc",
+        "api_key": "",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash"
       },
@@ -48,5 +49,5 @@
   },
   "version": "3.2",
   "created_at": "2025-06-10T12:51:16.371417Z",
-  "updated_at": "2025-07-10T23:06:55.809450Z"
+  "updated_at": "2025-07-13T01:31:52.143173Z"
 }

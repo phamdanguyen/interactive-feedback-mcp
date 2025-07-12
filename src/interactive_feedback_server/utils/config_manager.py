@@ -52,10 +52,11 @@ def _get_config_file_path() -> str:
 
 CONFIG_FILE_PATH = _get_config_file_path()
 
-# 出厂默认配置 - V4.1 增强版本
+# 出厂默认配置 - V4.2 用户友好版本
 DEFAULT_CONFIG = {
-    "display_mode": "simple",
+    "display_mode": "full",  # V4.2 改为默认完整模式
     "enable_custom_options": False,  # V4.0 保留：启用自定义选项（默认禁用，用户主动启用）
+    "submit_method": "enter",  # V4.3 新增：提交方式设置 ('enter' 或 'ctrl_enter')
     "fallback_options": [
         "好的，我明白了",
         "请继续",
@@ -64,7 +65,7 @@ DEFAULT_CONFIG = {
         "暂停，让我思考一下",
     ],
     "expression_optimizer": {
-        "enabled": False,  # 默认禁用，用户配置 API key 后自动启用
+        "enabled": True,  # V4.2 改为默认启用，提升用户体验
         "active_provider": "openai",
         "prompts": {
             "optimize": "你是一个专业的文本优化助手。请将用户的输入文本改写为结构化、逻辑清晰的指令。只需要输出优化后的文本，不要包含任何技术参数、函数定义或元数据信息。",
@@ -112,6 +113,11 @@ def validate_config(config: Dict[str, Any]) -> bool:
         # V4.0 简化：检查自定义选项控制字段（可选，有默认值）
         if "enable_custom_options" in config:
             if not isinstance(config["enable_custom_options"], bool):
+                return False
+
+        # V4.3 新增：验证提交方式字段（可选，有默认值）
+        if "submit_method" in config:
+            if config["submit_method"] not in ["enter", "ctrl_enter"]:
                 return False
 
         # 验证display_mode值

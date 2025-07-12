@@ -1,8 +1,9 @@
 {
   "_comment": "这是配置文件模板，用于 GitHub 提交和用户参考。API key 请通过 UI 设置页面配置，不要在此文件中填写。",
   "_note": "This is a config template for GitHub submission and user reference. Please configure API keys through the UI settings page, not in this file.",
-  "display_mode": "simple",
+  "display_mode": "full",
   "enable_custom_options": false,
+  "submit_method": "enter",
   "fallback_options": [
     "好的，我明白了",
     "请继续",
@@ -11,7 +12,7 @@
     "暂停，让我思考一下"
   ],
   "expression_optimizer": {
-    "enabled": false,
+    "enabled": true,
     "active_provider": "openai",
     "prompts": {
       "optimize": "你是一个专业的文本优化助手。请将用户的输入文本改写为结构化、逻辑清晰的指令。只需要输出优化后的文本，不要包含任何技术参数、函数定义或元数据信息。",

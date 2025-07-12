@@ -697,6 +697,10 @@ class FeedbackUI(QMainWindow):
         self.description_label = SelectableLabel(self.prompt, self)
         self.description_label.setProperty("class", "prompt-label")
         self.description_label.setWordWrap(True)
+        # V4.3 新增：智能启用Markdown渲染
+        self.description_label.setMarkdownEnabled(
+            self._should_enable_markdown_rendering()
+        )
         # 在左右布局模式下，确保文字从顶部开始对齐
         if layout_direction == LAYOUT_HORIZONTAL:
             self.description_label.setAlignment(
@@ -965,9 +969,8 @@ class FeedbackUI(QMainWindow):
 
     def _create_input_submission_area(self, parent_layout: QVBoxLayout):
         self.text_input = FeedbackTextEdit(self)
-        # 设置包含拖拽和快捷键提示的placeholder text
-        placeholder_text = "在此输入反馈... (可拖拽文件和图片到输入框，Enter提交反馈，Shift+Enter换行，Ctrl+V复制剪切板信息)"
-        self.text_input.setPlaceholderText(placeholder_text)
+        # 动态设置占位符文本
+        self._update_placeholder_text()
 
         # 连接焦点事件来动态控制placeholder显示
         self.text_input.focusInEvent = self._on_text_input_focus_in
@@ -1928,8 +1931,7 @@ class FeedbackUI(QMainWindow):
 
         # 如果输入框为空，恢复placeholder text
         if not self.text_input.toPlainText().strip():
-            placeholder_text = "在此输入反馈... (可拖拽文件和图片到输入框，Enter提交反馈，Shift+Enter换行，Ctrl+V复制剪切板信息)"
-            self.text_input.setPlaceholderText(placeholder_text)
+            self._update_placeholder_text()
 
     def _on_canned_responses_button_enter(self, event):
         """常用语按钮鼠标进入事件 - 显示常用语预览"""
@@ -2240,14 +2242,18 @@ class FeedbackUI(QMainWindow):
 
             # 兼容包安装模式和开发模式的导入
             try:
-                from interactive_feedback_server.cli import optimize_user_input
+                from interactive_feedback_server.cli import (
+                    _optimize_user_input_internal,
+                )
             except ImportError:
-                from src.interactive_feedback_server.cli import optimize_user_input
+                from src.interactive_feedback_server.cli import (
+                    _optimize_user_input_internal,
+                )
 
             if mode == "reinforce" and reinforcement_prompt:
-                result = optimize_user_input(text, mode, reinforcement_prompt)
+                result = _optimize_user_input_internal(text, mode, reinforcement_prompt)
             else:
-                result = optimize_user_input(text, mode)
+                result = _optimize_user_input_internal(text, mode)
 
             # V4.1 智能切换：根据结果类型选择不同的反馈方式
             if self._is_optimization_error(result):
@@ -2546,3 +2552,60 @@ class FeedbackUI(QMainWindow):
             self.enhance_button.setToolTip(
                 self.tooltip_texts["enhance_button"][current_language]
             )
+
+        # V4.3 新增：更新占位符文本
+        self._update_placeholder_text()
+
+    def _should_enable_markdown_rendering(self) -> bool:
+        """
+        V4.3 新增：检查是否应该启用Markdown渲染
+        Check if Markdown rendering should be enabled
+
+        Returns:
+            bool: 是否启用Markdown渲染
+        """
+        try:
+            # 可以从配置中读取用户偏好，目前默认启用
+            return True
+        except Exception:
+            return True  # 默认启用
+
+    def _update_placeholder_text(self):
+        """V4.3 新增：根据当前提交方式和语言设置更新占位符文本"""
+        try:
+            # 获取当前提交方式设置
+            try:
+                from interactive_feedback_server.utils import get_config
+            except ImportError:
+                # 开发模式导入
+                import sys
+                import os
+
+                project_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+                from src.interactive_feedback_server.utils import get_config
+
+            config = get_config()
+            submit_method = config.get("submit_method", "enter")
+
+            # 获取当前语言
+            current_language = self.settings_manager.get_current_language()
+
+            # 使用平台工具获取占位符文本
+            from .utils.platform_utils import get_placeholder_text
+
+            placeholder_text = get_placeholder_text(submit_method, current_language)
+
+            # 设置占位符文本
+            if hasattr(self, "text_input"):
+                self.text_input.setPlaceholderText(placeholder_text)
+
+        except Exception as e:
+            # 如果获取失败，使用默认文本
+            print(f"更新占位符文本失败: {e}")
+            default_text = "在此输入反馈... (可拖拽文件和图片到输入框，Enter提交反馈，Shift+Enter换行，Ctrl+V复制剪切板信息)"
+            if hasattr(self, "text_input"):
+                self.text_input.setPlaceholderText(default_text)

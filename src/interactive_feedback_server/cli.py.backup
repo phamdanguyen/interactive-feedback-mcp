@@ -310,18 +310,25 @@ def interactive_feedback(
     return tuple(processed_mcp_content)
 
 
-def _optimize_user_input_internal(
-    original_text: str,
-    mode: str,
-    reinforcement_prompt: Optional[str] = None,
+@mcp.tool()
+def optimize_user_input(
+    original_text: str = Field(description="用户的原始输入文本"),
+    mode: str = Field(description="优化模式: 'optimize' 或 'reinforce'"),
+    reinforcement_prompt: Optional[str] = Field(
+        default=None, description="在 'reinforce' 模式下用户的自定义指令"
+    ),
 ) -> str:
     """
-    内部优化函数，供GUI和MCP工具共同使用
-    Internal optimization function for both GUI and MCP tool usage
+    使用配置的 LLM API 来优化或强化用户输入的文本。
+
+    此功能可以帮助用户将口语化的、可能存在歧义的输入，转化为更结构化、
+    更清晰、更便于 AI 模型理解的文本。
 
     Args:
         original_text: 用户的原始输入文本
-        mode: 优化模式 ('optimize' 或 'reinforce')
+        mode: 优化模式
+            - 'optimize': 一键优化，使用预设的通用优化指令
+            - 'reinforce': 提示词强化，使用用户自定义的强化指令
         reinforcement_prompt: 在 'reinforce' 模式下用户的自定义指令
 
     Returns:
@@ -375,33 +382,6 @@ def _optimize_user_input_internal(
         return f"[配置错误] LLM模块导入失败: {e}"
     except Exception as e:
         return f"[系统错误] 优化过程中发生异常: {e}"
-
-
-@mcp.tool()
-def optimize_user_input(
-    original_text: str = Field(description="用户的原始输入文本"),
-    mode: str = Field(description="优化模式: 'optimize' 或 'reinforce'"),
-    reinforcement_prompt: Optional[str] = Field(
-        default=None, description="在 'reinforce' 模式下用户的自定义指令"
-    ),
-) -> str:
-    """
-    使用配置的 LLM API 来优化或强化用户输入的文本。
-
-    此功能可以帮助用户将口语化的、可能存在歧义的输入，转化为更结构化、
-    更清晰、更便于 AI 模型理解的文本。
-
-    Args:
-        original_text: 用户的原始输入文本
-        mode: 优化模式
-            - 'optimize': 一键优化，使用预设的通用优化指令
-            - 'reinforce': 提示词强化，使用用户自定义的强化指令
-        reinforcement_prompt: 在 'reinforce' 模式下用户的自定义指令
-
-    Returns:
-        str: 优化后的文本或错误信息
-    """
-    return _optimize_user_input_internal(original_text, mode, reinforcement_prompt)
 
 
 def main():

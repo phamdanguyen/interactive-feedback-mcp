@@ -108,6 +108,10 @@ class FeedbackTextEdit(QTextEdit):
             self._ensure_cursor_visible_slot
         )  # Renamed slot
 
+        # V4.3 优化：缓存配置获取函数，避免重复导入
+        self._get_config_func = None
+        self._init_config_func()
+
         self._is_key_repeating = False
 
         # Container for image previews shown at the bottom of the text edit
@@ -218,18 +222,38 @@ class FeedbackTextEdit(QTextEdit):
             ):  # Shift + Enter for newline
                 super().keyPressEvent(event)
                 self._invalidate_reference_cache()
-            elif (
-                event.modifiers() == Qt.KeyboardModifier.ControlModifier
-                or event.modifiers() == Qt.KeyboardModifier.NoModifier
-            ):
-                # Ctrl + Enter or Enter to submit
-                if parent_feedback_ui and hasattr(
-                    parent_feedback_ui, "_prepare_and_submit_feedback"
-                ):
-                    parent_feedback_ui._prepare_and_submit_feedback()  # 调用正确的方法名称
-            else:  # Other modifiers + Enter (e.g., Alt+Enter), treat as newline
-                super().keyPressEvent(event)
-                self._invalidate_reference_cache()
+            else:
+                # 根据配置决定提交方式
+                submit_method = self._get_submit_method()
+                should_submit = False
+
+                if submit_method == "enter":
+                    # Enter键直接提交模式
+                    if event.modifiers() == Qt.KeyboardModifier.NoModifier:
+                        should_submit = True
+                    elif event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                        # Ctrl+Enter在Enter模式下也换行
+                        super().keyPressEvent(event)
+                        self._invalidate_reference_cache()
+                elif submit_method == "ctrl_enter":
+                    # Ctrl+Enter组合键提交模式
+                    if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                        should_submit = True
+                    elif event.modifiers() == Qt.KeyboardModifier.NoModifier:
+                        # Enter在Ctrl+Enter模式下换行
+                        super().keyPressEvent(event)
+                        self._invalidate_reference_cache()
+                else:
+                    # 其他修饰键组合，换行
+                    super().keyPressEvent(event)
+                    self._invalidate_reference_cache()
+
+                if should_submit:
+                    if parent_feedback_ui and hasattr(
+                        parent_feedback_ui, "_prepare_and_submit_feedback"
+                    ):
+                        parent_feedback_ui._prepare_and_submit_feedback()
+
             return  # Event handled
 
         elif (
@@ -301,6 +325,42 @@ class FeedbackTextEdit(QTextEdit):
         from ..utils.constants import DEFAULT_INPUT_FONT_SIZE
 
         return DEFAULT_INPUT_FONT_SIZE
+
+    def _init_config_func(self):
+        """V4.3 优化：初始化配置获取函数，避免重复导入"""
+        try:
+            try:
+                from interactive_feedback_server.utils import get_config
+
+                self._get_config_func = get_config
+            except ImportError:
+                # 开发模式导入
+                import sys
+                import os
+
+                project_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+                from src.interactive_feedback_server.utils import get_config
+
+                self._get_config_func = get_config
+        except Exception:
+            self._get_config_func = None
+
+    def _get_submit_method(self) -> str:
+        """获取当前的提交方式设置"""
+        try:
+            # V4.3 优化：使用缓存的配置函数
+            if self._get_config_func:
+                config = self._get_config_func()
+                return config.get("submit_method", "enter")
+            else:
+                return "enter"  # 配置函数未初始化，使用默认值
+        except Exception:
+            # 如果获取失败，使用默认值
+            return "enter"
 
     def update_font_size(self):
         """更新输入框字体大小"""

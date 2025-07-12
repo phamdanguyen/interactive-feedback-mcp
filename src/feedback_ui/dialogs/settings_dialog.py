@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QWidget,
     QGridLayout,
     QSlider,
-    QButtonGroup,
     QFileDialog,
 )
 from PySide6.QtCore import Qt
@@ -33,23 +32,6 @@ def _setup_project_path():
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
     return project_root
-
-
-def _get_collapsible_button_style():
-    """获取可折叠按钮的通用样式"""
-    return """
-        QPushButton {
-            text-align: left;
-            padding: 4px 8px;
-            border: none;
-            background-color: transparent;
-            font-size: 10pt;
-            color: gray;
-        }
-        QPushButton:hover {
-            background-color: rgba(128, 128, 128, 0.1);
-        }
-    """
 
 
 class ConfigManager:
@@ -603,9 +585,9 @@ class SettingsDialog(QDialog):
         # Mac系统兼容性设置
         self.setModal(True)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        # 调整窗口大小，确保有足够空间显示所有内容
-        self.resize(700, 650)
-        self.setMinimumSize(650, 600)
+        # 调整窗口大小，确保有足够空间显示所有内容（V4.3 增加高度以容纳提交方式选项）
+        self.resize(700, 700)
+        self.setMinimumSize(650, 650)
 
         self.settings_manager = SettingsManager(self)
         self.layout = QVBoxLayout(self)
@@ -614,6 +596,10 @@ class SettingsDialog(QDialog):
         self.translator = QTranslator()
         # 记录当前语言状态，方便切换时判断
         self.current_language = self.settings_manager.get_current_language()
+
+        # V4.3 优化：缓存配置工具模块，避免重复导入
+        self._config_utils = None
+        self._init_config_utils()
 
         # 双语文本映射
         self.texts = {
@@ -656,6 +642,13 @@ class SettingsDialog(QDialog):
                 "zh_CN": "智能生成选项 + 用户自定义后备",
                 "en_US": "Smart option generation + custom fallback",
             },
+            # V4.3 新增：提交方式设置
+            "submit_method_group": {"zh_CN": "提交方式", "en_US": "Submit Method"},
+            "submit_enter": {
+                "zh_CN": "Enter键直接提交",
+                "en_US": "Enter key to submit",
+            },
+            "submit_ctrl_enter": {"zh_CN": "", "en_US": ""},  # 动态设置，基于操作系统
             # V4.0 简化：自定义选项开关
             "enable_custom_options": {
                 "zh_CN": "启用自定义选项",
@@ -678,6 +671,38 @@ class SettingsDialog(QDialog):
 
         # 初始更新文本
         self._update_texts()
+
+    def _init_config_utils(self):
+        """V4.3 优化：初始化配置工具模块，避免重复导入"""
+        try:
+            try:
+                from interactive_feedback_server.utils import (
+                    get_config,
+                    save_config,
+                    handle_config_error,
+                )
+
+                self._config_utils = {
+                    "get_config": get_config,
+                    "save_config": save_config,
+                    "handle_config_error": handle_config_error,
+                }
+            except ImportError:
+                _setup_project_path()
+                from src.interactive_feedback_server.utils import (
+                    get_config,
+                    save_config,
+                    handle_config_error,
+                )
+
+                self._config_utils = {
+                    "get_config": get_config,
+                    "save_config": save_config,
+                    "handle_config_error": handle_config_error,
+                }
+        except Exception as e:
+            print(f"初始化配置工具失败: {e}")
+            self._config_utils = None
 
     def _setup_ui(self):
         self._setup_theme_layout_group()  # 整合主题和布局
@@ -772,10 +797,9 @@ class SettingsDialog(QDialog):
         self.language_font_group = QGroupBox("")  # 稍后设置文本
         layout = QVBoxLayout()
 
-        # 第一行：语言设置 - 使用网格布局实现左右对齐
-        lang_grid = QGridLayout()
-        lang_grid.setColumnStretch(0, 1)  # 左列
-        lang_grid.setColumnStretch(1, 1)  # 右列
+        # 第一行：语言设置 - 使用水平布局确保足够空间
+        lang_layout = QHBoxLayout()
+        lang_layout.setSpacing(20)  # 增加间距
 
         self.chinese_radio = QRadioButton("")  # 稍后设置文本
         self.english_radio = QRadioButton("")  # 稍后设置文本
@@ -794,12 +818,14 @@ class SettingsDialog(QDialog):
             lambda checked: self.switch_language_radio("en_US", checked)
         )
 
-        lang_grid.addWidget(self.chinese_radio, 0, 0, Qt.AlignmentFlag.AlignLeft)
-        lang_grid.addWidget(self.english_radio, 0, 1, Qt.AlignmentFlag.AlignRight)
+        # 添加到水平布局，左右分布
+        lang_layout.addWidget(self.chinese_radio)
+        lang_layout.addStretch()  # 弹性空间
+        lang_layout.addWidget(self.english_radio)
 
-        # 创建容器widget来包装网格布局
+        # 创建容器widget来包装布局
         lang_widget = QWidget()
-        lang_widget.setLayout(lang_grid)
+        lang_widget.setLayout(lang_layout)
         layout.addWidget(lang_widget)
 
         # 字体大小设置 - 更紧凑的布局
@@ -1004,14 +1030,92 @@ class SettingsDialog(QDialog):
 
         interaction_layout.addLayout(mode_layout)
 
-        # 第二行：功能开关 - 左右布局
+        # 第二行：提交方式设置 - V4.3 新增
+        self._setup_submit_method_options(interaction_layout, config)
+
+        # 第三行：功能开关 - 左右布局
         self._setup_feature_toggles(interaction_layout, config)
 
-        # 第三行：自定义后备选项 - 简洁设计
+        # 第四行：自定义后备选项 - 简洁设计
         self._setup_simple_fallback_options(interaction_layout, config)
 
         self.interaction_group.setLayout(interaction_layout)
         self.layout.addWidget(self.interaction_group)
+
+    def _setup_submit_method_options(self, parent_layout, config):
+        """V4.3 新增：设置提交方式选项"""
+        from ..utils.ui_factory import create_radio_button_pair
+        from ..utils.platform_utils import get_submit_method_options
+
+        # 获取当前提交方式设置
+        current_submit_method = config.get("submit_method", "enter")
+
+        # 获取平台相关的选项文本
+        submit_options = get_submit_method_options()
+
+        checked_index = 1 if current_submit_method == "ctrl_enter" else 0
+        self.submit_enter_radio, self.submit_ctrl_enter_radio, submit_layout = (
+            create_radio_button_pair(
+                "",  # 文本稍后设置
+                "",  # 文本稍后设置
+                checked_index=checked_index,
+                callback1=lambda checked: self._on_submit_method_changed(
+                    "enter", checked
+                ),
+                callback2=lambda checked: self._on_submit_method_changed(
+                    "ctrl_enter", checked
+                ),
+            )
+        )
+
+        # 修改布局以实现更好的对齐
+        submit_layout.takeAt(0)  # 移除第一个按钮
+        submit_layout.takeAt(0)  # 移除第二个按钮
+
+        # 重新添加按钮，设置对齐
+        submit_layout.addWidget(self.submit_enter_radio, 0, Qt.AlignmentFlag.AlignLeft)
+        submit_layout.addWidget(
+            self.submit_ctrl_enter_radio, 0, Qt.AlignmentFlag.AlignRight
+        )
+
+        parent_layout.addLayout(submit_layout)
+
+    def _on_submit_method_changed(self, method: str, checked: bool):
+        """提交方式改变时的处理"""
+        if checked:
+            try:
+                # V4.3 优化：使用缓存的配置工具
+                if self._config_utils:
+                    config = self._config_utils["get_config"]()
+                    config["submit_method"] = method
+                    self._config_utils["save_config"](config)
+
+                    # 通知主窗口更新占位符文本
+                    self._notify_submit_method_changed(method)
+                else:
+                    print("配置工具未初始化，无法保存提交方式设置")
+
+            except Exception as e:
+                if self._config_utils:
+                    self._config_utils["handle_config_error"]("保存提交方式设置", e)
+                else:
+                    print(f"保存提交方式设置失败: {e}")
+
+    def _notify_submit_method_changed(self, method: str):
+        """通知主窗口提交方式已更改"""
+        try:
+            # 尝试获取主窗口并更新占位符文本
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app:
+                for widget in app.topLevelWidgets():
+                    if hasattr(widget, "text_input") and hasattr(
+                        widget, "_update_placeholder_text"
+                    ):
+                        widget._update_placeholder_text()
+        except Exception as e:
+            print(f"通知主窗口更新占位符文本失败: {e}")
 
     def _setup_feature_toggles(self, parent_layout, config):
         """V4.0 简化：设置自定义选项开关"""
@@ -1073,7 +1177,11 @@ class SettingsDialog(QDialog):
         parent_layout.addWidget(self.fallback_toggle_button)
 
         # 获取当前选项 - 使用过滤后的有效选项
-        from src.interactive_feedback_server.utils import get_fallback_options
+        try:
+            from interactive_feedback_server.utils import get_fallback_options
+        except ImportError:
+            _setup_project_path()
+            from src.interactive_feedback_server.utils import get_fallback_options
 
         current_options = get_fallback_options(config)
 
@@ -1156,37 +1264,30 @@ class SettingsDialog(QDialog):
         """V3.2 新增：显示模式改变时的处理"""
         if checked:
             try:
-                # 兼容包安装模式和开发模式的导入
-                try:
-                    from interactive_feedback_server.utils import (
-                        get_config,
-                        save_config,
-                    )
-                except ImportError:
-                    _setup_project_path()
-                    from src.interactive_feedback_server.utils import (
-                        get_config,
-                        save_config,
-                    )
-
-                config = get_config()
-                config["display_mode"] = mode
-                save_config(config)
+                # V4.3 优化：使用缓存的配置工具
+                if self._config_utils:
+                    config = self._config_utils["get_config"]()
+                    config["display_mode"] = mode
+                    self._config_utils["save_config"](config)
+                else:
+                    print("配置工具未初始化，无法保存显示模式设置")
             except Exception as e:
-                try:
-                    from interactive_feedback_server.utils import handle_config_error
-                except ImportError:
-                    _setup_project_path()
-                    from src.interactive_feedback_server.utils import (
-                        handle_config_error,
-                    )
-
-                handle_config_error("保存显示模式", e)
+                if self._config_utils:
+                    self._config_utils["handle_config_error"]("保存显示模式", e)
+                else:
+                    print(f"保存显示模式失败: {e}")
 
     def _save_fallback_options(self):
         """保存后备选项 - 使用null占位符标记空选项"""
         try:
-            from src.interactive_feedback_server.utils import get_config, save_config
+            try:
+                from interactive_feedback_server.utils import get_config, save_config
+            except ImportError:
+                _setup_project_path()
+                from src.interactive_feedback_server.utils import (
+                    get_config,
+                    save_config,
+                )
 
             # 收集所有选项，空选项用"null"占位符
             options = []
@@ -1248,14 +1349,6 @@ class SettingsDialog(QDialog):
         """
         if checked:
             self.switch_language_internal(language_code)
-
-    def switch_language(self, index: int):
-        """
-        切换语言设置（下拉框版本，保留兼容性）
-        通过直接设置和触发特定更新方法来实现语言切换
-        """
-        # 这个方法现在已经不使用，但保留以防有其他地方调用
-        pass
 
     def switch_language_internal(self, selected_lang: str):
         """
@@ -1434,6 +1527,19 @@ class SettingsDialog(QDialog):
                 self.texts["enable_custom_options"][current_lang]
             )
 
+        # V4.3 新增：更新提交方式选项文本
+        if hasattr(self, "submit_enter_radio"):
+            self.submit_enter_radio.setText(self.texts["submit_enter"][current_lang])
+
+        if hasattr(self, "submit_ctrl_enter_radio"):
+            # 动态获取平台相关的文本
+            from ..utils.platform_utils import get_submit_method_options
+
+            submit_options = get_submit_method_options()
+            self.submit_ctrl_enter_radio.setText(
+                submit_options["ctrl_enter"][current_lang]
+            )
+
         # 更新可折叠按钮文本
         if hasattr(self, "fallback_toggle_button"):
             is_expanded = self.fallback_toggle_button.isChecked()
@@ -1475,9 +1581,15 @@ class SettingsDialog(QDialog):
         try:
             # 保存自定义选项开关状态
             if hasattr(self, "_custom_options_enabled"):
-                from src.interactive_feedback_server.utils import (
-                    set_custom_options_enabled,
-                )
+                try:
+                    from interactive_feedback_server.utils import (
+                        set_custom_options_enabled,
+                    )
+                except ImportError:
+                    _setup_project_path()
+                    from src.interactive_feedback_server.utils import (
+                        set_custom_options_enabled,
+                    )
 
                 set_custom_options_enabled(self._custom_options_enabled)
 

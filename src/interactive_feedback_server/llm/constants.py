@@ -24,9 +24,9 @@ DEFAULT_PROVIDER_CONFIGS = {
     },
 }
 
-# 默认优化器配置
+# 默认优化器配置 - V4.2 用户友好版本
 DEFAULT_OPTIMIZER_CONFIG = {
-    "enabled": False,
+    "enabled": True,  # V4.2 改为默认启用
     "active_provider": "openai",
     "providers": DEFAULT_PROVIDER_CONFIGS,
 }
