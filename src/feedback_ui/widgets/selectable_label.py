@@ -2,7 +2,6 @@ from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import QLabel
 
 from ..utils.ui_helpers import set_selection_colors
-from ..utils.markdown_renderer import markdown_renderer
 
 
 class SelectableLabel(QLabel):
@@ -29,8 +28,7 @@ class SelectableLabel(QLabel):
 
         # 存储原始文本
         self._original_text = ""
-        self._enable_formatting = True  # V4.3 新增：默认启用Markdown格式化
-        self._is_markdown_content = False  # 标记当前内容是否为Markdown
+        self._enable_formatting = False  # 默认禁用格式化
 
         # 设置初始文本（如果提供）
         if text:
@@ -97,8 +95,8 @@ class SelectableLabel(QLabel):
 
     def setText(self, text: str):
         """
-        设置文本内容，支持自动Markdown渲染
-        Set text content with automatic Markdown rendering
+        设置文本内容
+        Set text content
 
         Args:
             text (str): 要设置的文本
@@ -106,58 +104,8 @@ class SelectableLabel(QLabel):
         # 存储原始文本
         self._original_text = text or ""
 
-        if not text:
-            super().setText("")
-            self._is_markdown_content = False
-            return
-
-        # V4.3 新增：检查是否为Markdown内容并进行相应处理
-        if self._enable_formatting and markdown_renderer.is_markdown_content(text):
-            # 渲染Markdown为HTML
-            html_content = markdown_renderer.render_to_html(text)
-            super().setText(html_content)
-            self._is_markdown_content = True
-
-            # 启用富文本模式以支持HTML显示
-            self.setTextFormat(Qt.TextFormat.RichText)
-        else:
-            # 普通文本，使用纯文本模式
-            super().setText(text)
-            self._is_markdown_content = False
-            self.setTextFormat(Qt.TextFormat.PlainText)
-
-    def setMarkdownEnabled(self, enabled: bool):
-        """
-        启用或禁用Markdown格式化
-        Enable or disable Markdown formatting
-
-        Args:
-            enabled (bool): 是否启用Markdown格式化
-        """
-        self._enable_formatting = enabled
-        # 重新设置文本以应用新的格式化设置
-        if self._original_text:
-            self.setText(self._original_text)
-
-    def isMarkdownContent(self) -> bool:
-        """
-        检查当前内容是否为Markdown格式
-        Check if current content is Markdown formatted
-
-        Returns:
-            bool: 如果当前内容是Markdown格式返回True
-        """
-        return self._is_markdown_content
-
-    def getOriginalText(self) -> str:
-        """
-        获取原始文本（未经格式化处理）
-        Get original text (without formatting)
-
-        Returns:
-            str: 原始文本
-        """
-        return self._original_text
+        # 直接设置原始文本，不进行任何格式化
+        super().setText(text or "")
 
     def setFormattingEnabled(self, enabled: bool):
         """

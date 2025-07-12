@@ -7,7 +7,7 @@ Resource Manager
 提供统一的资源管理和上下文管理器，确保资源正确释放，
 防止内存泄漏和资源泄漏。
 
-Provides unified resource management and context managers to ensure 
+Provides unified resource management and context managers to ensure
 proper resource cleanup, preventing memory and resource leaks.
 """
 

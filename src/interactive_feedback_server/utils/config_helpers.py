@@ -45,7 +45,7 @@ def safe_get_config() -> Tuple[Dict[str, Any], str]:
 
 
 def safe_get_feature_states(
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, bool]:
     """
     安全获取功能开关状态 - V4.0 简化版本

@@ -3,7 +3,7 @@ Loading Overlay Widget
 加载覆盖层组件
 
 提供一个半透明的加载覆盖层，显示在父窗口中央，用于表示正在进行的操作。
-Provides a semi-transparent loading overlay that displays in the center of the parent window 
+Provides a semi-transparent loading overlay that displays in the center of the parent window
 to indicate ongoing operations.
 """
 

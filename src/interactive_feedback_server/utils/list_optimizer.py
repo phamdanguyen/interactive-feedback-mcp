@@ -7,8 +7,8 @@ List Operation Optimization Tools
 提供智能的列表操作函数，避免不必要的复制和内存分配，
 优化列表合并、扩展等常见操作的性能。
 
-Provides intelligent list operation functions to avoid unnecessary 
-copying and memory allocation, optimizing performance of common 
+Provides intelligent list operation functions to avoid unnecessary
+copying and memory allocation, optimizing performance of common
 operations like list merging and extension.
 """
 

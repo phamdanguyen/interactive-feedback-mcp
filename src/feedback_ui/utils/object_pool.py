@@ -7,8 +7,8 @@ Object Pool Pattern Implementation
 提供高效的对象重用机制，减少对象创建和销毁的开销，
 特别适用于重对象如QByteArray、QBuffer、QPixmap等。
 
-Provides efficient object reuse mechanism to reduce object creation 
-and destruction overhead, especially suitable for heavy objects 
+Provides efficient object reuse mechanism to reduce object creation
+and destruction overhead, especially suitable for heavy objects
 like QByteArray, QBuffer, QPixmap, etc.
 """
 
