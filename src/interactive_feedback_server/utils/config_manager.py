@@ -27,6 +27,21 @@ def _get_config_file_path() -> str:
     1. 项目根目录 config.json（开发模式优先）
     2. 用户主目录 ~/.interactive-feedback/config.json（uvx安装）
     """
+    # 检测是否在uvx环境中运行
+    current_file_path = os.path.abspath(__file__)
+    is_uvx_environment = "uv" in current_file_path and (
+        "cache" in current_file_path or "archive" in current_file_path
+    )
+
+    # 如果在uvx环境中，直接使用用户主目录
+    if is_uvx_environment:
+        try:
+            user_config_dir = os.path.expanduser("~/.interactive-feedback")
+            os.makedirs(user_config_dir, exist_ok=True)
+            return os.path.join(user_config_dir, "config.json")
+        except Exception:
+            return os.path.expanduser("~/.interactive-feedback/config.json")
+
     # 1. 项目根目录（开发模式优先）
     try:
         project_root = os.path.dirname(
@@ -34,8 +49,8 @@ def _get_config_file_path() -> str:
         )
         project_config_path = os.path.join(project_root, "config.json")
 
-        # 如果项目目录可写，使用项目配置
-        if os.access(project_root, os.W_OK):
+        # 如果项目目录可写且存在，使用项目配置
+        if os.access(project_root, os.W_OK) and not is_uvx_environment:
             return project_config_path
     except Exception:
         pass
@@ -156,7 +171,35 @@ def get_config() -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: 合并后的配置字典
     """
-    return _load_config_with_fallback()
+    config = _load_config_with_fallback()
+
+    # 如果配置文件不存在且在uvx环境中，尝试创建默认配置文件
+    if not os.path.exists(CONFIG_FILE_PATH):
+        current_file_path = os.path.abspath(__file__)
+        is_uvx_env = "uv" in current_file_path and (
+            "cache" in current_file_path or "archive" in current_file_path
+        )
+
+        if is_uvx_env:
+            try:
+                # 创建配置目录
+                config_dir = os.path.dirname(CONFIG_FILE_PATH)
+                os.makedirs(config_dir, exist_ok=True)
+
+                # 创建默认配置文件
+                with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(DEFAULT_CONFIG, f, ensure_ascii=False, indent=2)
+
+                print(
+                    f"已创建默认配置文件 (Created default config): {CONFIG_FILE_PATH}",
+                    file=sys.stderr,
+                )
+            except Exception as e:
+                print(
+                    f"创建配置文件失败 (Failed to create config): {e}", file=sys.stderr
+                )
+
+    return config
 
 
 def _load_config_with_fallback() -> Dict[str, Any]:
@@ -175,8 +218,15 @@ def _load_config_with_fallback() -> Dict[str, Any]:
     try:
         # 1. 检查配置文件是否存在
         if not os.path.exists(CONFIG_FILE_PATH):
+            # 检测运行环境并提供友好提示
+            current_file_path = os.path.abspath(__file__)
+            is_uvx_env = "uv" in current_file_path and (
+                "cache" in current_file_path or "archive" in current_file_path
+            )
+            env_info = " (uvx环境)" if is_uvx_env else " (开发环境)"
+
             print(
-                f"配置文件不存在，使用默认配置 (Config file not found, using defaults): {CONFIG_FILE_PATH}",
+                f"配置文件不存在，使用默认配置{env_info} (Config file not found, using defaults): {CONFIG_FILE_PATH}",
                 file=sys.stderr,
             )
             return config
