@@ -5,22 +5,26 @@
 Audio Manager
 
 提供统一的音频播放接口，支持提示音播放、音量控制等功能。
+使用跨平台的原生音频播放，无需 QtMultimedia 依赖。
 Provides unified audio playback interface with notification sounds and volume control.
+Uses cross-platform native audio playback without QtMultimedia dependency.
 """
 
 import os
 import sys
+import platform
+import subprocess
+import threading
 from typing import Optional, Union
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QObject, QUrl, Signal
-    from PySide6.QtMultimedia import QSoundEffect
+    from PySide6.QtCore import QObject, Signal
 
-    MULTIMEDIA_AVAILABLE = True
+    PYSIDE6_AVAILABLE = True
 except ImportError:
-    MULTIMEDIA_AVAILABLE = False
-    print("警告: PySide6.QtMultimedia 不可用，音频功能将被禁用", file=sys.stderr)
+    PYSIDE6_AVAILABLE = False
+    print("警告: PySide6.QtCore 不可用，音频功能将被禁用", file=sys.stderr)
 
     # 创建虚拟的Signal类用于回退
     class Signal:
@@ -33,6 +37,11 @@ except ImportError:
         def emit(self, *_):
             pass
 
+    # 创建虚拟的QObject类用于回退
+    class QObject:
+        def __init__(self, parent=None):
+            pass
+
 
 class AudioManager(QObject):
     """
@@ -40,7 +49,9 @@ class AudioManager(QObject):
     Audio Manager Class
 
     管理应用程序的音频播放功能，包括提示音、音量控制等。
+    使用跨平台的原生音频播放，无需 QtMultimedia 依赖。
     Manages application audio playback including notification sounds and volume control.
+    Uses cross-platform native audio playback without QtMultimedia dependency.
     """
 
     # 信号定义
@@ -50,10 +61,11 @@ class AudioManager(QObject):
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
 
-        self._sound_effect: Optional[QSoundEffect] = None
         self._volume: float = 0.5  # 默认音量50%
         self._enabled: bool = True  # 默认启用音频
         self._current_audio_file: Optional[str] = None
+        self._system_type = platform.system().lower()
+        self._audio_backend: Optional[str] = None
 
         # 初始化音频系统
         self._initialize_audio()
@@ -66,34 +78,74 @@ class AudioManager(QObject):
         Returns:
             bool: 初始化是否成功
         """
-        if not MULTIMEDIA_AVAILABLE:
-            print("音频系统不可用，跳过初始化", file=sys.stderr)
-            return False
-
         try:
-            self._sound_effect = QSoundEffect(self)
+            # 检测系统音频播放能力
+            if self._system_type == "windows":
+                # Windows: 检查是否有 winsound 或 PowerShell
+                try:
+                    import winsound
 
-            # 连接信号
-            if hasattr(self._sound_effect, "playingChanged"):
-                self._sound_effect.playingChanged.connect(self._on_playing_changed)
+                    self._audio_backend = "winsound"
+                    print("音频系统初始化成功 (Windows winsound)", file=sys.stderr)
+                    return True
+                except ImportError:
+                    # 回退到 PowerShell
+                    self._audio_backend = "powershell"
+                    print("音频系统初始化成功 (Windows PowerShell)", file=sys.stderr)
+                    return True
 
-            # 设置默认属性
-            self._sound_effect.setVolume(self._volume)
+            elif self._system_type == "darwin":
+                # macOS: 使用 afplay
+                self._audio_backend = "afplay"
+                print("音频系统初始化成功 (macOS afplay)", file=sys.stderr)
+                return True
 
-            print("音频系统初始化成功", file=sys.stderr)
-            return True
+            elif self._system_type == "linux":
+                # Linux: 尝试多种播放器
+                for player in ["aplay", "paplay", "play"]:
+                    if self._check_command_available(player):
+                        self._audio_backend = player
+                        print(f"音频系统初始化成功 (Linux {player})", file=sys.stderr)
+                        return True
+
+                # 如果都不可用，尝试 playsound 回退
+                try:
+                    import playsound
+
+                    self._audio_backend = "playsound"
+                    print("音频系统初始化成功 (Linux playsound)", file=sys.stderr)
+                    return True
+                except ImportError:
+                    print("Linux 音频播放器不可用，音频功能将被禁用", file=sys.stderr)
+                    self._audio_backend = None
+                    return False
+            else:
+                print(f"不支持的操作系统: {self._system_type}", file=sys.stderr)
+                self._audio_backend = None
+                return False
 
         except Exception as e:
             print(f"音频系统初始化失败: {e}", file=sys.stderr)
-            self._sound_effect = None
+            self._audio_backend = None
             return False
 
-    def _on_playing_changed(self):
-        """音频播放状态变化回调"""
-        if self._sound_effect and not self._sound_effect.isPlaying():
-            # 播放完成
-            if self._current_audio_file:
-                self.audio_played.emit(self._current_audio_file)
+    def _check_command_available(self, command: str) -> bool:
+        """检查命令是否可用"""
+        try:
+            subprocess.run([command, "--version"], capture_output=True, timeout=5)
+            return True
+        except (
+            subprocess.SubprocessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
+            return False
+
+    def _on_audio_finished(self, audio_file: str):
+        """音频播放完成回调"""
+        # 播放完成
+        if audio_file:
+            self.audio_played.emit(audio_file)
 
     def set_enabled(self, enabled: bool):
         """
@@ -113,7 +165,7 @@ class AudioManager(QObject):
         Returns:
             bool: 音频是否启用
         """
-        return self._enabled and MULTIMEDIA_AVAILABLE and self._sound_effect is not None
+        return self._enabled and self._audio_backend is not None
 
     def set_volume(self, volume: Union[int, float]):
         """
@@ -129,8 +181,12 @@ class AudioManager(QObject):
 
         self._volume = max(0.0, min(1.0, float(volume)))
 
-        if self._sound_effect:
-            self._sound_effect.setVolume(self._volume)
+        # 注意：原生音频播放器通常不支持程序化音量控制
+        # 这里保存音量设置主要用于兼容性
+        print(
+            f"设置音量为 {self._volume:.1%}（原生播放器可能不支持程序化音量控制）",
+            file=sys.stderr,
+        )
 
     def get_volume(self) -> float:
         """
@@ -184,6 +240,10 @@ class AudioManager(QObject):
         if not self.is_enabled():
             return False
 
+        if not self._audio_backend:
+            print("音频后端不可用", file=sys.stderr)
+            return False
+
         try:
             # 确定要播放的音频文件
             if audio_file is None:
@@ -193,18 +253,85 @@ class AudioManager(QObject):
                 print(f"音频文件不存在: {audio_file}", file=sys.stderr)
                 return False
 
-            # 设置音频源
-            audio_url = QUrl.fromLocalFile(audio_file)
-            self._sound_effect.setSource(audio_url)
             self._current_audio_file = audio_file
 
-            # 播放音频
-            self._sound_effect.play()
-            return True
+            # 根据后端播放音频
+            success = self._play_audio_with_backend(audio_file)
+
+            if success:
+                # 异步发送播放完成信号
+                threading.Timer(0.1, self._on_audio_finished, args=[audio_file]).start()
+
+            return success
 
         except Exception as e:
             print(f"播放提示音失败: {e}", file=sys.stderr)
             self.audio_error.emit(str(e))
+            return False
+
+    def _play_audio_with_backend(self, audio_file: str) -> bool:
+        """使用指定后端播放音频"""
+        try:
+            if self._audio_backend == "winsound":
+                import winsound
+
+                # 异步播放
+                winsound.PlaySound(
+                    audio_file, winsound.SND_FILENAME | winsound.SND_ASYNC
+                )
+                return True
+
+            elif self._audio_backend == "powershell":
+                # Windows PowerShell 播放
+                cmd = f'powershell -c "(New-Object Media.SoundPlayer \\"{audio_file}\\").PlaySync()"'
+                subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return True
+
+            elif self._audio_backend == "afplay":
+                # macOS afplay
+                subprocess.Popen(
+                    ["afplay", audio_file],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return True
+
+            elif self._audio_backend in ["aplay", "paplay", "play"]:
+                # Linux 音频播放器
+                subprocess.Popen(
+                    [self._audio_backend, audio_file],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return True
+
+            elif self._audio_backend == "playsound":
+                # 跨平台回退方案
+                try:
+                    import playsound
+
+                    # 异步播放
+                    threading.Thread(
+                        target=playsound.playsound,
+                        args=[audio_file, False],
+                        daemon=True,
+                    ).start()
+                    return True
+                except Exception as e:
+                    print(f"playsound 播放失败: {e}", file=sys.stderr)
+                    return False
+
+            else:
+                print(f"未知的音频后端: {self._audio_backend}", file=sys.stderr)
+                return False
+
+        except Exception as e:
+            print(f"音频播放失败: {e}", file=sys.stderr)
             return False
 
     def _get_default_notification_sound(self) -> Optional[str]:
@@ -244,9 +371,12 @@ class AudioManager(QObject):
             bool: 资源是否存在
         """
         try:
-            from PySide6.QtCore import QFile
+            if PYSIDE6_AVAILABLE:
+                from PySide6.QtCore import QFile
 
-            return QFile.exists(resource_path)
+                return QFile.exists(resource_path)
+            else:
+                return False
         except:
             return False
 
@@ -254,9 +384,12 @@ class AudioManager(QObject):
         """
         停止当前播放的音频
         Stop currently playing audio
+
+        注意：由于使用原生音频播放，无法精确控制停止，
+        此方法主要用于兼容性，实际效果有限。
         """
-        if self._sound_effect and self._sound_effect.isPlaying():
-            self._sound_effect.stop()
+        # 原生音频播放通常无法精确停止，这里主要用于兼容性
+        print("停止音频播放请求（原生播放器可能无法精确停止）", file=sys.stderr)
 
     def is_playing(self) -> bool:
         """
@@ -265,8 +398,12 @@ class AudioManager(QObject):
 
         Returns:
             bool: 是否正在播放
+
+        注意：由于使用原生音频播放，无法精确检测播放状态，
+        此方法主要用于兼容性，始终返回 False。
         """
-        return self._sound_effect is not None and self._sound_effect.isPlaying()
+        # 原生音频播放无法精确检测状态，为了兼容性返回 False
+        return False
 
 
 # 全局音频管理器实例
