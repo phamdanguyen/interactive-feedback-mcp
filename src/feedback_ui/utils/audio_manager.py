@@ -108,17 +108,12 @@ class AudioManager(QObject):
                         print(f"音频系统初始化成功 (Linux {player})", file=sys.stderr)
                         return True
 
-                # 如果都不可用，尝试 playsound 回退
-                try:
-                    import playsound
-
-                    self._audio_backend = "playsound"
-                    print("音频系统初始化成功 (Linux playsound)", file=sys.stderr)
-                    return True
-                except ImportError:
-                    print("Linux 音频播放器不可用，音频功能将被禁用", file=sys.stderr)
-                    self._audio_backend = None
-                    return False
+                # 如果都不可用，使用系统默认提示音
+                print(
+                    "Linux 原生音频播放器不可用，将使用系统默认提示音", file=sys.stderr
+                )
+                self._audio_backend = "system_beep"
+                return True
             else:
                 print(f"不支持的操作系统: {self._system_type}", file=sys.stderr)
                 self._audio_backend = None
@@ -313,21 +308,9 @@ class AudioManager(QObject):
                 )
                 return True
 
-            elif self._audio_backend == "playsound":
-                # 跨平台回退方案
-                try:
-                    import playsound
-
-                    # 异步播放
-                    threading.Thread(
-                        target=playsound.playsound,
-                        args=[audio_file, False],
-                        daemon=True,
-                    ).start()
-                    return True
-                except Exception as e:
-                    print(f"playsound 播放失败: {e}", file=sys.stderr)
-                    return False
+            elif self._audio_backend == "system_beep":
+                # 系统默认提示音回退方案
+                return self._play_system_notification_sound()
 
             else:
                 print(f"未知的音频后端: {self._audio_backend}", file=sys.stderr)

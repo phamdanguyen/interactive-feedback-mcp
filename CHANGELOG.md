@@ -1,5 +1,22 @@
 # 更新日志 (Changelog)
 
+## [v2.5.9.6] - 2025-01-13
+
+### 🔧 修复 (Fixed)
+- **依赖兼容性**：移除playsound依赖，解决Windows环境下构建失败问题
+- **音频播放**：使用原生音频播放方案替代playsound，提升跨平台兼容性
+  - Windows: 使用winsound和PowerShell
+  - macOS: 使用afplay
+  - Linux: 使用系统原生音频播放器和系统提示音
+
+### 📚 文档 (Documentation)
+- 更新安装指南，添加playsound构建失败的故障排除说明
+- 更新版本信息到v2.5.9.6
+
+### ⚡ 性能优化 (Performance)
+- 减少包体积，移除不必要的可选依赖
+- 提升音频播放稳定性和响应速度
+
 ## [v2.5.9.3] - 2025-01-12
 
 ### ✨ 新增功能

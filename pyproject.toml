@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "2.5.9.5"
+version = "2.5.9.6"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
@@ -38,7 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 audio = [
-    "playsound>=1.3.0",
+    # playsound removed due to build issues - using native audio backends instead
 ]
 dev = [
     "black",
