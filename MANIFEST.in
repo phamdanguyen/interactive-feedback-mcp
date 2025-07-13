@@ -6,7 +6,9 @@ recursive-include src *.py
 recursive-include src *.qrc
 recursive-include src *.ui
 recursive-include src/feedback_ui/images *.png *.jpg *.jpeg *.gif *.svg
-recursive-include src/feedback_ui/resources *.qrc *.py
+recursive-include src/feedback_ui/resources *.qrc *.py *.wav *.mp3 *.ogg
+recursive-include src/feedback_ui/resources/sounds *.wav *.mp3 *.ogg *.flac *.aac
+recursive-include src/feedback_ui/resources/translations *.qm *.ts
 recursive-include src/feedback_ui/styles *.qss
 global-exclude *.pyc
 global-exclude __pycache__

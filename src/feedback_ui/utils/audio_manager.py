@@ -249,9 +249,12 @@ class AudioManager(QObject):
             if audio_file is None:
                 audio_file = self._get_default_notification_sound()
 
+            # 如果没有音频文件，使用系统默认提示音
             if not audio_file or not os.path.exists(audio_file):
-                print(f"音频文件不存在: {audio_file}", file=sys.stderr)
-                return False
+                print(
+                    f"音频文件不存在，使用系统默认提示音: {audio_file}", file=sys.stderr
+                )
+                return self._play_system_notification_sound()
 
             self._current_audio_file = audio_file
 
@@ -342,11 +345,8 @@ class AudioManager(QObject):
         Returns:
             str: 默认提示音文件路径
         """
-        # 尝试从Qt资源系统获取
-        resource_path = ":/sounds/notification.wav"
-
-        # 如果资源系统不可用，尝试从文件系统获取
-        if not self._check_qt_resource(resource_path):
+        # 优先尝试从包内资源获取
+        try:
             # 获取当前文件所在目录
             current_dir = Path(__file__).parent.parent
             sound_file = current_dir / "resources" / "sounds" / "notification.wav"
@@ -354,10 +354,65 @@ class AudioManager(QObject):
             if sound_file.exists():
                 return str(sound_file)
             else:
-                print(f"默认提示音文件不存在: {sound_file}", file=sys.stderr)
-                return None
+                print(f"包内默认提示音文件不存在: {sound_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"获取包内音频文件失败: {e}", file=sys.stderr)
 
-        return resource_path
+        # 回退：尝试从Qt资源系统获取
+        resource_path = ":/sounds/notification.wav"
+        if self._check_qt_resource(resource_path):
+            return resource_path
+
+        # 最后回退：使用系统默认提示音
+        print("使用系统默认提示音", file=sys.stderr)
+        return None
+
+    def _play_system_notification_sound(self) -> bool:
+        """
+        播放系统默认提示音
+        Play system default notification sound
+
+        Returns:
+            bool: 是否成功播放
+        """
+        try:
+            if self._system_type == "windows":
+                # Windows 系统默认提示音
+                if self._audio_backend == "winsound":
+                    import winsound
+
+                    winsound.MessageBeep(winsound.MB_ICONINFORMATION)
+                    return True
+                elif self._audio_backend == "powershell":
+                    # PowerShell 播放系统提示音
+                    cmd = 'powershell -c "[console]::beep(800,200)"'
+                    subprocess.Popen(
+                        cmd,
+                        shell=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    return True
+
+            elif self._system_type == "darwin":
+                # macOS 系统默认提示音
+                subprocess.Popen(
+                    ["afplay", "/System/Library/Sounds/Glass.aiff"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return True
+
+            elif self._system_type == "linux":
+                # Linux 系统提示音 (通过终端铃声)
+                print("\a", end="", flush=True)  # 终端铃声
+                return True
+
+            return False
+
+        except Exception as e:
+            print(f"播放系统提示音失败: {e}", file=sys.stderr)
+            return False
 
     def _check_qt_resource(self, resource_path: str) -> bool:
         """

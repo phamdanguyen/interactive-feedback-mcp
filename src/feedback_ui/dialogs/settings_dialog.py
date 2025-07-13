@@ -586,8 +586,9 @@ class SettingsDialog(QDialog):
         self.setModal(True)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         # 调整窗口大小，确保有足够空间显示所有内容（V4.3 增加高度以容纳提交方式选项）
-        self.resize(700, 700)
-        self.setMinimumSize(650, 650)
+        # V2.5.9.4 修复：进一步增加高度以解决uv安装用户的UI压缩问题
+        self.resize(700, 800)
+        self.setMinimumSize(650, 750)
 
         self.settings_manager = SettingsManager(self)
         self.layout = QVBoxLayout(self)

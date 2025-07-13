@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "2.5.9.4"
+version = "2.5.9.5"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
@@ -60,3 +60,10 @@ feedback-ui = "feedback_ui.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"feedback_ui.resources" = ["*.qrc", "*.py"]
+"feedback_ui.resources.sounds" = ["*.wav", "*.mp3", "*.ogg", "*.flac", "*.aac"]
+"feedback_ui.resources.translations" = ["*.qm", "*.ts"]
+"feedback_ui.styles" = ["*.qss"]
+"feedback_ui.images" = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg"]
