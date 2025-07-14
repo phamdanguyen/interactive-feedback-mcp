@@ -91,39 +91,6 @@ class FeedbackUI(QMainWindow):
             "enhance_button": {"zh_CN": "增强", "en_US": "Enhance"},
         }
 
-        # 工具提示的双语映射
-        self.tooltip_texts = {
-            "canned_responses_button": {
-                "zh_CN": "选择或管理常用语",
-                "en_US": "Select or manage canned responses",
-            },
-            "select_file_button": {
-                "zh_CN": "打开文件选择器，选择要添加的文件或图片",
-                "en_US": "Open file selector to choose files or images to add",
-            },
-            "screenshot_button": {
-                "zh_CN": "截取屏幕区域并添加到输入框",
-                "en_US": "Capture screen area and add to input box",
-            },
-            "open_terminal_button": {
-                "zh_CN": "在当前项目路径中打开PowerShell终端",
-                "en_US": "Open PowerShell terminal in current project path",
-            },
-            "settings_button": {
-                "zh_CN": "打开设置面板",
-                "en_US": "Open settings panel",
-            },
-            # V4.0 新增：优化按钮工具提示
-            "optimize_button": {
-                "zh_CN": "一键优化文本表达",
-                "en_US": "One-click text optimization",
-            },
-            "enhance_button": {
-                "zh_CN": "增强提示词效果",
-                "en_US": "Enhance prompt effectiveness",
-            },
-        }
-
         self.settings_manager = SettingsManager(self)
 
         # 初始化音频管理器
@@ -148,9 +115,6 @@ class FeedbackUI(QMainWindow):
 
         # 添加窗口大小变化监听，用于动态调整选项间距
         self._setup_resize_monitoring()
-
-        # 配置工具提示显示延迟，减少悬浮提示的延迟
-        self._configure_tooltip_timing()
 
         # V4.1 新增：创建加载覆盖层
         self._setup_loading_overlay()
@@ -220,34 +184,9 @@ class FeedbackUI(QMainWindow):
                 self.audio_manager.set_enabled(enabled)
                 self.audio_manager.set_volume(volume)
 
-                pass  # 音频管理器初始化成功
-
         except Exception as e:
             print(f"设置音频管理器时出错: {e}", file=sys.stderr)
             self.audio_manager = None
-
-    def _configure_tooltip_timing(self):
-        """配置工具提示显示延迟，减少悬浮提示的延迟"""
-        try:
-            # 通过设置应用程序属性来优化工具提示显示
-            app = QApplication.instance()
-            if app:
-                # 设置工具提示相关属性
-                app.setAttribute(
-                    Qt.ApplicationAttribute.AA_DisableWindowContextHelpButton, True
-                )
-
-                # 使用QToolTip的静态方法设置全局工具提示字体
-                from PySide6.QtWidgets import QToolTip
-                from PySide6.QtGui import QFont
-
-                # 设置工具提示字体，这也会影响显示性能
-                font = QFont("Segoe UI", 12)
-                QToolTip.setFont(font)
-
-                print("DEBUG: 工具提示延迟配置已应用", file=sys.stderr)
-        except Exception as e:
-            print(f"DEBUG: 配置工具提示延迟时出错: {e}", file=sys.stderr)
 
     def _setup_loading_overlay(self):
         """V4.1 新增：设置加载覆盖层"""
@@ -687,7 +626,6 @@ class FeedbackUI(QMainWindow):
             pass
         else:
             # 上下布局：移除高度限制，允许描述区域正常扩展
-            # 注释掉原有的高度限制：scroll_area.setMaximumHeight(200)
             pass
 
         desc_widget_container = QWidget()
@@ -989,9 +927,6 @@ class FeedbackUI(QMainWindow):
             self.button_texts["canned_responses_button"][current_language]
         )
         self.canned_responses_button.setObjectName("secondary_button")
-        self.canned_responses_button.setToolTip(
-            self.tooltip_texts["canned_responses_button"][current_language]
-        )
 
         # 为常用语按钮添加hover事件处理
         self.canned_responses_button.enterEvent = self._on_canned_responses_button_enter
@@ -1007,24 +942,14 @@ class FeedbackUI(QMainWindow):
             self.button_texts["select_file_button"][current_language]
         )
         self.select_file_button.setObjectName("secondary_button")
-        self.select_file_button.setToolTip(
-            self.tooltip_texts["select_file_button"][current_language]
-        )
         bottom_layout.addWidget(self.select_file_button)
 
-        # 已删除终端按钮 - 终端功能已移除
-
-        # 截图按钮（在启用终端按钮前，固定窗口按钮前）
+        # 截图按钮
         self.screenshot_button = QPushButton(
             self.button_texts["screenshot_button"][current_language]
         )
         self.screenshot_button.setObjectName("secondary_button")
-        self.screenshot_button.setToolTip(
-            self.tooltip_texts["screenshot_button"][current_language]
-        )
         bottom_layout.addWidget(self.screenshot_button)
-
-        # 已删除终端按钮的布局添加
 
         self.pin_window_button = QPushButton(
             self.button_texts["pin_window_button"][current_language]
@@ -1038,9 +963,6 @@ class FeedbackUI(QMainWindow):
             self.button_texts["settings_button"][current_language]
         )
         self.settings_button.setObjectName("secondary_button")
-        self.settings_button.setToolTip(
-            self.tooltip_texts["settings_button"][current_language]
-        )
         bottom_layout.addWidget(self.settings_button)
 
         # V4.0 新增：优化按钮
@@ -1058,9 +980,6 @@ class FeedbackUI(QMainWindow):
             self.button_texts["optimize_button"][current_language]
         )
         self.optimize_button.setObjectName("optimization_button")
-        self.optimize_button.setToolTip(
-            self.tooltip_texts["optimize_button"][current_language]
-        )
         # 应用主题感知的样式
         self._apply_optimization_button_style(self.optimize_button)
         layout.addWidget(self.optimize_button)
@@ -1070,9 +989,6 @@ class FeedbackUI(QMainWindow):
             self.button_texts["enhance_button"][current_language]
         )
         self.enhance_button.setObjectName("optimization_button")
-        self.enhance_button.setToolTip(
-            self.tooltip_texts["enhance_button"][current_language]
-        )
         # 应用主题感知的样式
         self._apply_optimization_button_style(self.enhance_button)
         layout.addWidget(self.enhance_button)
@@ -1189,15 +1105,12 @@ class FeedbackUI(QMainWindow):
         self.canned_responses_button.clicked.connect(self._show_canned_responses_dialog)
         self.select_file_button.clicked.connect(self._open_file_dialog)
         self.screenshot_button.clicked.connect(self._take_screenshot)
-        # 已删除终端按钮的事件连接
         self.pin_window_button.toggled.connect(self._toggle_pin_window_action)
         self.settings_button.clicked.connect(self.open_settings_dialog)
         # V4.0 新增：连接优化按钮事件
         self.optimize_button.clicked.connect(self._optimize_text)
         self.enhance_button.clicked.connect(self._reinforce_text)
         self.submit_button.clicked.connect(self._prepare_and_submit_feedback)
-
-    # 已删除终端预览设置方法
 
     def event(self, event: QEvent) -> bool:
         if event.type() == QEvent.Type.WindowDeactivate:
@@ -1211,22 +1124,30 @@ class FeedbackUI(QMainWindow):
         return super().event(event)
 
     def closeEvent(self, event: QEvent):
-        # 保存分割器状态
-        if hasattr(self, "main_splitter"):
-            sizes = self.main_splitter.sizes()
-            self.settings_manager.set_splitter_sizes(sizes)
-            self.settings_manager.set_splitter_state(self.main_splitter.saveState())
+        """窗口关闭事件 - 保存状态并清理资源"""
+        try:
+            # 清理预览窗口资源
+            self._cleanup_preview_resources()
 
-        # 保存窗口几何和状态（使用Qt标准方法）
-        self.settings_manager.set_main_window_geometry(self.saveGeometry())
-        self.settings_manager.set_main_window_state(self.saveState())
-        self.settings_manager.set_main_window_pinned(self.window_pinned)
+            # 保存分割器状态
+            if hasattr(self, "main_splitter"):
+                sizes = self.main_splitter.sizes()
+                self.settings_manager.set_splitter_sizes(sizes)
+                self.settings_manager.set_splitter_state(self.main_splitter.saveState())
 
-        # 确保在用户直接关闭窗口时也返回空结果
-        # 此处不需要检查 self.output_result 是否已设置，因为在 __init__ 中已初始化为空结果
-        # 如果没有显式通过 _prepare_and_submit_feedback 设置结果，则保持初始的空结果
+            # 保存窗口几何和状态（使用Qt标准方法）
+            self.settings_manager.set_main_window_geometry(self.saveGeometry())
+            self.settings_manager.set_main_window_state(self.saveState())
+            self.settings_manager.set_main_window_pinned(self.window_pinned)
 
-        super().closeEvent(event)
+            # 确保在用户直接关闭窗口时也返回空结果
+            # 此处不需要检查 self.output_result 是否已设置，因为在 __init__ 中已初始化为空结果
+            # 如果没有显式通过 _prepare_and_submit_feedback 设置结果，则保持初始的空结果
+
+        except Exception as e:
+            print(f"DEBUG: 窗口关闭时清理资源出错: {e}", file=sys.stderr)
+        finally:
+            super().closeEvent(event)
 
     def _load_canned_responses_from_settings(self):
         self.canned_responses = self.settings_manager.get_canned_responses()
@@ -1247,11 +1168,9 @@ class FeedbackUI(QMainWindow):
 
         # 禁用预览功能，防止对话框触发预览窗口
         self._preview_disabled = True
-        # 隐藏任何现有的预览窗口（注意：这可能会尝试恢复disable_auto_minimize，但我们已经设置了保护）
+        # 安全隐藏任何现有的预览窗口
         if self.canned_responses_preview_window:
-            self.canned_responses_preview_window.close()
-            self.canned_responses_preview_window = None
-            # 不调用_hide_canned_responses_preview()，避免它恢复disable_auto_minimize
+            self._safe_close_preview_window()
 
         dialog = SelectCannedResponseDialog(self.canned_responses, self)
         dialog.exec()
@@ -1333,12 +1252,6 @@ class FeedbackUI(QMainWindow):
         except Exception as e:
             print(f"ERROR: 插入文件引用失败 {file_path}: {e}", file=sys.stderr)
 
-    # 已删除终端打开方法
-
-    # 已删除终端打开方法
-
-    # 已删除终端回退方法
-
     def _get_project_path(self) -> str:
         """获取项目路径，优先使用当前工作目录"""
         try:
@@ -1355,8 +1268,6 @@ class FeedbackUI(QMainWindow):
         except Exception:
             # 最后的回退选项
             return "C:\\" if os.name == "nt" else "/"
-
-    # 移除重复的PowerShell检测代码，现在使用TerminalManager统一管理
 
     def open_settings_dialog(self):
         """Opens the settings dialog with Mac compatibility."""
@@ -1412,15 +1323,11 @@ class FeedbackUI(QMainWindow):
         # 应用窗口标志（使用统一的方法）
         self._apply_window_flags()
 
-        # 设置按钮样式和提示文本
+        # 设置按钮样式
         if self.window_pinned:
             self.pin_window_button.setObjectName("pin_window_active")
-            self.pin_window_button.setToolTip(
-                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
-            )
         else:
             self.pin_window_button.setObjectName("secondary_button")
-            self.pin_window_button.setToolTip("")
 
         # 只应用样式到固定窗口按钮，避免影响其他按钮
         self.pin_window_button.style().unpolish(self.pin_window_button)
@@ -1438,15 +1345,11 @@ class FeedbackUI(QMainWindow):
         # 应用窗口标志（使用统一的方法）
         self._apply_window_flags()
 
-        # 设置按钮样式和提示文本
+        # 设置按钮样式
         if self.window_pinned:
             self.pin_window_button.setObjectName("pin_window_active")
-            self.pin_window_button.setToolTip(
-                "固定窗口，防止自动最小化 (Pin window to prevent auto-minimize)"
-            )
         else:
             self.pin_window_button.setObjectName("secondary_button")
-            self.pin_window_button.setToolTip("")
 
         # 只应用样式变化到固定窗口按钮，避免影响其他按钮
         self.pin_window_button.style().unpolish(self.pin_window_button)
@@ -1539,6 +1442,17 @@ class FeedbackUI(QMainWindow):
         self.settings_manager.set_main_window_state(self.saveState())
 
         self.close()
+
+    def _cleanup_preview_resources(self):
+        """清理预览窗口相关资源"""
+        # 停止计时器
+        self._stop_hide_timer()
+        if hasattr(self, "_hide_timer"):
+            self._hide_timer = None
+
+        # 安全关闭预览窗口
+        if self.canned_responses_preview_window:
+            self._safe_close_preview_window()
 
     def run_ui_and_get_result(self) -> FeedbackResult:
         # 延迟显示窗口，确保所有初始化完成
@@ -1784,33 +1698,16 @@ class FeedbackUI(QMainWindow):
                     language_code, "常用语"
                 )
             )
-            self.canned_responses_button.setToolTip(
-                self.tooltip_texts["canned_responses_button"].get(
-                    language_code, "选择或管理常用语"
-                )
-            )
 
         if hasattr(self, "select_file_button") and self.select_file_button:
             self.select_file_button.setText(
                 self.button_texts["select_file_button"].get(language_code, "选择文件")
-            )
-            self.select_file_button.setToolTip(
-                self.tooltip_texts["select_file_button"].get(
-                    language_code, "打开文件选择器，选择要添加的文件或图片"
-                )
             )
 
         if hasattr(self, "screenshot_button") and self.screenshot_button:
             self.screenshot_button.setText(
                 self.button_texts["screenshot_button"].get(language_code, "窗口截图")
             )
-            self.screenshot_button.setToolTip(
-                self.tooltip_texts["screenshot_button"].get(
-                    language_code, "截取屏幕区域并添加到输入框"
-                )
-            )
-
-        # 已删除终端按钮的语言更新
 
         if hasattr(self, "pin_window_button") and self.pin_window_button:
             # 保存当前按钮的样式类名
@@ -1826,9 +1723,6 @@ class FeedbackUI(QMainWindow):
         if hasattr(self, "settings_button") and self.settings_button:
             self.settings_button.setText(
                 self.button_texts["settings_button"].get(language_code, "设置")
-            )
-            self.settings_button.setToolTip(
-                self.tooltip_texts["settings_button"].get(language_code, "打开设置面板")
             )
 
         # 单独为提交按钮、常用语按钮和设置按钮刷新样式
@@ -1948,13 +1842,13 @@ class FeedbackUI(QMainWindow):
 
     def _on_preview_window_enter(self, event):
         """预览窗口鼠标进入事件 - 取消隐藏计时器"""
-        # 取消延迟隐藏
-        pass
+        # 取消任何延迟隐藏计时器
+        self._stop_hide_timer()
 
     def _on_preview_window_leave(self, event):
-        """预览窗口鼠标离开事件 - 隐藏预览窗口"""
-        # 立即隐藏预览窗口
-        self._hide_canned_responses_preview()
+        """预览窗口鼠标离开事件 - 延迟隐藏预览窗口"""
+        # 使用延迟隐藏而不是立即隐藏，避免事件处理中的竞态条件
+        self._start_hide_timer(100)  # 100ms延迟，给事件处理足够时间
 
     def _delayed_hide_preview(self):
         """延迟隐藏预览窗口 - 检查鼠标是否在预览窗口内"""
@@ -1970,8 +1864,29 @@ class FeedbackUI(QMainWindow):
             # 检查鼠标是否在预览窗口内
             preview_rect = self.canned_responses_preview_window.geometry()
             if not preview_rect.contains(mouse_pos):
-                # 鼠标不在预览窗口内，隐藏窗口
-                self._hide_canned_responses_preview()
+                # 鼠标不在预览窗口内，安全隐藏窗口
+                self._safe_hide_preview()
+
+    def _start_hide_timer(self, delay_ms: int):
+        """启动隐藏计时器"""
+        self._stop_hide_timer()  # 先停止现有计时器
+
+        if not hasattr(self, "_hide_timer"):
+            self._hide_timer = QTimer()
+            self._hide_timer.setSingleShot(True)
+            self._hide_timer.timeout.connect(self._safe_hide_preview)
+
+        self._hide_timer.start(delay_ms)
+
+    def _stop_hide_timer(self):
+        """停止隐藏计时器"""
+        if hasattr(self, "_hide_timer") and self._hide_timer:
+            self._hide_timer.stop()
+
+    def _safe_hide_preview(self):
+        """安全隐藏预览窗口 - 避免事件处理中的竞态条件"""
+        # 使用QTimer.singleShot确保在事件循环的下一次迭代中执行
+        QTimer.singleShot(0, self._hide_canned_responses_preview)
 
     def _show_canned_responses_preview(self):
         """显示常用语预览窗口"""
@@ -1981,15 +1896,11 @@ class FeedbackUI(QMainWindow):
         # 预先设置自动最小化保护，防止预览窗口交互导致窗口最小化
         self.disable_auto_minimize = True
 
-        # 如果预览窗口已存在，先关闭
+        # 如果预览窗口已存在，先安全关闭
         if self.canned_responses_preview_window:
-            self.canned_responses_preview_window.close()
-            self.canned_responses_preview_window = None
+            self._safe_close_preview_window()
 
         # 创建预览窗口
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-        from PySide6.QtCore import Qt
-
         self.canned_responses_preview_window = QWidget()
         self.canned_responses_preview_window.setWindowFlags(
             Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
@@ -1998,9 +1909,8 @@ class FeedbackUI(QMainWindow):
             Qt.WidgetAttribute.WA_ShowWithoutActivating
         )
 
-        # 为预览窗口添加hover事件处理，支持鼠标移动到预览窗口
-        self.canned_responses_preview_window.enterEvent = self._on_preview_window_enter
-        self.canned_responses_preview_window.leaveEvent = self._on_preview_window_leave
+        # 使用更安全的事件处理方式
+        self._setup_preview_window_events()
 
         # 主布局 - 直接使用VBoxLayout，不使用滚动区域
         main_layout = QVBoxLayout(self.canned_responses_preview_window)
@@ -2030,8 +1940,6 @@ class FeedbackUI(QMainWindow):
             response_label.setWordWrap(False)  # 禁用自动换行
 
             # 使用Qt原生的文本省略功能
-            from PySide6.QtCore import Qt
-
             response_label.setTextFormat(Qt.TextFormat.PlainText)
 
             # 设置文本省略模式为末尾省略
@@ -2110,14 +2018,56 @@ class FeedbackUI(QMainWindow):
         )
         self.canned_responses_preview_window.show()
 
-    def _hide_canned_responses_preview(self):
-        """隐藏常用语预览窗口"""
+    def _setup_preview_window_events(self):
+        """设置预览窗口的事件处理 - 使用更安全的方式"""
+        if not self.canned_responses_preview_window:
+            return
+
+        # 创建一个事件过滤器类来处理事件
+        class PreviewEventFilter(QObject):
+            def __init__(self, parent_window):
+                super().__init__()
+                self.parent_window = parent_window
+
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.Type.Enter:
+                    self.parent_window._on_preview_window_enter(event)
+                elif event.type() == QEvent.Type.Leave:
+                    self.parent_window._on_preview_window_leave(event)
+                return False
+
+        # 创建并安装事件过滤器
+        self._preview_event_filter = PreviewEventFilter(self)
+        self.canned_responses_preview_window.installEventFilter(
+            self._preview_event_filter
+        )
+
+    def _safe_close_preview_window(self):
+        """安全关闭预览窗口"""
         if self.canned_responses_preview_window:
+            # 停止计时器
+            self._stop_hide_timer()
+
+            # 移除事件过滤器
+            if hasattr(self, "_preview_event_filter"):
+                self.canned_responses_preview_window.removeEventFilter(
+                    self._preview_event_filter
+                )
+                self._preview_event_filter = None
+
+            # 关闭窗口
             self.canned_responses_preview_window.close()
             self.canned_responses_preview_window = None
 
-        # 恢复自动最小化功能
-        self.disable_auto_minimize = False
+    def _hide_canned_responses_preview(self):
+        """隐藏常用语预览窗口"""
+        try:
+            self._safe_close_preview_window()
+        except Exception as e:
+            print(f"DEBUG: 隐藏预览窗口时出错: {e}", file=sys.stderr)
+        finally:
+            # 确保恢复自动最小化功能
+            self.disable_auto_minimize = False
 
     def _on_preview_item_clicked(self, text):
         """预览项目被点击时插入到输入框"""
@@ -2132,11 +2082,6 @@ class FeedbackUI(QMainWindow):
 
         # 隐藏预览窗口（会自动恢复disable_auto_minimize）
         self._hide_canned_responses_preview()
-
-    # 已删除终端预览功能
-
-    # 已删除简单终端预览功能 - 第一部分
-    # 已删除简单终端预览功能 - 剩余部分
 
     def update_font_sizes(self):
         """
@@ -2366,10 +2311,6 @@ class FeedbackUI(QMainWindow):
             self.enhance_button.setEnabled(not loading)
 
             if loading:
-                # 加载时显示动态提示
-                self.optimize_button.setToolTip("🔄 正在优化文本，请稍候...")
-                self.enhance_button.setToolTip("🔄 正在增强文本，请稍候...")
-
                 # 改变按钮样式以显示加载状态
                 self.optimize_button.setStyleSheet(
                     self.optimize_button.styleSheet() + "QPushButton { opacity: 0.6; }"
@@ -2379,13 +2320,6 @@ class FeedbackUI(QMainWindow):
                 )
             else:
                 # 恢复正常状态
-                current_language = self.settings_manager.get_current_language()
-                self.optimize_button.setToolTip(
-                    self.tooltip_texts["optimize_button"][current_language]
-                )
-                self.enhance_button.setToolTip(
-                    self.tooltip_texts["enhance_button"][current_language]
-                )
 
                 # 恢复按钮样式
                 original_style = self.optimize_button.styleSheet().replace(
@@ -2403,10 +2337,6 @@ class FeedbackUI(QMainWindow):
 
             if hasattr(self.text_input, "reinforce_button"):
                 self.text_input.reinforce_button.setEnabled(not loading)
-                if loading:
-                    self.text_input.reinforce_button.setToolTip("🔄 强化中...")
-                else:
-                    self.text_input.reinforce_button.setToolTip("提示词强化")
 
     def _convert_error_to_user_friendly(self, error_message: str) -> str:
         """
@@ -2491,32 +2421,20 @@ class FeedbackUI(QMainWindow):
             self.canned_responses_button.setText(
                 self.button_texts["canned_responses_button"][current_language]
             )
-            self.canned_responses_button.setToolTip(
-                self.tooltip_texts["canned_responses_button"][current_language]
-            )
 
         if hasattr(self, "select_file_button"):
             self.select_file_button.setText(
                 self.button_texts["select_file_button"][current_language]
-            )
-            self.select_file_button.setToolTip(
-                self.tooltip_texts["select_file_button"][current_language]
             )
 
         if hasattr(self, "screenshot_button"):
             self.screenshot_button.setText(
                 self.button_texts["screenshot_button"][current_language]
             )
-            self.screenshot_button.setToolTip(
-                self.tooltip_texts["screenshot_button"][current_language]
-            )
 
         if hasattr(self, "open_terminal_button"):
             self.open_terminal_button.setText(
                 self.button_texts["open_terminal_button"][current_language]
-            )
-            self.open_terminal_button.setToolTip(
-                self.tooltip_texts["open_terminal_button"][current_language]
             )
 
         if hasattr(self, "pin_window_button"):
@@ -2528,25 +2446,16 @@ class FeedbackUI(QMainWindow):
             self.settings_button.setText(
                 self.button_texts["settings_button"][current_language]
             )
-            self.settings_button.setToolTip(
-                self.tooltip_texts["settings_button"][current_language]
-            )
 
         # V4.0 新增：更新优化按钮文本
         if hasattr(self, "optimize_button"):
             self.optimize_button.setText(
                 self.button_texts["optimize_button"][current_language]
             )
-            self.optimize_button.setToolTip(
-                self.tooltip_texts["optimize_button"][current_language]
-            )
 
         if hasattr(self, "enhance_button"):
             self.enhance_button.setText(
                 self.button_texts["enhance_button"][current_language]
-            )
-            self.enhance_button.setToolTip(
-                self.tooltip_texts["enhance_button"][current_language]
             )
 
         # V4.3 新增：更新占位符文本

@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -58,10 +57,6 @@ class ImagePreviewWidget(QWidget):
 
         self.thumbnail_label.setPixmap(self.display_thumbnail)
         layout.addWidget(self.thumbnail_label)
-
-        self.setToolTip(
-            "悬停查看大图，点击图标删除图片 (Hover to see larger image, click to delete)"
-        )
         self.setMouseTracking(
             True
         )  # Needed for enterEvent/leaveEvent without mouse button press
@@ -99,7 +94,6 @@ class ImagePreviewWidget(QWidget):
         if self.preview_window and self.preview_window.isVisible():
             self.preview_window.close()  # Close the pop-up preview
             self.preview_window = None
-        QToolTip.hideText()  # Ensure any native tooltip is hidden
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QEvent):  # QMouseEvent

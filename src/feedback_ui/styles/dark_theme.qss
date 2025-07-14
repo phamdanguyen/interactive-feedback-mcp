@@ -6,21 +6,7 @@
     font-weight: 400;
 }
 
-/* 工具提示样式 (Tooltip Styles) */
-QToolTip {
-    background-color: #3c3c3c;
-    color: #f0f0f0;
-    border: 1px solid #555555;
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 12pt;
-    font-family: 'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif;
-    line-height: 1.5;
-    max-width: 380px;
-    word-wrap: break-word;
-    /* 添加阴影效果，与预览窗口风格保持一致 */
-    qproperty-windowOpacity: 0.95;
-}
+
 
 QMainWindow, QDialog {
     background-color: #2c2c2c;
@@ -47,10 +33,97 @@ QGroupBox::title {
 }
 
 /* 提示文字区域标签 - 描述区域 (颜色和内边距) */
-SelectableLabel[class="prompt-label"] { 
+SelectableLabel[class="prompt-label"] {
     color: #ffffff; /* 纯白色，与输入框文字一致 */
     padding: 2px;
     /* font-size is now set dynamically */
+}
+
+/* Markdown元素样式 - 深色主题 */
+SelectableLabel h1, SelectableLabel h2, SelectableLabel h3,
+SelectableLabel h4, SelectableLabel h5, SelectableLabel h6 {
+    color: inherit;
+    margin: 0.2em 0;
+    font-weight: bold;
+}
+
+SelectableLabel h1 {
+    font-size: 1.4em;
+}
+
+SelectableLabel h2 {
+    font-size: 1.2em;
+}
+
+SelectableLabel h3 {
+    font-size: 1.1em;
+}
+
+SelectableLabel strong, SelectableLabel b {
+    font-weight: bold;
+    color: inherit;
+}
+
+/* 代码元素样式 - 深色主题 */
+/* 代码颜色: #4A90E2 (蓝色) */
+
+/* 内联代码样式 */
+SelectableLabel .code-inline,
+SelectableLabel span[style*="Courier New"],
+SelectableLabel code {
+    color: #4A90E2 !important;
+    background-color: rgba(60, 60, 60, 0.4) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+/* 代码块样式 */
+SelectableLabel .code-block,
+SelectableLabel pre {
+    color: #4A90E2 !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+    display: inline !important;
+}
+
+/* 代码块内的span元素 */
+SelectableLabel pre span {
+    color: #4A90E2 !important;
+}
+
+
+
+SelectableLabel em, SelectableLabel i {
+    font-style: italic;
+    color: inherit;
+}
+
+SelectableLabel code {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    background-color: rgba(128, 128, 128, 0.15);
+    padding: 1px 3px;
+    border-radius: 2px;
+    color: inherit;
+}
+
+SelectableLabel pre {
+    background-color: rgba(128, 128, 128, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    border-left: 3px solid #555555;
+    margin: 0.5em 0;
+}
+
+SelectableLabel blockquote {
+    border-left: 3px solid #555555;
+    padding-left: 10px;
+    margin: 0.5em 0;
+    color: inherit;
+    font-style: italic;
 }
 
 /* 选项区域的标签样式 (颜色) */

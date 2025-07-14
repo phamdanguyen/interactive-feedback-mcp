@@ -10,7 +10,12 @@ recursive-include src/feedback_ui/resources *.qrc *.py *.wav *.mp3 *.ogg
 recursive-include src/feedback_ui/resources/sounds *.wav *.mp3 *.ogg *.flac *.aac
 recursive-include src/feedback_ui/resources/translations *.qm *.ts
 recursive-include src/feedback_ui/styles *.qss
+
+# 确保编译的资源文件被包含（uv安装兼容性）
+include src/feedback_ui/resources_rc.py
+
 global-exclude *.pyc
+global-exclude config.json
 global-exclude __pycache__
 global-exclude *.egg-info
 global-exclude .git*

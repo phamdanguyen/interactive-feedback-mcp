@@ -1,6 +1,5 @@
 # feedback_ui/dialogs/manage_canned_responses_dialog.py
-from PySide6.QtCore import QEvent, QObject, Qt, QRect  # Added QObject, QEvent, QRect
-from PySide6.QtGui import QCursor  # Added QCursor
+from PySide6.QtCore import QEvent, QObject, Qt  # Added QObject, QEvent
 from PySide6.QtWidgets import (
     QDialog,
     QGroupBox,
@@ -9,12 +8,10 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QToolTip,
     QVBoxLayout,
 )
 
 from ..utils.settings_manager import SettingsManager  # Relative import
-from ..utils.tooltip_formatter import TooltipFormatter  # Import tooltip formatter
 
 
 class ManageCannedResponsesDialog(QDialog):
@@ -120,11 +117,6 @@ class ManageCannedResponsesDialog(QDialog):
         if responses:
             for response_text in responses:
                 self.responses_list_widget.addItem(response_text)
-                # 为列表项设置工具提示，显示完整的常用语文本内容
-                item = self.responses_list_widget.item(
-                    self.responses_list_widget.count() - 1
-                )
-                TooltipFormatter.set_tooltip_for_widget(item, response_text)
         self._update_button_states()
 
     def _save_responses_to_settings(self):
@@ -165,16 +157,12 @@ class ManageCannedResponsesDialog(QDialog):
             return
 
         self.responses_list_widget.addItem(text)
-        # 为新添加的列表项设置工具提示
-        item = self.responses_list_widget.item(self.responses_list_widget.count() - 1)
-        TooltipFormatter.set_tooltip_for_widget(item, text)
         self._save_responses_to_settings()
         self.input_field.clear()
         self.responses_list_widget.setCurrentRow(
             self.responses_list_widget.count() - 1
         )  # Select new item
         self._update_button_states()
-        QToolTip.showText(QCursor.pos(), self.tr("成功添加常用语"), self, QRect(), 2000)
 
     def _update_selected_response(self):
         """Updates the currently selected response with text from the input field."""
@@ -197,8 +185,6 @@ class ManageCannedResponsesDialog(QDialog):
                 return
 
         current_item.setText(new_text)
-        # 更新工具提示以显示新的文本内容
-        TooltipFormatter.set_tooltip_for_widget(current_item, new_text)
         self._save_responses_to_settings()
         # self.input_field.clear() # Keep text for further editing if desired
         # self.responses_list_widget.clearSelection() # Keep item selected

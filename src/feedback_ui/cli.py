@@ -173,59 +173,73 @@ def main():
             "可以考虑增加... (Could you consider adding...)",
         ]
 
-    # V3.2 严格边界控制：应用三层回退逻辑
+    # V3.2 简化的三层回退逻辑 - uv安装兼容版本
     try:
-        # 导入V3.2配置和规则引擎
-        import sys
-        import os
+        # 简化导入策略：优先使用标准包导入
+        config = None
+        resolve_final_options = None
 
-        # 兼容包安装模式和开发模式的导入
+        # 策略1：标准包导入（uv安装模式）
         try:
-            # 首先尝试直接导入（适用于包安装模式）
             from interactive_feedback_server.utils.rule_engine import (
                 resolve_final_options,
             )
             from interactive_feedback_server.utils.config_manager import get_config
-        except ImportError:
-            # 如果直接导入失败，尝试开发模式的路径解析
-            current_file = os.path.abspath(__file__)
-            feedback_ui_dir = os.path.dirname(current_file)  # src/feedback_ui
-            src_dir = os.path.dirname(feedback_ui_dir)  # src
-            project_root = os.path.dirname(src_dir)  # 项目根目录
 
-            # 添加到路径
-            if project_root not in sys.path:
-                sys.path.insert(0, project_root)
+            config = get_config()
+            print("使用标准包导入模式", file=sys.stderr)
+        except ImportError as e1:
+            print(f"标准包导入失败: {e1}", file=sys.stderr)
 
-            from src.interactive_feedback_server.utils.rule_engine import (
-                resolve_final_options,
+            # 策略2：开发模式导入
+            try:
+                current_file = os.path.abspath(__file__)
+                feedback_ui_dir = os.path.dirname(current_file)
+                src_dir = os.path.dirname(feedback_ui_dir)
+                project_root = os.path.dirname(src_dir)
+
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+
+                from src.interactive_feedback_server.utils.rule_engine import (
+                    resolve_final_options,
+                )
+                from src.interactive_feedback_server.utils.config_manager import (
+                    get_config,
+                )
+
+                config = get_config()
+                print("使用开发模式导入", file=sys.stderr)
+            except ImportError as e2:
+                print(f"开发模式导入失败: {e2}", file=sys.stderr)
+                # 导入失败，使用基础选项
+                resolve_final_options = None
+                config = None
+
+        # 如果成功导入，使用规则引擎
+        if resolve_final_options and config:
+            ai_options_for_engine = options_list if options_list else None
+            final_options = resolve_final_options(
+                ai_options=ai_options_for_engine,
+                text=args.prompt,
+                config=config,
             )
-            from src.interactive_feedback_server.utils.config_manager import get_config
-
-        # 获取配置
-        config = get_config()
-
-        # 严格的三层回退逻辑：
-        # 1. 如果有预定义选项，作为AI选项传入（第一层）
-        # 2. 如果没有预定义选项，传入None让规则引擎处理（第二层）
-        # 3. 规则引擎无法处理时自动使用后备选项（第三层）
-        ai_options_for_engine = options_list if options_list else None
-
-        final_options = resolve_final_options(
-            ai_options=ai_options_for_engine,  # 严格按照边界规则传入
-            text=args.prompt,  # 使用提示文本
-            config=config,
-        )
-
-        # 更新选项列表
-        if final_options:
-            options_list = final_options
+            if final_options:
+                options_list = final_options
+                print(
+                    f"规则引擎处理完成，最终选项数量: {len(options_list)}",
+                    file=sys.stderr,
+                )
+        else:
+            print("规则引擎不可用，使用基础选项", file=sys.stderr)
 
     except Exception as e:
-        print(f"V3.2 Error - 三层回退逻辑失败: {e}", file=sys.stderr)
-        # 极端情况下的保底选项
-        if not options_list:
-            options_list = ["继续", "取消", "需要帮助"]
+        print(f"选项处理失败: {e}", file=sys.stderr)
+
+    # 最终保底选项
+    if not options_list:
+        options_list = ["继续", "取消", "需要帮助"]
+        print("使用保底选项", file=sys.stderr)
 
     final_result = start_feedback_tool(args.prompt, options_list, args.output_file)
 

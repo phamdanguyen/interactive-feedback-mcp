@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid  # 替换sip
 
 from ..utils.settings_manager import SettingsManager  # Relative import
-from ..utils.tooltip_formatter import TooltipFormatter  # Import tooltip formatter
 from .draggable_list_widget import DraggableListWidget  # Import the custom list widget
 
 # Forward declaration for type hinting parent window
@@ -64,10 +63,6 @@ class SelectCannedResponseDialog(QDialog):
             "save_button": {"zh_CN": "保存", "en_US": "Save"},
             "close_button": {"zh_CN": "关闭", "en_US": "Close"},
             "delete_button": {"zh_CN": "删除", "en_US": "Delete"},
-            "delete_tooltip": {
-                "zh_CN": "删除此常用语",
-                "en_US": "Delete this canned response",
-            },
             "invalid_input": {"zh_CN": "输入无效", "en_US": "Invalid Input"},
             "empty_input_message": {
                 "zh_CN": "常用语不能为空。",
@@ -163,8 +158,6 @@ class SelectCannedResponseDialog(QDialog):
         text_label.setMaximumWidth(
             350
         )  # Prevent very long text from expanding too much
-        # 为文本标签设置工具提示，显示完整的常用语文本内容
-        TooltipFormatter.set_tooltip_for_widget(text_label, text)
         item_layout.addWidget(text_label, 1)  # Label takes available space
 
         current_language = self.settings_manager.get_current_language()
@@ -173,7 +166,6 @@ class SelectCannedResponseDialog(QDialog):
         delete_button.setObjectName(
             "delete_canned_item_button"
         )  # For specific styling via QSS
-        delete_button.setToolTip(self.texts["delete_tooltip"][current_language])
         # Use lambda to pass the item (or its text) to the delete function
         delete_button.clicked.connect(
             lambda _, item_to_delete=item: self._delete_response_item(item_to_delete)
@@ -319,4 +311,3 @@ class SelectCannedResponseDialog(QDialog):
             for button in self.delete_buttons:
                 if button and isValid(button):
                     button.setText(self.texts["delete_button"][current_language])
-                    button.setToolTip(self.texts["delete_tooltip"][current_language])

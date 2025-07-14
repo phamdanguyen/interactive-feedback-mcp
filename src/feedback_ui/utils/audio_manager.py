@@ -322,32 +322,68 @@ class AudioManager(QObject):
 
     def _get_default_notification_sound(self) -> Optional[str]:
         """
-        获取默认提示音文件路径
-        Get default notification sound file path
+        获取默认提示音文件路径 - uv安装兼容版本
+        Get default notification sound file path - uv installation compatible version
 
         Returns:
             str: 默认提示音文件路径
         """
-        # 优先尝试从包内资源获取
+        # 策略1：尝试从Qt资源系统获取（最可靠）
+        resource_path = ":/sounds/notification.wav"
+        if self._check_qt_resource(resource_path):
+            print("使用Qt资源系统音频文件", file=sys.stderr)
+            return resource_path
+
+        # 策略2：尝试从包内资源获取（开发模式）
         try:
             # 获取当前文件所在目录
             current_dir = Path(__file__).parent.parent
             sound_file = current_dir / "resources" / "sounds" / "notification.wav"
 
             if sound_file.exists():
+                print(f"使用包内音频文件: {sound_file}", file=sys.stderr)
                 return str(sound_file)
-            else:
-                print(f"包内默认提示音文件不存在: {sound_file}", file=sys.stderr)
         except Exception as e:
             print(f"获取包内音频文件失败: {e}", file=sys.stderr)
 
-        # 回退：尝试从Qt资源系统获取
-        resource_path = ":/sounds/notification.wav"
-        if self._check_qt_resource(resource_path):
-            return resource_path
+        # 策略3：尝试从安装包数据目录获取（uv安装模式）
+        try:
+            import pkg_resources
+
+            try:
+                sound_path = pkg_resources.resource_filename(
+                    "feedback_ui.resources.sounds", "notification.wav"
+                )
+                if os.path.exists(sound_path):
+                    print(f"使用pkg_resources音频文件: {sound_path}", file=sys.stderr)
+                    return sound_path
+            except (pkg_resources.DistributionNotFound, FileNotFoundError):
+                pass
+        except ImportError:
+            pass
+
+        # 策略4：尝试使用importlib.resources（Python 3.9+）
+        try:
+            if sys.version_info >= (3, 9):
+                import importlib.resources as resources
+
+                try:
+                    with resources.path(
+                        "feedback_ui.resources.sounds", "notification.wav"
+                    ) as sound_path:
+                        if sound_path.exists():
+                            print(
+                                f"使用importlib.resources音频文件: {sound_path}",
+                                file=sys.stderr,
+                            )
+                            return str(sound_path)
+                except (FileNotFoundError, ModuleNotFoundError):
+                    pass
+        except ImportError:
+            pass
 
         # 最后回退：使用系统默认提示音
-        print("使用系统默认提示音", file=sys.stderr)
+        print("所有音频文件获取方式失败，使用系统默认提示音", file=sys.stderr)
         return None
 
     def _play_system_notification_sound(self) -> bool:
