@@ -216,20 +216,58 @@ class TextFormatter:
         Returns:
             bool: 如果包含格式标记返回True
         """
-        if not text:
+        if not text or len(text.strip()) < 3:
             return False
 
-        # 快速检查常见格式标记（避免复杂正则表达式）
-        quick_markers = ["**", "*", "`", "#", "- ", "> ", "[", "```", "___", "__"]
-
-        for marker in quick_markers:
-            if marker in text:
-                return True
-
-        # 检查数字列表格式 (1. 2. 等)
         import re
 
+        # 更精确的检测逻辑，减少误判
+
+        # 1. 检查标题（必须在行首）
+        if re.search(r"^#{1,6}\s+", text, re.MULTILINE):
+            return True
+
+        # 2. 检查代码块（必须独立成行）
+        if re.search(r"^```", text, re.MULTILINE):
+            return True
+
+        # 3. 检查列表（必须在行首）
+        if re.search(r"^[-*+]\s+", text, re.MULTILINE):
+            return True
+
+        # 4. 检查数字列表（必须在行首）
         if re.search(r"^\s*\d+\.\s+", text, re.MULTILINE):
+            return True
+
+        # 5. 检查引用（必须在行首）
+        if re.search(r"^>\s+", text, re.MULTILINE):
+            return True
+
+        # 6. 检查成对的粗体标记
+        bold_matches = re.findall(r"\*\*[^*]+\*\*", text)
+        if bold_matches:
+            return True
+
+        # 7. 检查成对的斜体标记（但排除单个星号）
+        # 只有当星号成对出现且包围非空内容时才认为是斜体
+        # 更严格的斜体检测：确保星号前后有空格或标点，避免误判
+        italic_matches = re.findall(
+            r"(?:^|\s)\*([^*\s][^*]*[^*\s])\*(?:\s|$|[,.!?])", text
+        )
+        if italic_matches:
+            return True
+
+        # 8. 检查成对的内联代码
+        code_matches = re.findall(r"`[^`]+`", text)
+        if code_matches:
+            return True
+
+        # 9. 检查链接格式
+        if re.search(r"\[.+\]\(.+\)", text):
+            return True
+
+        # 10. 检查下划线格式（成对出现）
+        if re.search(r"__[^_]+__", text) or re.search(r"___[^_]+___", text):
             return True
 
         return False

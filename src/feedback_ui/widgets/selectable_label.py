@@ -1,4 +1,5 @@
 import re
+import importlib
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel
@@ -48,6 +49,10 @@ class SelectableLabel(QLabel):
         # 初始化属性
         self._original_text = ""
         self._enable_formatting = False  # 默认禁用格式化
+
+        # 缓存text_formatter模块，避免重复导入
+        self._text_formatter = None
+        self._text_formatter_loaded = False
 
         # 设置初始文本（如果提供）
         if text:
@@ -123,14 +128,26 @@ class SelectableLabel(QLabel):
         # 存储原始文本
         self._original_text = text or ""
 
-        # 检测是否为Markdown内容
-        if self._is_markdown_content(text):
-            # 设置为富文本格式并渲染Markdown
-            self.setTextFormat(Qt.TextFormat.RichText)
-            html_content = self._convert_markdown_to_html(text)
-            super().setText(html_content)
-        else:
-            # 普通文本，保持原有逻辑
+        try:
+            # 检测是否为Markdown内容
+            if self._is_markdown_content(text):
+                # 设置为富文本格式并渲染Markdown
+                self.setTextFormat(Qt.TextFormat.RichText)
+                html_content = self._convert_markdown_to_html(text)
+
+                # 验证HTML内容是否有效
+                if html_content and html_content != text:
+                    super().setText(html_content)
+                else:
+                    # 如果转换失败，回退到普通文本
+                    self.setTextFormat(Qt.TextFormat.PlainText)
+                    super().setText(text or "")
+            else:
+                # 普通文本，保持原有逻辑
+                self.setTextFormat(Qt.TextFormat.PlainText)
+                super().setText(text or "")
+        except Exception:
+            # 任何异常都回退到普通文本模式，确保稳定性
             self.setTextFormat(Qt.TextFormat.PlainText)
             super().setText(text or "")
 
@@ -165,6 +182,39 @@ class SelectableLabel(QLabel):
         """
         return self._enable_formatting
 
+    def _get_text_formatter(self):
+        """
+        获取text_formatter模块，使用缓存避免重复导入
+        Get text_formatter module with caching to avoid repeated imports
+        """
+        if self._text_formatter_loaded:
+            return self._text_formatter
+
+        # 标记已尝试加载，避免重复尝试
+        self._text_formatter_loaded = True
+
+        # 多重导入策略
+        strategies = [
+            # 策略1：相对导入（开发环境）
+            lambda: __import__(
+                "feedback_ui.utils.text_formatter", fromlist=["text_formatter"]
+            ).text_formatter,
+            # 策略2：绝对导入（uv安装环境）
+            lambda: importlib.import_module(
+                "feedback_ui.utils.text_formatter"
+            ).text_formatter,
+        ]
+
+        for strategy in strategies:
+            try:
+                self._text_formatter = strategy()
+                if hasattr(self._text_formatter, "is_formatted_text"):
+                    return self._text_formatter
+            except (ImportError, AttributeError, ValueError):
+                continue
+
+        return None
+
     def _is_markdown_content(self, text: str) -> bool:
         """
         检测文本是否包含Markdown格式
@@ -179,27 +229,56 @@ class SelectableLabel(QLabel):
         if not text:
             return False
 
-        # 复用现有的检测逻辑
-        try:
-            from ..utils.text_formatter import text_formatter
+        # 尝试使用text_formatter进行精确检测
+        text_formatter = self._get_text_formatter()
+        if text_formatter:
+            try:
+                return text_formatter.is_formatted_text(text)
+            except Exception:
+                pass
 
-            return text_formatter.is_formatted_text(text)
-        except (ImportError, AttributeError):
-            # 如果导入失败，使用简单的检测逻辑
-            # 使用元组而非列表，提高性能
-            markdown_indicators = (
-                "**",
-                "*",
-                "`",
-                "#",
-                "- ",
-                "> ",
-                "[",
-                "```",
-                "___",
-                "__",
-            )
-            return any(indicator in text for indicator in markdown_indicators)
+        # 回退到简化的检测逻辑
+        return self._fallback_markdown_detection(text)
+
+    def _fallback_markdown_detection(self, text: str) -> bool:
+        """
+        简化的回退Markdown检测逻辑，减少误判
+        Simplified fallback Markdown detection logic with reduced false positives
+
+        Args:
+            text (str): 要检测的文本
+
+        Returns:
+            bool: True表示可能包含Markdown格式
+        """
+        if not text or len(text.strip()) < 3:
+            return False
+
+        # 检测明确的Markdown标记（行首标记）
+        lines = text.split("\n")
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # 标题、代码块、列表、引用（必须在行首）
+            if (
+                (line.startswith("#") and len(line) > 1 and line[1] in (" ", "#"))
+                or line.startswith("```")
+                or line.startswith(("- ", "* ", "> "))
+                or re.match(r"^\d+\.\s+", line)
+            ):
+                return True
+
+        # 检测成对的格式标记
+        if (
+            (text.count("**") >= 2 and text.count("**") % 2 == 0)
+            or (text.count("`") >= 2 and text.count("`") % 2 == 0)
+            or re.search(r"\[.+\]\(.+\)", text)
+        ):
+            return True
+
+        return False
 
     def _convert_markdown_to_html(self, markdown_text: str) -> str:
         """
@@ -218,15 +297,15 @@ class SelectableLabel(QLabel):
             doc.setMarkdown(markdown_text)
             html = doc.toHtml()
 
-            # 处理代码元素的颜色样式
-            html = self._apply_code_colors(html)
-
-            html = _BODY_TAG_PATTERN.sub("<body>", html)
-
-            return html
-        except (RuntimeError, AttributeError) as e:
-            # 捕获具体的Qt相关异常
-            print(f"Markdown转换失败: {e}")
+            # 验证转换结果并处理
+            if html and html.strip():
+                html = self._apply_code_colors(html)
+                html = _BODY_TAG_PATTERN.sub("<body>", html)
+                return html
+            else:
+                return markdown_text
+        except Exception:
+            # 任何异常都回退到原文本，确保稳定性
             return markdown_text
 
     def _apply_code_colors(self, html: str) -> str:
