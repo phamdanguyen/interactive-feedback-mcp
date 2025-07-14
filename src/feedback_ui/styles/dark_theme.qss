@@ -67,9 +67,16 @@ SelectableLabel strong, SelectableLabel b {
 /* 代码元素样式 - 深色主题 */
 /* 代码颜色: #4A90E2 (蓝色) */
 
-/* 内联代码样式 */
-SelectableLabel .code-inline,
-SelectableLabel span[style*="Courier New"],
+/* 内联代码样式 - 简化并强化class选择器 */
+SelectableLabel .code-inline {
+    color: #4A90E2 !important;
+    background-color: rgba(60, 60, 60, 0.4) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+/* 通用代码元素样式 */
 SelectableLabel code {
     color: #4A90E2 !important;
     background-color: rgba(60, 60, 60, 0.4) !important;
@@ -95,28 +102,31 @@ SelectableLabel pre span {
     color: #4A90E2 !important;
 }
 
+/* QTextEdit 代码样式支持 - 优化版本 */
+QTextEdit code, QTextEdit pre, FeedbackTextEdit code, FeedbackTextEdit pre {
+    color: #4A90E2 !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
 
+QTextEdit code, FeedbackTextEdit code {
+    background-color: rgba(60, 60, 60, 0.4) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+}
+
+QTextEdit pre, FeedbackTextEdit pre {
+    background-color: rgba(60, 60, 60, 0.2) !important;
+    padding: 8px !important;
+    border-radius: 4px !important;
+    border-left: 3px solid #4A90E2 !important;
+}
 
 SelectableLabel em, SelectableLabel i {
     font-style: italic;
     color: inherit;
 }
 
-SelectableLabel code {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    background-color: rgba(128, 128, 128, 0.15);
-    padding: 1px 3px;
-    border-radius: 2px;
-    color: inherit;
-}
-
-SelectableLabel pre {
-    background-color: rgba(128, 128, 128, 0.1);
-    padding: 8px;
-    border-radius: 4px;
-    border-left: 3px solid #555555;
-    margin: 0.5em 0;
-}
+/* 移除重复的代码样式定义，避免与上方的蓝色代码样式冲突 */
 
 SelectableLabel blockquote {
     border-left: 3px solid #555555;
@@ -130,12 +140,6 @@ SelectableLabel blockquote {
 SelectableLabel[class="option-label"] {
     color: #aaaaaa; /* 更明显的灰色 */
     /* font-size is now set dynamically */
-}
-
-/* 选项区域的标签样式 */
-QWidget > SelectableLabel {
-    color: #aaaaaa; /* 更明显的灰色 */
-    font-size: 13pt;
 }
 
 /* 除了滚动区域内的可选择标签 */

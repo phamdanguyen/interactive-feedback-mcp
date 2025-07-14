@@ -74,9 +74,16 @@ SelectableLabel em, SelectableLabel i {
 /* 代码元素样式 - 浅色主题 */
 /* 代码颜色: #4A90E2 (蓝色) */
 
-/* 内联代码样式 */
-SelectableLabel .code-inline,
-SelectableLabel span[style*="Courier New"],
+/* 内联代码样式 - 简化并强化class选择器 */
+SelectableLabel .code-inline {
+    color: #4A90E2 !important;
+    background-color: rgba(220, 220, 220, 0.4) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+/* 通用代码元素样式 */
 SelectableLabel code {
     color: #4A90E2 !important;
     background-color: rgba(220, 220, 220, 0.4) !important;
@@ -102,7 +109,24 @@ SelectableLabel pre span {
     color: #4A90E2 !important;
 }
 
+/* QTextEdit 代码样式支持 - 浅色主题优化版本 */
+QTextEdit code, QTextEdit pre, FeedbackTextEdit code, FeedbackTextEdit pre {
+    color: #4A90E2 !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
 
+QTextEdit code, FeedbackTextEdit code {
+    background-color: rgba(220, 220, 220, 0.4) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+}
+
+QTextEdit pre, FeedbackTextEdit pre {
+    background-color: rgba(220, 220, 220, 0.2) !important;
+    padding: 8px !important;
+    border-radius: 4px !important;
+    border-left: 3px solid #4A90E2 !important;
+}
 
 SelectableLabel blockquote {
     border-left: 3px solid #cccccc;

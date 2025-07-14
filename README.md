@@ -152,7 +152,7 @@ uv tool install interactive-feedback@latest
 pip install interactive-feedback
 ```
 
-**当前版本：** v2.5.9.7 - 新增Markdown渲染支持，GUI窗口自动识别并美化显示Markdown格式文本
+**当前版本：** v2.5.9.11 - 采用增强内联样式彻底解决uv环境内联代码显示问题，确保完全兼容
 
 ### 方式二：开发安装
 

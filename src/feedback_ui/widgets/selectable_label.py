@@ -13,13 +13,13 @@ _BODY_TAG_PATTERN = re.compile(r"<body[^>]*>")
 # 代码颜色常量
 _CODE_COLOR = "#4A90E2"
 
-# 预编译代码处理的正则表达式
+# 预编译代码处理的正则表达式 - 增强版本以处理更多格式
 _INLINE_CODE_PATTERN = re.compile(
-    r'<span style="([^"]*font-family:\'Courier New\'[^"]*)"'
+    r'<span style="([^"]*font-family:[\'"]?Courier New[\'"]?[^"]*)"'
 )
 _CODE_BLOCK_PATTERN = re.compile(r'<pre style="([^"]*)"')
 _CODE_BLOCK_SPAN_PATTERN = re.compile(
-    r'(<pre[^>]*>.*?)<span style="([^"]*font-family:\'Courier New\'[^"]*)"([^>]*>.*?</span>.*?</pre>)',
+    r'(<pre[^>]*>.*?)<span style="([^"]*font-family:[\'"]?Courier New[\'"]?[^"]*)"([^>]*>.*?</span>.*?</pre>)',
     re.DOTALL,
 )
 
@@ -310,8 +310,8 @@ class SelectableLabel(QLabel):
 
     def _apply_code_colors(self, html: str) -> str:
         """
-        为代码元素添加CSS类名和蓝色样式
-        Add CSS classes and blue color styles to code elements
+        为代码元素添加CSS类名和蓝色样式 - 增强版本
+        Add CSS classes and blue color styles to code elements - Enhanced version
 
         Args:
             html (str): 原始HTML内容
@@ -319,21 +319,38 @@ class SelectableLabel(QLabel):
         Returns:
             str: 处理后的HTML内容
         """
+
         # 1. 处理内联代码（span标签包含Courier New字体）
-        html = _INLINE_CODE_PATTERN.sub(
-            rf'<span class="code-inline" style="\1; color: {_CODE_COLOR};"', html
-        )
+        def replace_inline_code(match):
+            style = match.group(1)
+            # 移除现有的颜色样式，然后添加代码颜色
+            style_without_color = re.sub(r"color:\s*[^;]+;?", "", style)
+            # 确保样式以分号结尾，但避免双分号
+            style_clean = style_without_color.rstrip(";")
+            # 使用更强的内联样式，包含背景和字体
+            enhanced_style = f"{style_clean}; color: {_CODE_COLOR} !important; background-color: rgba(60, 60, 60, 0.4) !important; padding: 2px 4px !important; border-radius: 3px !important; font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;"
+            return f'<span class="code-inline" style="{enhanced_style}"'
+
+        html = _INLINE_CODE_PATTERN.sub(replace_inline_code, html)
 
         # 2. 处理代码块（pre标签）
         html = _CODE_BLOCK_PATTERN.sub(
-            rf'<pre class="code-block" style="color: {_CODE_COLOR}; margin: 0; padding: 0; background: none; border: none; display: inline;"',
+            rf'<pre class="code-block" style="color: {_CODE_COLOR} !important; margin: 0; padding: 0; background: none; border: none; display: inline;"',
             html,
         )
 
         # 3. 处理代码块内的span元素
-        html = _CODE_BLOCK_SPAN_PATTERN.sub(
-            rf'\1<span style="\2; color: {_CODE_COLOR};"\3', html
-        )
+        def replace_code_block_span(match):
+            prefix = match.group(1)
+            style = match.group(2)
+            suffix = match.group(3)
+            # 移除现有的颜色样式，然后添加代码颜色
+            style_without_color = re.sub(r"color:\s*[^;]+;?", "", style)
+            # 确保样式以分号结尾，但避免双分号
+            style_clean = style_without_color.rstrip(";")
+            return f'{prefix}<span style="{style_clean}; color: {_CODE_COLOR} !important;"{suffix}'
+
+        html = _CODE_BLOCK_SPAN_PATTERN.sub(replace_code_block_span, html)
 
         # 4. 移除非代码元素的颜色样式（优化版本）
         return self._remove_non_code_colors(html)
