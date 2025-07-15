@@ -31,7 +31,7 @@
         "model": "gpt-4o-mini"
       },
       "gemini": {
-        "api_key": "AIzaSyDJ8RG1hMXCNWNlQ-uCzeCQCRq_RRx28Bc",
+        "api_key": "",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash"
       },
