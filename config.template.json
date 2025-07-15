@@ -1,8 +1,9 @@
 {
   "_comment": "这是配置文件模板，用于 GitHub 提交和用户参考。API key 请通过 UI 设置页面配置，不要在此文件中填写。",
   "_note": "This is a config template for GitHub submission and user reference. Please configure API keys through the UI settings page, not in this file.",
+  "_version_note": "v2.5.9.13+ 默认启用自定义选项功能，解决uv安装用户看不到预定义选项的问题",
   "display_mode": "full",
-  "enable_custom_options": false,
+  "enable_custom_options": true,
   "submit_method": "enter",
   "fallback_options": [
     "好的，我明白了",

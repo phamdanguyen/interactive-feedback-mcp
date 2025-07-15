@@ -55,7 +55,7 @@ CONFIG_FILE_PATH = _get_config_file_path()
 # 出厂默认配置 - V4.2 用户友好版本
 DEFAULT_CONFIG = {
     "display_mode": "full",  # V4.2 改为默认完整模式
-    "enable_custom_options": False,  # V4.0 保留：启用自定义选项（默认禁用，用户主动启用）
+    "enable_custom_options": True,  # V4.4 修复：默认启用自定义选项，解决uv安装用户看不到预定义选项的问题
     "submit_method": "enter",  # V4.3 新增：提交方式设置 ('enter' 或 'ctrl_enter')
     "fallback_options": [
         "好的，我明白了",

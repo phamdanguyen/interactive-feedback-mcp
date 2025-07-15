@@ -334,7 +334,48 @@ class AudioManager(QObject):
             print("使用Qt资源系统音频文件", file=sys.stderr)
             return resource_path
 
-        # 策略2：尝试从包内资源获取（开发模式）
+        # 策略2：尝试使用importlib.resources（Python 3.9+，uv安装优先）
+        try:
+            if sys.version_info >= (3, 9):
+                import importlib.resources as resources
+
+                try:
+                    # 尝试直接访问资源
+                    with resources.path(
+                        "feedback_ui.resources.sounds", "notification.wav"
+                    ) as sound_path:
+                        if sound_path.exists():
+                            print(
+                                f"使用importlib.resources音频文件: {sound_path}",
+                                file=sys.stderr,
+                            )
+                            return str(sound_path)
+                except (FileNotFoundError, ModuleNotFoundError):
+                    # 尝试使用files API（更现代的方式）
+                    try:
+                        files = resources.files("feedback_ui.resources.sounds")
+                        sound_file = files / "notification.wav"
+                        if sound_file.is_file():
+                            # 创建临时文件以供播放
+                            import tempfile
+
+                            with tempfile.NamedTemporaryFile(
+                                suffix=".wav", delete=False
+                            ) as tmp:
+                                tmp.write(sound_file.read_bytes())
+                                print(
+                                    f"使用importlib.resources临时音频文件: {tmp.name}",
+                                    file=sys.stderr,
+                                )
+                                return tmp.name
+                    except Exception as e:
+                        print(
+                            f"importlib.resources files API失败: {e}", file=sys.stderr
+                        )
+        except ImportError:
+            pass
+
+        # 策略3：尝试从包内资源获取（开发模式）
         try:
             # 获取当前文件所在目录
             current_dir = Path(__file__).parent.parent
@@ -346,7 +387,7 @@ class AudioManager(QObject):
         except Exception as e:
             print(f"获取包内音频文件失败: {e}", file=sys.stderr)
 
-        # 策略3：尝试从安装包数据目录获取（uv安装模式）
+        # 策略4：尝试从安装包数据目录获取（pkg_resources回退）
         try:
             import pkg_resources
 
@@ -359,26 +400,6 @@ class AudioManager(QObject):
                     return sound_path
             except (pkg_resources.DistributionNotFound, FileNotFoundError):
                 pass
-        except ImportError:
-            pass
-
-        # 策略4：尝试使用importlib.resources（Python 3.9+）
-        try:
-            if sys.version_info >= (3, 9):
-                import importlib.resources as resources
-
-                try:
-                    with resources.path(
-                        "feedback_ui.resources.sounds", "notification.wav"
-                    ) as sound_path:
-                        if sound_path.exists():
-                            print(
-                                f"使用importlib.resources音频文件: {sound_path}",
-                                file=sys.stderr,
-                            )
-                            return str(sound_path)
-                except (FileNotFoundError, ModuleNotFoundError):
-                    pass
         except ImportError:
             pass
 

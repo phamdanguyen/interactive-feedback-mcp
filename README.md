@@ -1,5 +1,7 @@
 # ![Interactive Feedback MCP](./1a7ef-zmno1-001.png) Interactive Feedback MCP
 
+**不好意思，之前很多功能下载源代码正常，但是uv安装会有问题**
+
 一个简单的 [MCP Server](https://modelcontextprotocol.io/)，用于在AI辅助开发工具（如 [Cursor](https://www.cursor.com)、[Cline](https://cline.bot) 、 [Windsurf](https://windsurf.com)）和[Augment]插件中实现人机协作工作流。该服务器允许您轻松地直接向AI代理提供反馈，让AI与您之间更好地协作。
 
 **详细信息请参阅：**
@@ -136,14 +138,49 @@
 
 ## 📦 安装
 
-### 方式一：直接从PyPI安装（推荐）
+### 方式一：开发安装（推荐）
 
-**使用uvx（推荐）：**
+**推荐使用开发模式安装，以获得最佳的稳定性和功能完整性。**
+
+开发模式安装提供：
+- ✅ **完整的功能支持和最佳稳定性**
+- ✅ **实时的代码更新和bug修复**
+- ✅ **完整的资源文件和配置支持**
+- ✅ **更好的调试和问题排查能力**
+- ✅ **避免PyPI安装可能遇到的资源文件缺失问题**
+
+**为什么推荐开发模式？**
+- PyPI安装可能存在资源文件缺失、配置问题等
+- 开发模式确保所有功能完整可用
+- 可以及时获得最新的功能改进和bug修复
+
+1.  **先决条件：**
+    *   Python 3.11 或更新版本
+    *   [uv](https://github.com/astral-sh/uv) (推荐的Python包管理工具)
+        *   Windows: `pip install uv`
+        *   Linux/macOS: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+2.  **获取代码：**
+    ```bash
+    git clone https://github.com/pawaovo/interactive-feedback-mcp.git
+    cd interactive-feedback-mcp
+    ```
+
+3.  **安装依赖：**
+    ```bash
+    uv pip install -r requirements.txt
+    ```
+
+**当前版本：** v2.5.10 - 文档重大更新，推荐开发模式安装；修复UI控件选中状态视觉效果
+
+### 方式二：PyPI安装（备选）
+
+**使用uvx：**
 ```bash
 # 直接运行，无需安装
 uvx interactive-feedback@latest
 
-# 如果首次安装失败（通常由于PySide6等大包下载超时），可以预安装：
+# 如果首次安装失败，可以预安装：
 uv tool install interactive-feedback@latest
 ```
 
@@ -152,34 +189,11 @@ uv tool install interactive-feedback@latest
 pip install interactive-feedback
 ```
 
-**当前版本：** v2.5.9.11 - 采用增强内联样式彻底解决uv环境内联代码显示问题，确保完全兼容
-
-### 方式二：开发安装
-
-1.  **先决条件：**
-    *   Python 3.11 或更新版本。
-    *   [uv](https://github.com/astral-sh/uv) (一个快速的Python包安装和解析工具)。按以下方式安装：
-        *   Windows: `pip install uv`
-        *   Linux/macOS: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-        *   或者参考 `uv` 官方文档获取其他安装方式。
-
-2.  **获取代码：**
-    *   克隆此仓库：
-        `git clone https://github.com/pawaovo/interactive-feedback-mcp.git`
-    *   或者下载源代码压缩包并解压。
-
-3.  **安装依赖：**
-    *   进入仓库目录 (`cd interactive-feedback-mcp`)。
-    *   运行：
-        `uv pip install -r requirements.txt`
-    *   **图片支持的额外依赖：** 为了使图片粘贴正常工作，还需要以下包：
-        `pyperclip`, `Pillow`。
-        在Windows上，还需要 `pywin32`。
-        这些通常可以通过 `uv pip install pyperclip Pillow pywin32` (Windows) 或 `uv pip install pyperclip Pillow` (其他系统) 来安装。`requirements.txt` 已包含这些。
+**注意：** PyPI安装可能存在资源文件缺失或配置问题，推荐使用开发模式安装。
 
 ## ⚙️ 配置
 
-### 方式一：使用uvx（推荐）
+### 方式一：开发模式配置（推荐）
 
 将以下配置添加到您的 `claude_desktop_config.json` (Claude Desktop) 或 `mcp_servers.json` (Cursor, 通常在 `.cursor-ai/mcp_servers.json` 或用户配置目录中)：
 
@@ -187,40 +201,26 @@ pip install interactive-feedback
 {
   "mcpServers": {
     "interactive-feedback": {
-      "command": "uvx",
+      "command": "python",
       "args": [
-        "interactive-feedback@latest"
+        "/path/to/interactive-feedback-mcp/src/interactive_feedback_server/server.py"
       ],
+      "cwd": "/path/to/interactive-feedback-mcp",
       "timeout": 600,
       "autoApprove": [
-        "interactive_feedback"
+        "interactive_feedback",
+        "optimize_user_input"
       ]
     }
   }
 }
 ```
 
-**如果预安装了工具，可以简化配置（后续再改为"interactive-feedback@latest"）：**
-```json
-{
-  "mcpServers": {
-    "interactive-feedback": {
-      "command": "uvx",
-      "args": [
-        "interactive-feedback"
-      ],
-      "timeout": 600,
-      "autoApprove": [
-        "interactive_feedback"
-      ]
-    }
-  }
-}
-```
+**请将 `/path/to/interactive-feedback-mcp` 替换为您实际的项目路径。**
 
-### 推荐配置方式：uvx + UI 设置
+### 方式二：uvx配置（备选）
 
-**MCP JSON 中仅配置服务，API key 通过 UI 设置页面管理：**
+如果您选择使用uvx安装，可以使用以下配置：
 
 ```json
 {
@@ -232,12 +232,44 @@ pip install interactive-feedback
       ],
       "timeout": 600,
       "autoApprove": [
-        "interactive_feedback"
+        "interactive_feedback",
+        "optimize_user_input"
       ]
     }
   }
 }
 ```
+
+### 推荐配置方式：开发模式 + UI 设置
+
+**MCP JSON 中配置开发模式，API key 通过 UI 设置页面管理：**
+
+```json
+{
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "python",
+      "args": [
+        "/path/to/interactive-feedback-mcp/src/interactive_feedback_server/server.py"
+      ],
+      "cwd": "/path/to/interactive-feedback-mcp",
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback",
+        "optimize_user_input"
+      ]
+    }
+  }
+}
+```
+
+**开发模式优势：**
+- ✅ **最佳稳定性**：完整的功能支持和资源文件
+- ✅ **实时更新**：可以获得最新的代码修复
+- ✅ **完整功能**：避免PyPI安装可能遇到的问题
+- ✅ **灵活配置**：API key 通过 UI 界面管理
+- ✅ **多提供商**：支持多个 AI 提供商配置和切换
+- ✅ **用户友好**：直观的图形界面配置
 
 **优势：**
 - ✅ **零安装**：无需手动安装任何依赖

@@ -18,13 +18,15 @@ class ThemeColors:
         "button_text": "#FFFFFF",
         "button_hover": "#555555",
         "button_pressed": "#333333",
-        # 选择控件颜色（复选框、单选按钮等）
-        "checkbox_bg": "transparent",
+        # 选择控件颜色（复选框、单选按钮等）- 主题协调版本
+        "checkbox_bg": "#2c2c2c",
         "checkbox_border": "#444444",
-        "checkbox_checked_bg": "#4D4D4D",
-        "checkbox_checked_border": "#555555",
-        "checkbox_hover_bg": "#333333",
+        "checkbox_checked_bg": "#555555",  # 深色主题协调的灰色
+        "checkbox_checked_border": "#666666",
+        "checkbox_hover_bg": "#3a3a3a",
         "checkbox_hover_border": "#666666",
+        "checkbox_checked_hover_bg": "#666666",  # 悬停时稍亮的灰色
+        "checkbox_checked_hover_border": "#777777",
         # 预览窗口颜色
         "preview_bg": "#2d2d2d",
         "preview_border": "#555555",
@@ -68,13 +70,15 @@ class ThemeColors:
         "button_text": "#111111",
         "button_hover": "#dddddd",
         "button_pressed": "#bbbbbb",
-        # 选择控件颜色（复选框、单选按钮等）
-        "checkbox_bg": "#fdfdfd",
+        # 选择控件颜色（复选框、单选按钮等）- 主题协调版本
+        "checkbox_bg": "#ffffff",
         "checkbox_border": "#adadad",
-        "checkbox_checked_bg": "#6B6B6B",
+        "checkbox_checked_bg": "#6B6B6B",  # 浅色主题协调的深灰色
         "checkbox_checked_border": "#777777",
-        "checkbox_hover_bg": "#fafafa",
+        "checkbox_hover_bg": "#f5f5f5",
         "checkbox_hover_border": "#777777",
+        "checkbox_checked_hover_bg": "#777777",  # 悬停时稍亮的灰色
+        "checkbox_checked_hover_border": "#888888",
         # 预览窗口颜色
         "preview_bg": "#FFFFFF",
         "preview_border": "#CCCCCC",

@@ -713,44 +713,12 @@ class FeedbackUI(QMainWindow):
 
     def _apply_checkbox_theme_style(self, checkbox: QCheckBox):
         """为复选框应用主题相关的样式，确保覆盖系统默认蓝色"""
-        from .utils.theme_colors import ThemeColors
+        from .utils.ui_factory import apply_theme_aware_styling
 
         current_theme = self.settings_manager.get_current_theme()
-        colors = ThemeColors.get_checkbox_colors(current_theme)
 
-        # 直接设置强制样式，确保覆盖系统默认蓝色
-        checkbox_style = f"""
-        QCheckBox {{
-            color: {colors['text_color']};
-            spacing: 8px;
-            min-height: 28px;
-            padding: 1px;
-        }}
-        QCheckBox::indicator {{
-            width: 22px; height: 22px;
-            border: 1px solid {colors['border_color']};
-            border-radius: 4px;
-            background-color: {colors['bg_color']};
-        }}
-        QCheckBox::indicator:checked {{
-            background-color: {colors['checked_bg']} !important;
-            border: 2px solid {colors['checked_border']} !important;
-            image: none;
-            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='%23ffffff' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
-            background-position: center;
-            background-repeat: no-repeat;
-        }}
-        QCheckBox::indicator:hover:!checked {{
-            border: 1px solid {colors['hover_border']};
-            background-color: {colors['hover_bg']};
-        }}
-        QCheckBox::indicator:checked:hover {{
-            background-color: {colors['hover_border']} !important;
-            border-color: {colors['hover_border']} !important;
-        }}
-        """
-
-        checkbox.setStyleSheet(checkbox_style)
+        # 使用增强的主题感知样式
+        apply_theme_aware_styling(checkbox, current_theme)
 
     def _update_all_checkbox_styles(self):
         """更新所有复选框的样式（主题切换时调用）"""

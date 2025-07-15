@@ -209,29 +209,129 @@ def create_input_field_with_label(
 
 def apply_theme_aware_styling(widget: QWidget, theme: str = "dark") -> None:
     """
-    应用主题感知的样式
-    Apply theme-aware styling
+    应用主题感知的样式 - 增强版本
+    Apply theme-aware styling - Enhanced version
 
     Args:
         widget: 要应用样式的组件
         theme: 主题名称 ("dark" 或 "light")
     """
-    # 统一的选中样式
-    checked_style = """
+    if theme == "dark":
+        # 深色主题样式
+        style = """
+        QRadioButton {
+            color: #aaaaaa;
+            spacing: 8px;
+            min-height: 28px;
+            padding: 1px;
+        }
+        QRadioButton::indicator {
+            width: 22px; height: 22px;
+            border: 2px solid #444444;
+            border-radius: 11px;
+            background-color: #2c2c2c;
+        }
         QRadioButton::indicator:checked {
-            background-color: #0078d4;
-            border: 2px solid #0078d4;
-        }"""
+            background-color: #555555;
+            border: 2px solid #666666;
+            background-image: radial-gradient(circle, #ffffff 25%, #555555 30%);
+        }
+        QRadioButton::indicator:hover:!checked {
+            border: 2px solid #666666;
+            background-color: #3a3a3a;
+        }
+        QRadioButton::indicator:checked:hover {
+            background-color: #666666;
+            border: 2px solid #777777;
+            background-image: radial-gradient(circle, #ffffff 25%, #666666 30%);
+        }
+        QCheckBox {
+            color: #aaaaaa;
+            spacing: 8px;
+            min-height: 28px;
+            padding: 1px;
+        }
+        QCheckBox::indicator {
+            width: 22px; height: 22px;
+            border: 2px solid #444444;
+            border-radius: 4px;
+            background-color: #2c2c2c;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #555555;
+            border: 2px solid #666666;
+            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='%23ffffff' stroke='%23ffffff' stroke-width='1' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        QCheckBox::indicator:hover:!checked {
+            border: 2px solid #666666;
+            background-color: #3a3a3a;
+        }
+        QCheckBox::indicator:checked:hover {
+            background-color: #666666;
+            border: 2px solid #777777;
+        }
+        """
+    else:
+        # 浅色主题样式
+        style = """
+        QRadioButton {
+            color: #666666;
+            spacing: 8px;
+            min-height: 28px;
+            padding: 1px;
+        }
+        QRadioButton::indicator {
+            width: 22px; height: 22px;
+            border: 2px solid #adadad;
+            border-radius: 11px;
+            background-color: #ffffff;
+        }
+        QRadioButton::indicator:checked {
+            background-color: #6B6B6B;
+            border: 2px solid #777777;
+            background-image: radial-gradient(circle, #ffffff 25%, #6B6B6B 30%);
+        }
+        QRadioButton::indicator:hover:!checked {
+            border: 2px solid #777777;
+            background-color: #f5f5f5;
+        }
+        QRadioButton::indicator:checked:hover {
+            background-color: #777777;
+            border: 2px solid #888888;
+            background-image: radial-gradient(circle, #ffffff 25%, #777777 30%);
+        }
+        QCheckBox {
+            color: #666666;
+            spacing: 8px;
+            min-height: 28px;
+            padding: 1px;
+        }
+        QCheckBox::indicator {
+            width: 22px; height: 22px;
+            border: 2px solid #adadad;
+            border-radius: 4px;
+            background-color: #ffffff;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #6B6B6B;
+            border: 2px solid #777777;
+            background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24'><path fill='%23ffffff' stroke='%23ffffff' stroke-width='1' d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/></svg>");
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        QCheckBox::indicator:hover:!checked {
+            border: 2px solid #777777;
+            background-color: #f5f5f5;
+        }
+        QCheckBox::indicator:checked:hover {
+            background-color: #777777;
+            border: 2px solid #888888;
+        }
+        """
 
-    # 根据主题选择未选中样式
-    unchecked_color = "#666666" if theme == "dark" else "#cccccc"
-    unchecked_style = f"""
-        QRadioButton::indicator:unchecked {{
-            background-color: transparent;
-            border: 2px solid {unchecked_color};
-        }}"""
-
-    widget.setStyleSheet(checked_style + unchecked_style)
+    widget.setStyleSheet(style)
 
 
 # 常用样式常量
@@ -256,6 +356,27 @@ def apply_common_style(widget: QWidget, style_name: str) -> None:
     """
     if style_name in COMMON_STYLES:
         widget.setStyleSheet(COMMON_STYLES[style_name])
+
+
+def apply_enhanced_control_styling(widget: QWidget, theme: str = "dark") -> None:
+    """
+    为设置对话框中的控件应用增强的样式
+    Apply enhanced styling for controls in settings dialogs
+
+    Args:
+        widget: 要应用样式的组件（通常是对话框或容器）
+        theme: 主题名称 ("dark" 或 "light")
+    """
+    # 递归查找并应用样式到所有单选按钮和复选框
+    from PySide6.QtWidgets import QRadioButton, QCheckBox
+
+    def apply_to_children(parent):
+        for child in parent.findChildren(QRadioButton):
+            apply_theme_aware_styling(child, theme)
+        for child in parent.findChildren(QCheckBox):
+            apply_theme_aware_styling(child, theme)
+
+    apply_to_children(widget)
 
 
 def apply_input_theme_style(widget: QWidget, theme: str = "dark") -> None:

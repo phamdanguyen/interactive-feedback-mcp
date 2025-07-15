@@ -98,6 +98,7 @@ class AudioSettingsDialog(QDialog):
             self._audio_manager = None
 
         self._setup_ui()
+        self._apply_enhanced_styling()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -134,13 +135,29 @@ class AudioSettingsDialog(QDialog):
         layout.addLayout(volume_layout)
 
         # 自定义音频文件
-        file_layout = QHBoxLayout()
-        file_label = QLabel("自定义音频文件:")
+        file_layout = QVBoxLayout()
+
+        # 默认音频文件状态显示
+        default_info_layout = QHBoxLayout()
+        default_label = QLabel("默认音频文件:")
+        self.default_status_label = QLabel()
+        self._update_default_audio_status()
+
+        default_info_layout.addWidget(default_label)
+        default_info_layout.addWidget(self.default_status_label)
+        default_info_layout.addStretch()
+        file_layout.addLayout(default_info_layout)
+
+        # 自定义音频文件输入
+        custom_layout = QHBoxLayout()
+        custom_label = QLabel("自定义音频文件:")
 
         self.custom_sound_edit = QLineEdit()
         current_sound_path = self.settings_manager.get_notification_sound_path()
         if current_sound_path:
             self.custom_sound_edit.setText(current_sound_path)
+        else:
+            self.custom_sound_edit.setPlaceholderText("留空使用默认音频文件")
         self.custom_sound_edit.textChanged.connect(self._on_custom_sound_changed)
 
         browse_button = QPushButton("浏览...")
@@ -149,10 +166,11 @@ class AudioSettingsDialog(QDialog):
         test_button = QPushButton("测试")
         test_button.clicked.connect(self._test_sound)
 
-        file_layout.addWidget(file_label)
-        file_layout.addWidget(self.custom_sound_edit)
-        file_layout.addWidget(browse_button)
-        file_layout.addWidget(test_button)
+        custom_layout.addWidget(custom_label)
+        custom_layout.addWidget(self.custom_sound_edit)
+        custom_layout.addWidget(browse_button)
+        custom_layout.addWidget(test_button)
+        file_layout.addLayout(custom_layout)
         layout.addLayout(file_layout)
 
         # 按钮
@@ -166,6 +184,43 @@ class AudioSettingsDialog(QDialog):
         button_layout.addStretch()
         button_layout.addWidget(cancel_button)
         layout.addLayout(button_layout)
+
+    def _apply_enhanced_styling(self):
+        """应用增强的控件样式"""
+        try:
+            from ..utils.ui_factory import apply_enhanced_control_styling
+
+            current_theme = self.settings_manager.get_current_theme()
+            apply_enhanced_control_styling(self, current_theme)
+        except Exception as e:
+            print(f"应用增强样式失败: {e}")
+
+    def _update_default_audio_status(self):
+        """更新默认音频文件状态显示"""
+        if self._audio_manager:
+            # 获取默认音频文件路径
+            default_path = self._audio_manager._get_default_notification_sound()
+            if default_path:
+                if default_path.startswith(":/"):
+                    self.default_status_label.setText("✓ 内置音频文件")
+                    self.default_status_label.setStyleSheet("color: green;")
+                else:
+                    import os
+
+                    if os.path.exists(default_path):
+                        self.default_status_label.setText(
+                            f"✓ {os.path.basename(default_path)}"
+                        )
+                        self.default_status_label.setStyleSheet("color: green;")
+                    else:
+                        self.default_status_label.setText("✗ 文件不存在")
+                        self.default_status_label.setStyleSheet("color: red;")
+            else:
+                self.default_status_label.setText("✗ 未找到默认音频")
+                self.default_status_label.setStyleSheet("color: orange;")
+        else:
+            self.default_status_label.setText("✗ 音频管理器未初始化")
+            self.default_status_label.setStyleSheet("color: red;")
 
     def _on_audio_enabled_changed(self, enabled):
         self.settings_manager.set_audio_enabled(enabled)
@@ -214,6 +269,7 @@ class OptimizationSettingsDialog(QDialog):
         self.setModal(True)
         self.resize(500, 400)
         self._setup_ui()
+        self._apply_enhanced_styling()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -361,6 +417,18 @@ class OptimizationSettingsDialog(QDialog):
         button_layout.addStretch()
         button_layout.addWidget(cancel_button)
         layout.addLayout(button_layout)
+
+    def _apply_enhanced_styling(self):
+        """应用增强的控件样式"""
+        try:
+            from ..utils.ui_factory import apply_enhanced_control_styling
+            from ..utils.settings_manager import SettingsManager
+
+            settings_manager = SettingsManager()
+            current_theme = settings_manager.get_current_theme()
+            apply_enhanced_control_styling(self, current_theme)
+        except Exception as e:
+            print(f"应用增强样式失败: {e}")
 
     def _on_optimization_toggled(self, checked):
         """优化功能开关切换处理"""
@@ -672,6 +740,9 @@ class SettingsDialog(QDialog):
 
         # 初始更新文本
         self._update_texts()
+
+        # 应用增强样式
+        self._apply_enhanced_styling()
 
     def _init_config_utils(self):
         """V4.3 优化：初始化配置工具模块，避免重复导入"""
@@ -1634,6 +1705,16 @@ class SettingsDialog(QDialog):
     def update_input_font_size(self, size: int):
         """更新输入框字体大小"""
         self._update_font_size("input", size)
+
+    def _apply_enhanced_styling(self):
+        """应用增强的控件样式"""
+        try:
+            from ..utils.ui_factory import apply_enhanced_control_styling
+
+            current_theme = self.settings_manager.get_current_theme()
+            apply_enhanced_control_styling(self, current_theme)
+        except Exception as e:
+            print(f"应用增强样式失败: {e}")
 
     def reject(self):
         super().reject()
