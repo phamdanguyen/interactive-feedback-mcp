@@ -189,8 +189,6 @@ pip install interactive-feedback
     "interactive-feedback": {
       "command": "uvx",
       "args": [
-        "tool",
-        "run",
         "interactive-feedback@latest"
       ],
       "timeout": 600,
@@ -209,8 +207,6 @@ pip install interactive-feedback
     "interactive-feedback": {
       "command": "uvx",
       "args": [
-        "tool",
-        "run",
         "interactive-feedback"
       ],
       "timeout": 600,
@@ -232,8 +228,6 @@ pip install interactive-feedback
     "interactive-feedback": {
       "command": "uvx",
       "args": [
-        "tool",
-        "run",
         "interactive-feedback@latest"
       ],
       "timeout": 600,
@@ -364,8 +358,6 @@ pip install interactive-feedback
        "interactive-feedback": {
          "command": "uvx",
          "args": [
-           "tool",
-           "run",
            "interactive-feedback"
          ],
          "timeout": 600,
@@ -400,7 +392,7 @@ pip install interactive-feedback
      "mcpServers": {
        "interactive-feedback": {
          "command": "D:/python/Scripts/uv.exe",
-         "args": ["tool", "run", "interactive-feedback@latest"],
+         "args": ["interactive-feedback@latest"],
          "timeout": 600,
          "autoApprove": ["interactive_feedback"]
        }

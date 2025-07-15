@@ -246,8 +246,8 @@ def interactive_feedback(
         default=None,
         description="[FULL mode] AI's complete response content (AI must display this in chat first)",
     ),
-    predefined_options: Optional[List[str]] = Field(
-        default=None, description="Predefined options for user selection"
+    predefined_options: List[str] = Field(
+        default_factory=list, description="Predefined options for user selection"
     ),
 ) -> Tuple[Union[str, Image], ...]:  # 返回字符串和/或 fastmcp.Image 对象的元组
     """
@@ -290,9 +290,10 @@ def interactive_feedback(
     # 根据用户配置的显示模式选择要展示的内容
     prompt_to_display = full_response if display_mode == "full" else message
 
-    # 解析最终选项
+    # 解析最终选项 - 兼容性修复：将空列表转换为None以保持现有逻辑
+    ai_options_normalized = predefined_options if predefined_options else None
     final_options = resolve_final_options(
-        ai_options=predefined_options, text=prompt_to_display, config=config
+        ai_options=ai_options_normalized, text=prompt_to_display, config=config
     )
 
     # 转换为UI需要的格式（final_options已经是字符串列表，无需转换）
