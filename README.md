@@ -12,10 +12,9 @@
 
 ## 🖼️ 示例
 
-![Interactive Feedback Example](https://i.postimg.cc/pL99L9h5/Q1.png)
-![Interactive Feedback Example](https://i.postimg.cc/Nf8t7B3C/Q2.png)
-![Interactive Feedback Example](https://i.postimg.cc/gJ6FwWyD/Q3.png)
-![Interactive Feedback Example](https://i.postimg.cc/pXR4v8Sk/Q4.png)
+![Interactive Feedback Example](https://postimg.cc/R3YH5Qg3)
+![Interactive Feedback Example](https://postimg.cc/68YZzNRf)
+![Interactive Feedback Example](https://postimg.cc/3yNvcbF5)
 *(请注意，示例图片可能未反映最新的UI调整，但核心交互流程保持不变)*
 
 ## 💡 为何使用此工具？
