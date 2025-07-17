@@ -1,6 +1,7 @@
 from PySide6.QtCore import QCoreApplication, QEvent, QTranslator
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QDialog,
     QGroupBox,
     QHBoxLayout,
@@ -1100,6 +1101,11 @@ class SettingsDialog(QDialog):
         mode_layout.addWidget(self.simple_mode_radio, 0, Qt.AlignmentFlag.AlignLeft)
         mode_layout.addWidget(self.full_mode_radio, 0, Qt.AlignmentFlag.AlignRight)
 
+        # 创建显示模式按钮组，确保只有这两个按钮互斥
+        self.display_mode_group = QButtonGroup(self)
+        self.display_mode_group.addButton(self.simple_mode_radio)
+        self.display_mode_group.addButton(self.full_mode_radio)
+
         interaction_layout.addLayout(mode_layout)
 
         # 第二行：提交方式设置 - V4.3 新增
@@ -1149,6 +1155,11 @@ class SettingsDialog(QDialog):
         submit_layout.addWidget(
             self.submit_ctrl_enter_radio, 0, Qt.AlignmentFlag.AlignRight
         )
+
+        # 创建提交方式按钮组，确保只有这两个按钮互斥
+        self.submit_method_group = QButtonGroup(self)
+        self.submit_method_group.addButton(self.submit_enter_radio)
+        self.submit_method_group.addButton(self.submit_ctrl_enter_radio)
 
         parent_layout.addLayout(submit_layout)
 

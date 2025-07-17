@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interactive-feedback"
-version = "2.5.10.2"
+version = "2.5.10.3"
 authors = [
   { name="Fábio Ferreira" },
   { name="Pau Oliva" },
