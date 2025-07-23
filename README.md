@@ -204,11 +204,13 @@ pip install interactive-feedback
 {
   "mcpServers": {
     "interactive-feedback": {
-      "command": "python",
+      "command": "uv",
       "args": [
-        "/path/to/interactive-feedback-mcp/src/interactive_feedback_server/server.py"
+        "--directory",
+        "/path/to/interactive-feedback-mcp",
+        "run",
+        "interactive-feedback"
       ],
-      "cwd": "/path/to/interactive-feedback-mcp",
       "timeout": 600,
       "autoApprove": [
         "interactive_feedback",
@@ -251,11 +253,13 @@ pip install interactive-feedback
 {
   "mcpServers": {
     "interactive-feedback": {
-      "command": "python",
+      "command": "uv",
       "args": [
-        "/path/to/interactive-feedback-mcp/src/interactive_feedback_server/server.py"
+        "--directory",
+        "/path/to/interactive-feedback-mcp",
+        "run",
+        "interactive-feedback"
       ],
-      "cwd": "/path/to/interactive-feedback-mcp",
       "timeout": 600,
       "autoApprove": [
         "interactive_feedback",
