@@ -167,7 +167,11 @@
 
 3.  **安装依赖：**
     ```bash
-    uv pip install -r requirements.txt
+    uv pip install -e .
+    ```
+    或使用现代 uv 语法：
+    ```bash
+    uv sync
     ```
 
 **当前版本：** v2.5.10 - 文档重大更新，推荐开发模式安装；修复UI控件选中状态视觉效果
