@@ -6,26 +6,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Deploy to Railway
-      uses: railway-deploy/action@v1
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        railway-token: ${{ secrets.RAILWAY_TOKEN }}
-        service: interactive-feedback-mcp
+        python-version: '3.11'
     
-    - name: Deploy to Render
-      uses: johnbeynon/render-deploy-action@v0.0.8
-      with:
-        service-id: ${{ secrets.RENDER_SERVICE_ID }}
-        api-key: ${{ secrets.RENDER_API_KEY }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install fastapi uvicorn
+    
+    - name: Test server
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        try:
+            from railway_server import app
+            print('✅ Server imports successfully')
+        except Exception as e:
+            print(f'❌ Server import failed: {e}')
+            sys.exit(1)
+        "
     
     - name: Deployment Status
       run: |
-        echo "🚀 Interactive Feedback MCP Server deployed successfully!"
-        echo "🔗 Railway: https://interactive-feedback-mcp-production.up.railway.app"
-        echo "🔗 Render: https://interactive-feedback-mcp.onrender.com"
+        echo "✅ Interactive Feedback MCP Server test passed!"
+        echo "📋 Ready for manual deployment to:"
+        echo "   - Railway: https://railway.app"
+        echo "   - Render: https://render.com"
+        echo "   - Heroku: https://heroku.com"
