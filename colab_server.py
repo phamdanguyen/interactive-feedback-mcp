@@ -1,120 +1,56 @@
-#!/usr/bin/env python3
-"""
-Interactive Feedback MCP Server for Google Colab
-"""
+# Colab Server for Interactive Feedback MCP
+# Modified server.py to work with web UI instead of desktop UI
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-import json
-import time
 import os
+import sys
+import json
+import tempfile
+import subprocess
 
-# Create FastAPI app
-app = FastAPI(
-    title="Interactive Feedback MCP Server - Colab",
-    description="Interactive Feedback MCP Server running on Google Colab",
-    version="1.0.0"
-)
+from typing import Annotated, Dict
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from fastmcp import FastMCP
+from pydantic import Field
 
-def first_line(text: str) -> str:
-    """Get first line of text"""
-    return text.split("\n")[0].strip()
+# Import the Colab web UI
+from colab_web_ui import feedback_ui
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "service": "Interactive Feedback MCP Server - Colab",
-        "version": "1.0.0",
-        "status": "running",
-        "platform": "Google Colab",
-        "endpoints": {
-            "health": "/health",
-            "interactive_feedback": "/api/interactive-feedback"
-        }
-    }
+# The log_level is necessary for Cline to work: https://github.com/jlowin/fastmcp/issues/81
+mcp = FastMCP("Interactive Feedback MCP - Colab", log_level="ERROR")
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "interactive-feedback-mcp-colab",
-        "version": "1.0.0",
-        "timestamp": time.time(),
-        "platform": "Google Colab"
-    }
-
-@app.post("/api/interactive-feedback")
-async def api_interactive_feedback(request: dict):
-    """Interactive feedback API endpoint for Colab"""
+def launch_feedback_ui(project_directory: str, summary: str) -> dict[str, str]:
+    """Launch the Colab web-based feedback UI"""
     try:
-        project_directory = request.get("project_directory", "")
-        summary = request.get("summary", "")
+        # Use the Colab web UI instead of desktop UI
+        result = feedback_ui(project_directory, summary)
         
-        if not project_directory or not summary:
-            raise HTTPException(
-                status_code=400,
-                detail="project_directory and summary are required"
-            )
-        
-        # Log the feedback request
-        print(f"Interactive feedback request from {project_directory}")
-        print(f"Summary: {summary}")
-        
-        # For Colab deployment, we'll return a structured response
-        result = {
-            "status": "success",
-            "message": "Interactive feedback request received via Google Colab",
-            "data": {
-                "project_directory": first_line(project_directory),
-                "summary": first_line(summary),
-                "timestamp": time.time(),
-                "platform": "Google Colab",
-                "feedback": "User feedback processed successfully via Colab server"
+        if result is None:
+            # If result is None, it means output was saved to file
+            # This shouldn't happen in our case, but handle it gracefully
+            return {
+                "command_logs": "",
+                "interactive_feedback": "No feedback received"
             }
-        }
         
         return result
         
     except Exception as e:
-        print(f"Error handling interactive feedback: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        # Fallback to simple response
+        return {
+            "command_logs": f"Error launching feedback UI: {str(e)}",
+            "interactive_feedback": "Error occurred while getting feedback"
+        }
 
-@app.get("/api/interactive-feedback")
-async def get_interactive_feedback_info():
-    """Get interactive feedback API info"""
-    return {
-        "method": "POST",
-        "endpoint": "/api/interactive-feedback",
-        "parameters": {
-            "project_directory": "string (required) - Full path to project directory",
-            "summary": "string (required) - Short summary of changes"
-        },
-        "example": {
-            "project_directory": "/path/to/project",
-            "summary": "Implemented new feature"
-        },
-        "platform": "Google Colab"
-    }
+def first_line(text: str) -> str:
+    return text.split("\n")[0].strip()
+
+@mcp.tool()
+def interactive_feedback(
+    project_directory: Annotated[str, Field(description="Full path to the project directory")],
+    summary: Annotated[str, Field(description="Short, one-line summary of the changes")],
+) -> Dict[str, str]:
+    """Request interactive feedback for a given project directory and summary"""
+    return launch_feedback_ui(first_line(project_directory), first_line(summary))
 
 if __name__ == "__main__":
-    # For Colab, we need to run on all interfaces and use ngrok or similar
-    print("Starting Interactive Feedback MCP Server on Google Colab...")
-    print("Use ngrok or Colab's built-in public URL feature to expose the server")
-    
-    # Run on all interfaces for Colab
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    mcp.run(transport="stdio")

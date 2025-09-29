@@ -1,0 +1,57 @@
+{
+  "name": "Interactive Feedback MCP Development",
+  "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.flake8",
+        "ms-python.black-formatter",
+        "ms-python.isort"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "black"
+      }
+    }
+  },
+  
+  "postCreateCommand": "pip install -r requirements.txt && pip install uv",
+  
+  "portsAttributes": {
+    "8080": {
+      "label": "MCP Server (FastMCP Dev)",
+      "onAutoForward": "notify",
+      "protocol": "http"
+    },
+    "8000": {
+      "label": "MCP Server (Alternative Port)",
+      "onAutoForward": "silent",
+      "protocol": "http"
+    }
+  },
+  
+  "forwardPorts": [8080, 8000],
+  
+  "remoteUser": "vscode",
+  
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspaces/interactive-feedback-mcp,type=bind,consistency=cached"
+  ],
+  
+  "workspaceFolder": "/workspaces/interactive-feedback-mcp",
+  
+  "postStartCommand": "echo '🚀 Interactive Feedback MCP Development Environment Ready!' && echo 'Run: uv run fastmcp dev server.py' to start the server",
+  
+  "remoteEnv": {
+    "PYTHONPATH": "/workspaces/interactive-feedback-mcp"
+  }
+}

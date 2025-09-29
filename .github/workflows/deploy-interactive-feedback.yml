@@ -1,0 +1,124 @@
+name: Deploy Interactive Feedback MCP Server
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: "latest"
+        
+    - name: Install dependencies
+      run: |
+        uv sync
+        
+    - name: Test server import
+      run: |
+        uv run python -c "import server; print('✅ Server imports successfully')"
+        
+    - name: Start server in background
+      run: |
+        echo "Starting Interactive Feedback MCP Server..."
+        nohup uv run fastmcp dev server.py --port 8080 > server.log 2>&1 &
+        echo $! > server.pid
+        sleep 10
+        
+    - name: Install ngrok
+      uses: gabrielbb/ngrok-action@v2
+      with:
+        ngrok-version: latest
+        auth-token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        
+    - name: Create ngrok tunnel
+      run: |
+        ngrok http 8080 --log=stdout > ngrok.log &
+        sleep 5
+        
+    - name: Get public URL
+      id: get_url
+      run: |
+        # Get the public URL from ngrok API
+        PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+        echo "public_url=$PUBLIC_URL" >> $GITHUB_OUTPUT
+        echo "🌐 Public URL: $PUBLIC_URL"
+        
+    - name: Test server
+      run: |
+        echo "Testing server endpoints..."
+        curl -f "${{ steps.get_url.outputs.public_url }}" || echo "❌ Server not responding"
+        curl -f "${{ steps.get_url.outputs.public_url }}/health" || echo "❌ Health check failed"
+        
+    - name: Generate MCP configuration
+      run: |
+        cat > mcp_config.json << EOF
+        {
+          "mcpServers": {
+            "interactive-feedback-mcp-github": {
+              "command": "curl",
+              "args": [
+                "-X", "POST",
+                "${{ steps.get_url.outputs.public_url }}/mcp",
+                "-H", "Content-Type: application/json",
+                "-d", "@-"
+              ],
+              "timeout": 600,
+              "autoApprove": [
+                "interactive_feedback"
+              ]
+            }
+          }
+        }
+        EOF
+        
+    - name: Create deployment summary
+      run: |
+        echo "## 🚀 Interactive Feedback MCP Server Deployed!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🌐 Public URL:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.get_url.outputs.public_url }}" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 MCP Configuration for Cursor:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+        cat mcp_config.json >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Links:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Web Interface**: [${{ steps.get_url.outputs.public_url }}](${{ steps.get_url.outputs.public_url }})" >> $GITHUB_STEP_SUMMARY
+        echo "- **Health Check**: [${{ steps.get_url.outputs.public_url }}/health](${{ steps.get_url.outputs.public_url }}/health)" >> $GITHUB_STEP_SUMMARY
+        echo "- **MCP Endpoint**: [${{ steps.get_url.outputs.public_url }}/mcp](${{ steps.get_url.outputs.public_url }}/mcp)" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Keep server running
+      run: |
+        echo "🔄 Server will run for 24 hours or until workflow is cancelled"
+        echo "📊 Monitoring server status..."
+        while true; do
+          if ! curl -f "${{ steps.get_url.outputs.public_url }}/health" > /dev/null 2>&1; then
+            echo "❌ Server health check failed, restarting..."
+            pkill -f "fastmcp dev server.py" || true
+            nohup uv run fastmcp dev server.py --port 8080 > server.log 2>&1 &
+            echo $! > server.pid
+            sleep 10
+          else
+            echo "✅ Server is healthy at $(date)"
+          fi
+          sleep 300  # Check every 5 minutes
+        done
