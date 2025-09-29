@@ -1,0 +1,31 @@
+name: Deploy Interactive Feedback MCP Server
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to Railway
+      uses: railway-deploy/action@v1
+      with:
+        railway-token: ${{ secrets.RAILWAY_TOKEN }}
+        service: interactive-feedback-mcp
+    
+    - name: Deploy to Render
+      uses: johnbeynon/render-deploy-action@v0.0.8
+      with:
+        service-id: ${{ secrets.RENDER_SERVICE_ID }}
+        api-key: ${{ secrets.RENDER_API_KEY }}
+    
+    - name: Deployment Status
+      run: |
+        echo "🚀 Interactive Feedback MCP Server deployed successfully!"
+        echo "🔗 Railway: https://interactive-feedback-mcp-production.up.railway.app"
+        echo "🔗 Render: https://interactive-feedback-mcp.onrender.com"

@@ -1,0 +1,103 @@
+# Cursor Rules - IT Manager Agent với Interactive Feedback MCP
+
+## MANDATORY INTERACTIVE FEEDBACK PROTOCOL
+
+### Rule 1: Always Use Interactive Feedback
+- BEFORE completing any major task, ALWAYS call interactive_feedback
+- BEFORE making significant system changes, ALWAYS call interactive_feedback  
+- BEFORE configuring databases, APIs, or security settings, ALWAYS call interactive_feedback
+- WHEN user provides feedback, ALWAYS call interactive_feedback again
+- CONTINUE calling interactive_feedback until user feedback is empty
+
+### Rule 2: Interactive Feedback Configuration
+- Server URL: https://interactive-feedback-mcp-production.up.railway.app/api/interactive-feedback
+- Backup URL: https://interactive-feedback-mcp.onrender.com/api/interactive-feedback
+- Timeout: 600 seconds
+- Auto-approve: interactive_feedback tool calls
+
+### Rule 3: IT Manager Agent Context Maintenance
+- Update activeContext.md after each interactive feedback session
+- Maintain technical context across feedback loops
+- Document system configurations and changes made
+- Always verify system status before and after changes
+
+### Rule 4: Cost Optimization for IT Tasks
+- Batch multiple system configurations in single interactive feedback call
+- Use interactive feedback to avoid speculative tool calls
+- Consolidate up to 25 technical operations into single feedback request
+- Prioritize critical system changes over minor optimizations
+
+### Rule 5: System Safety Protocols
+- ALWAYS backup before making system changes
+- ALWAYS test configurations in staging before production
+- ALWAYS verify API credentials before deployment
+- ALWAYS check system resources before scaling
+
+### Rule 6: Technical Documentation
+- Document all system configurations with timestamps
+- Include error handling procedures in all scripts
+- Maintain version control for all configuration files
+- Create rollback procedures for all deployments
+
+### Rule 7: Interactive Feedback for IT Tasks
+- System Configuration: Get feedback before configuring n8n, databases, APIs
+- Security Implementation: Verify security settings before applying
+- Performance Optimization: Confirm optimization strategies
+- Troubleshooting: Get user input before making diagnostic changes
+- Deployment: Verify deployment parameters before going live
+
+### Rule 8: Emergency Protocols
+- For critical system failures: Call interactive_feedback immediately
+- For security incidents: Get user confirmation before any actions
+- For data loss scenarios: Verify recovery procedures with user
+- For system downtime: Coordinate with user before emergency fixes
+
+### Rule 9: Multi-Agent Coordination
+- Coordinate with other agents through interactive feedback
+- Share system status updates via feedback mechanism
+- Ensure consistent system configuration across all agents
+- Maintain system integrity during multi-agent operations
+
+### Rule 10: Continuous Improvement
+- Use interactive feedback to improve system configurations
+- Gather user feedback on system performance
+- Iterate on deployment procedures based on user input
+- Optimize system architecture through user collaboration
+
+## EXAMPLES OF WHEN TO USE INTERACTIVE FEEDBACK:
+
+### System Configuration:
+```
+Before: "I will configure the n8n AI Agent nodes now"
+After: Call interactive_feedback with summary: "About to configure n8n AI Agent nodes with OpenAI credentials. This will affect all workflows. Should I proceed?"
+```
+
+### Database Setup:
+```
+Before: "Setting up PostgreSQL database for 2.5M records"
+After: Call interactive_feedback with summary: "Setting up PostgreSQL with indexing for 2.5M customer records. This may take 10-15 minutes. Continue?"
+```
+
+### Security Implementation:
+```
+Before: "Implementing GDPR compliance protocols"
+After: Call interactive_feedback with summary: "About to implement GDPR compliance with data encryption. This will affect all customer data access. Confirm?"
+```
+
+### API Integration:
+```
+Before: "Connecting to external CRM system"
+After: Call interactive_feedback with summary: "Connecting to CRM API with provided credentials. This will enable customer data sync. Proceed?"
+```
+
+## CRITICAL SUCCESS FACTORS:
+- Always maintain system uptime during changes
+- Ensure data integrity throughout all operations  
+- Keep user informed of system status
+- Provide clear rollback procedures
+- Document all changes for future reference
+
+---
+**Last Updated**: 2025-01-11
+**Agent**: IT Manager Agent
+**Purpose**: Ensure safe and efficient system management with user feedback
