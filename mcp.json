@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "interactive-feedback-mcp": {
+      "command": "python",
+      "args": ["D:\\AI\\interactive-feedback-mcp\\server.py"],
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
+    }
+  }
+}
